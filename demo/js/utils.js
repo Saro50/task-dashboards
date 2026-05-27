@@ -437,6 +437,47 @@ const Utils = (() => {
   }
 
   // ====================
+  // 多项目管理
+  // ====================
+
+  const PROJECTS_KEY = 'demo_projects';
+  const CURRENT_KEY = 'demo_current_project';
+
+  function getAllProjects() {
+    return storageGet(PROJECTS_KEY) || [];
+  }
+
+  function saveAllProjects(projects) {
+    storageSet(PROJECTS_KEY, projects);
+  }
+
+  function getProjectById(id) {
+    return getAllProjects().find(function(p) { return p.id === id; }) || null;
+  }
+
+  function saveProject(project) {
+    var projects = getAllProjects();
+    var idx = projects.findIndex(function(p) { return p.id === project.id; });
+    if (idx >= 0) { projects[idx] = project; }
+    else { projects.push(project); }
+    saveAllProjects(projects);
+  }
+
+  function deleteProjectById(id) {
+    var projects = getAllProjects().filter(function(p) { return p.id !== id; });
+    saveAllProjects(projects);
+    if (getCurrentProjectId() === id) { storageRemove(CURRENT_KEY); }
+  }
+
+  function getCurrentProjectId() {
+    return storageGet(CURRENT_KEY) || null;
+  }
+
+  function setCurrentProjectId(id) {
+    storageSet(CURRENT_KEY, id);
+  }
+
+  // ====================
   // 公开 API
   // ====================
 
@@ -459,6 +500,13 @@ const Utils = (() => {
     throttle,
     copyToClipboard,
     sleep,
+    getAllProjects,
+    saveAllProjects,
+    getProjectById,
+    saveProject,
+    deleteProjectById,
+    getCurrentProjectId,
+    setCurrentProjectId,
   };
 })();
 

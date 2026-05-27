@@ -4,13 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICodeAgent 任务分期看板</title>
+  <link rel="stylesheet" href="css/common.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      theme: { extend: { colors: {
-        primary: { 50:'#ede9fe',100:'#ddd6fe',200:'#c4b5fd',300:'#a29bfe',400:'#8b7efa',500:'#6c5ce7',600:'#5a4bd1',700:'#4a3cb8',800:'#3d319a',900:'#332a7e' },
-        dark: { 50:'#32324f',100:'#2a2a45',200:'#22223a',300:'#1a1a2e',400:'#151525',500:'#0f0f1a' },
-      }}}}
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50:'#ede9fe',100:'#ddd6fe',200:'#c4b5fd',300:'#a29bfe',
+              400:'#8b7efa',500:'#6c5ce7',600:'#5a4bd1',700:'#4a3cb8',
+              800:'#3d319a',900:'#332a7e',
+            },
+            dark: {
+              50:'#32324f',100:'#2a2a45',200:'#22223a',
+              300:'#1a1a2e',400:'#151525',500:'#0f0f1a',
+            },
+          },
+        },
+      },
+    }
   </script>
   <script src="js/utils.js"></script>
   <script src="js/mock-ai.js"></script>
@@ -20,107 +33,498 @@
     .toast{display:flex;align-items:center;gap:8px;padding:12px 20px;background:#1a1a2e;border:1px solid #2e2e48;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:14px;animation:toastIn .25s ease both;min-width:280px;color:#e8e8f0}
     .toast--success{border-left:3px solid #00cec9}.toast--error{border-left:3px solid #ff7675}.toast--info{border-left:3px solid #74b9ff}
     @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+    .md-content h3{font-size:1rem;font-weight:700;color:#e8e8f0;margin:12px 0 6px}
+    .md-content h4{font-size:.9rem;font-weight:600;color:#a0a0b8;margin:10px 0 4px}
+    .md-content p{margin:6px 0;line-height:1.7}
+    .md-content ul,.md-content ol{padding-left:20px;margin:6px 0}
+    .md-content li{margin:3px 0;line-height:1.6}
+    .md-content code{background:#22223a;padding:1px 6px;border-radius:4px;font-size:.85em}
+    .md-content strong{color:#a29bfe}
+    .typing-dot{width:8px;height:8px;border-radius:50%;background:#a29bfe;animation:bounce 1.4s infinite ease-in-out}
+    .typing-dot:nth-child(2){animation-delay:.2s}.typing-dot:nth-child(3){animation-delay:.4s}
+    @keyframes bounce{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1);opacity:1}}
+    .msg-content p{margin:4px 0;line-height:1.7}
+    .msg-content ul,.msg-content ol{padding-left:18px;margin:4px 0}
+    .msg-content li{margin:2px 0;line-height:1.6}
+    .msg-content strong{color:#a29bfe}
+    .msg-content code{background:#22223a;padding:1px 5px;border-radius:3px;font-size:.85em}
+    .modal-overlay-bg{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);opacity:0;visibility:hidden;transition:all .25s ease}
+    .modal-overlay-bg.active{opacity:1;visibility:visible}
+    .modal-overlay-bg.active .modal-box{transform:scale(1) translateY(0)}
+    .modal-box{background:#1a1a2e;border:1px solid #2e2e48;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.5);transform:scale(.95) translateY(10px);transition:transform .25s ease;max-height:85vh;overflow:hidden;display:flex;flex-direction:column}
+    #projectModal .modal-box{width:90%;max-width:640px}
+    #chatModal .modal-box{width:90%;max-width:720px;height:80vh}
+    #chatMessages::-webkit-scrollbar{width:5px}
+    #chatMessages::-webkit-scrollbar-track{background:transparent}
+    #chatMessages::-webkit-scrollbar-thumb{background:#3a3a56;border-radius:10px}
   </style>
 </head>
 <body class="bg-dark-500 text-gray-100 font-sans min-h-screen">
 
+  <!-- ==================== 顶部导航栏 ==================== -->
   <nav class="bg-gray-800/90 backdrop-blur-md sticky top-0 z-50 h-14 flex items-center px-4 sm:px-6 border-b border-gray-700">
-    <div class="flex items-center gap-2 text-lg font-bold text-white"><span class="text-2xl">🤖</span><span class="hidden sm:inline">AICodeAgent</span></div>
-    <div class="ml-auto flex items-center gap-4 text-sm">
-      <a href="index.html" class="text-primary-300 font-semibold">首页</a><span class="text-gray-600">|</span>
-      <a href="project-create.html" class="text-gray-400 hover:text-white transition-colors">项目创建</a>
-      <a href="ai-chat.html" class="text-gray-400 hover:text-white transition-colors">AI 讨论</a>
-      <a href="task-graph.html" class="text-gray-400 hover:text-white transition-colors">任务图谱</a>
+    <div class="flex items-center gap-2 text-lg font-bold text-white">
+      <span class="text-2xl">🤖</span><span class="hidden sm:inline">AICodeAgent</span>
+    </div>
+    <div class="ml-auto flex items-center gap-2">
+      <button onclick="openProjectModal()" class="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+        新建项目
+      </button>
     </div>
   </nav>
 
-  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+  <!-- ==================== 主体区域 ==================== -->
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
 
-    <section class="text-center mb-12">
-      <div class="w-20 h-20 mx-auto mb-5 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center text-4xl shadow-lg shadow-primary-500/20">🤖</div>
-      <h1 class="text-3xl sm:text-4xl font-extrabold mb-3 bg-gradient-to-r from-white to-primary-300 bg-clip-text text-transparent">AICodeAgent 任务分期看板</h1>
-      <p class="text-gray-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">基于 AI 的智能任务管理工具，帮助开发者梳理、拆分并并行执行开发任务。通过 Worktree 隔离工作区，自动化完成提交合并流程。</p>
-      <div class="flex flex-wrap justify-center gap-2 mt-5">
-        <span class="text-xs bg-primary-500/15 text-primary-300 px-3 py-1 rounded-full">AI 驱动</span>
-        <span class="text-xs bg-green-500/15 text-green-400 px-3 py-1 rounded-full">Git Worktree</span>
-        <span class="text-xs bg-blue-500/15 text-blue-400 px-3 py-1 rounded-full">任务图谱</span>
-        <span class="text-xs bg-yellow-500/15 text-yellow-400 px-3 py-1 rounded-full">自动化流程</span>
+    <!-- 页面标题 -->
+    <div class="mb-8">
+      <h1 class="text-2xl sm:text-3xl font-extrabold mb-2 bg-gradient-to-r from-white to-primary-300 bg-clip-text text-transparent">项目管理</h1>
+      <p class="text-gray-400 text-sm leading-relaxed">管理你的所有项目，创建新项目或进入任务图谱查看进度。</p>
+    </div>
+
+    <!-- 项目列表 -->
+    <div id="projectList"></div>
+
+    <!-- 空状态 -->
+    <div id="emptyState" class="hidden">
+      <div class="flex flex-col items-center justify-center py-20 text-center">
+        <div class="text-6xl mb-4 opacity-40">📂</div>
+        <h2 class="text-lg font-semibold text-gray-300 mb-2">暂无项目</h2>
+        <p class="text-sm text-gray-500 mb-6 max-w-md">点击下方按钮创建你的第一个项目，AI 将帮助你生成 README 并初始化仓库。</p>
+        <button onclick="openProjectModal()" class="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-primary-500/20">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          新建项目
+        </button>
       </div>
-    </section>
-
-    <section class="mb-10">
-      <h2 class="text-xl font-bold mb-5 flex items-center gap-2"><span class="text-primary-400">✨</span> 完整工作流<span class="flex-1 h-px bg-gradient-to-r from-gray-700 to-transparent"></span></h2>
-      <div class="bg-dark-200 border border-gray-700 rounded-2xl p-5 sm:p-8">
-        <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-0 justify-center">
-          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-primary-600/20 border-2 border-primary-500 flex items-center justify-center text-2xl mb-2">🚀</div><div class="text-sm font-semibold text-white">创建项目</div><div class="text-xs text-gray-500 mt-1">初始化项目与仓库</div></div>
-          <svg class="w-8 h-8 text-primary-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-          <div class="text-primary-500 text-xl sm:hidden">&#8595;</div>
-          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-primary-600/20 border-2 border-primary-500 flex items-center justify-center text-2xl mb-2">💬</div><div class="text-sm font-semibold text-white">AI 讨论</div><div class="text-xs text-gray-500 mt-1">对话梳理任务需求</div></div>
-          <svg class="w-8 h-8 text-primary-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-          <div class="text-primary-500 text-xl sm:hidden">&#8595;</div>
-          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-primary-600/20 border-2 border-primary-500 flex items-center justify-center text-2xl mb-2">🗺</div><div class="text-sm font-semibold text-white">任务图谱</div><div class="text-xs text-gray-500 mt-1">可视化拆解与编排</div></div>
-          <svg class="w-8 h-8 text-primary-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-          <div class="text-primary-500 text-xl sm:hidden">&#8595;</div>
-          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-green-600/20 border-2 border-green-500 flex items-center justify-center text-2xl mb-2">⚡</div><div class="text-sm font-semibold text-white">自动执行</div><div class="text-xs text-gray-500 mt-1">Worktree 隔离并行</div></div>
-        </div>
-        <div class="text-center mt-8">
-          <a href="project-create.html" class="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-8 py-3 rounded-xl text-lg transition-all shadow-lg shadow-primary-500/20 hover:shadow-primary-500/30 font-semibold">🚀 开始完整演示<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg></a>
-          <p class="text-xs text-gray-500 mt-3">点击按钮开始体验完整的项目创建到任务图谱工作流</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="mb-12">
-      <h2 class="text-xl font-bold mb-5 flex items-center gap-2"><span class="text-primary-400">📋</span> 功能模块<span class="flex-1 h-px bg-gradient-to-r from-gray-700 to-transparent"></span></h2>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <a href="project-create.html" class="group relative bg-dark-200 border border-gray-700 rounded-2xl p-6 hover:border-primary-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-primary-500/10 overflow-hidden">
-          <span class="absolute top-5 right-5 text-4xl font-extrabold text-gray-700/50 group-hover:text-gray-600/50 transition-colors">01</span>
-          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-2xl mb-4">🚀</div>
-          <h3 class="text-lg font-bold mb-2">项目创建</h3>
-          <p class="text-sm text-gray-400 leading-relaxed mb-4">快速初始化项目并输出项目简介文件。指定目录、设置名称与描述，AI 扩写生成 README.md。</p>
-          <div class="flex flex-wrap gap-1.5 mb-4">
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📂 目录选择</span>
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📝 信息录入</span>
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📄 README</span>
-          </div>
-          <div class="text-xs text-primary-300 font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">进入模块 <span class="group-hover:translate-x-1 transition-transform">&rarr;</span></div>
-        </a>
-        <a href="ai-chat.html" class="group relative bg-dark-200 border border-gray-700 rounded-2xl p-6 hover:border-primary-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-primary-500/10 overflow-hidden">
-          <span class="absolute top-5 right-5 text-4xl font-extrabold text-gray-700/50 group-hover:text-gray-600/50 transition-colors">02</span>
-          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-2xl mb-4">💬</div>
-          <h3 class="text-lg font-bold mb-2">AI 讨论聊天窗</h3>
-          <p class="text-sm text-gray-400 leading-relaxed mb-4">与 AI 多轮对话讨论任务细节，AI 自动总结任务主题并生成带依赖关系的步骤路线。</p>
-          <div class="flex flex-wrap gap-1.5 mb-4">
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">🤖 AI 对话</span>
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📋 内容选取</span>
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">🗺 步骤路线</span>
-          </div>
-          <div class="text-xs text-primary-300 font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">进入模块 <span class="group-hover:translate-x-1 transition-transform">&rarr;</span></div>
-        </a>
-        <a href="task-graph.html" class="group relative bg-dark-200 border border-gray-700 rounded-2xl p-6 hover:border-primary-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-primary-500/10 overflow-hidden">
-          <span class="absolute top-5 right-5 text-4xl font-extrabold text-gray-700/50 group-hover:text-gray-600/50 transition-colors">03</span>
-          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-2xl mb-4">🗺</div>
-          <h3 class="text-lg font-bold mb-2">任务图谱呈现</h3>
-          <p class="text-sm text-gray-400 leading-relaxed mb-4">可视化展示任务步骤的实施路线图谱，支持人为编辑与调整，实时追踪任务状态。</p>
-          <div class="flex flex-wrap gap-1.5 mb-4">
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📊 图谱展示</span>
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">✏️ 任务编辑</span>
-            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">🔗 依赖关系</span>
-          </div>
-          <div class="text-xs text-primary-300 font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">进入模块 <span class="group-hover:translate-x-1 transition-transform">&rarr;</span></div>
-        </a>
-      </div>
-    </section>
-
-    <footer class="text-center py-8 border-t border-gray-700/50">
-      <p class="text-xs text-gray-500">AICodeAgent 任务分期看板 &middot; 交互原型演示 &middot; 纯前端静态页面 &middot; 所有数据由 Mock 模拟</p>
-    </footer>
+    </div>
   </main>
 
+  <!-- ==================== 项目创建 Modal ==================== -->
+  <div id="projectModal" class="modal-overlay-bg" onclick="if(event.target===this)closeProjectModal()">
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+      <div class="modal-box">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700 bg-dark-100 shrink-0">
+          <div class="flex items-center gap-2"><span class="text-lg">🚀</span><span class="font-bold text-white">新建项目</span></div>
+          <button onclick="closeProjectModal()" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="overflow-y-auto flex-1 p-5 sm:p-8" style="max-height:calc(85vh - 120px)">
+          <!-- 创建表单 -->
+          <div id="createFormSection">
+            <p class="text-gray-400 text-sm leading-relaxed mb-6">填写项目基本信息，AI 将自动生成项目 README 文件并初始化 Git 仓库。</p>
+            <div class="mb-5">
+              <label class="block text-sm font-semibold text-gray-300 mb-2">📂 项目名称 <span class="text-red-400">*</span></label>
+              <input id="projectName" type="text" placeholder="例如: my-awesome-app" class="w-full bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500">
+              <p class="text-xs text-gray-500 mt-1.5">用于目录名和仓库标识，仅支持字母、数字、连字符</p>
+            </div>
+            <div class="mb-5">
+              <label class="block text-sm font-semibold text-gray-300 mb-2">📝 项目描述 <span class="text-red-400">*</span></label>
+              <textarea id="projectDesc" rows="4" placeholder="简要描述项目的用途、核心功能和目标..." class="w-full bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500 resize-none"></textarea>
+              <p class="text-xs text-gray-500 mt-1.5">AI 将根据描述自动生成 README.md 文件内容</p>
+            </div>
+            <div class="mb-6">
+              <label class="block text-sm font-semibold text-gray-300 mb-2">📁 目标路径</label>
+              <div class="flex gap-3">
+                <input id="projectPath" type="text" placeholder="/home/user/projects/" class="flex-1 bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500">
+                <button onclick="selectDirectory()" class="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-semibold rounded-xl transition-colors flex items-center gap-1.5 shrink-0">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>浏览
+                </button>
+              </div>
+              <p class="text-xs text-gray-500 mt-1.5">留空则使用默认路径 ~/projects/（演示模式：此为模拟操作）</p>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3">
+              <button id="btnCreate" onclick="createProject()" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                创建项目并生成 README
+              </button>
+              <button onclick="resetProjectForm()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold rounded-xl transition-colors text-sm">重置</button>
+            </div>
+          </div>
+          <!-- 创建结果 -->
+          <div id="createResultSection" class="hidden">
+            <div class="bg-green-900/30 border border-green-700/50 rounded-2xl p-4 mb-5 flex items-start gap-3">
+              <span class="text-2xl shrink-0">✅</span>
+              <div>
+                <h3 class="font-bold text-green-300 mb-1">项目创建成功！</h3>
+                <p class="text-sm text-green-200/70">项目已初始化，README.md 已由 AI 自动生成。</p>
+              </div>
+            </div>
+            <div class="bg-dark-300 border border-gray-700 rounded-2xl overflow-hidden mb-5">
+              <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-700 bg-dark-100">
+                <div class="flex items-center gap-2 text-sm"><span class="text-gray-400">📄</span><span class="text-gray-300 font-semibold">README.md</span><span class="text-xs text-gray-500 ml-2">AI 生成</span></div>
+                <button onclick="copyReadme()" class="text-xs text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>复制</button>
+              </div>
+              <div id="readmePreview" class="p-4 text-sm text-gray-300 md-content max-h-64 overflow-y-auto leading-relaxed"></div>
+            </div>
+            <div class="flex flex-col sm:flex-row gap-3">
+              <button onclick="closeProjectModal()" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm">
+                完成
+              </button>
+              <button onclick="closeProjectModalAndChat()" class="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold py-3 px-6 rounded-xl transition-colors text-sm flex items-center justify-center gap-2">
+                💬 继续 AI 讨论
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== AI 讨论 Modal ==================== -->
+  <div id="chatModal" class="modal-overlay-bg" onclick="if(event.target===this)closeChatModal()">
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+      <div class="modal-box">
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-gray-700 shrink-0">
+          <div class="flex items-center gap-2"><span class="text-lg">💬</span><span class="font-bold text-white text-sm">AI 讨论聊天窗</span><span id="chatProjectLabel" class="text-xs text-primary-300 ml-2"></span></div>
+          <button onclick="closeChatModal()" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div id="chatMessages" class="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3" style="min-height:0"></div>
+        <div id="bottomChatActions" class="hidden bg-dark-300 border-t border-gray-700 px-4 py-2 flex items-center justify-between gap-3 shrink-0">
+          <div class="flex items-center gap-2 text-sm"><span class="text-green-400">✅</span><span class="text-gray-300 font-semibold text-xs">任务计划已生成</span><span id="taskCountLabel" class="text-xs bg-primary-500/20 text-primary-300 px-2 py-0.5 rounded-full">0 个任务</span></div>
+          <button onclick="closeChatModal()" class="bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-all flex items-center gap-1.5">🗺️ 查看任务图谱<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg></button>
+        </div>
+        <div class="bg-dark-200 border-t border-gray-700 px-4 py-2.5 shrink-0">
+          <div class="flex items-end gap-2">
+            <textarea id="chatInput" rows="1" placeholder="输入消息讨论任务需求..." class="flex-1 bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-3 py-2.5 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500 resize-none max-h-28" onkeydown="handleChatKey(event)"></textarea>
+            <button onclick="sendChatMessage()" id="btnSendChat" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 rounded-xl transition-all text-sm font-semibold flex items-center gap-1.5 shrink-0 disabled:opacity-50 disabled:cursor-not-allowed">发送<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg></button>
+          </div>
+          <div class="flex items-center gap-2 mt-1.5">
+            <span class="text-xs text-gray-500">快捷操作:</span>
+            <button onclick="quickSend('请帮我分析并拆解这个项目的任务需求')" class="text-xs text-primary-400 hover:text-primary-300 bg-primary-500/10 px-2 py-0.5 rounded-lg transition-colors">📋 拆解任务</button>
+            <button onclick="quickSend('请帮我制定项目开发计划')" class="text-xs text-primary-400 hover:text-primary-300 bg-primary-500/10 px-2 py-0.5 rounded-lg transition-colors">🗺 制定计划</button>
+            <button onclick="generateAndConfirm()" class="text-xs text-green-400 hover:text-green-300 bg-green-500/10 px-2 py-0.5 rounded-lg transition-colors">✅ 确认并生成任务图谱</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== JavaScript ==================== -->
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
-      requestAnimationFrame(() => document.body.classList.add('loaded'));
+  (() => {
+    'use strict';
+
+    var chatIsSending = false;
+    var chatProjectId = null;
+
+    // ==================== 初始化 ====================
+    function init() {
+      renderProjectList();
+      requestAnimationFrame(function(){ document.body.classList.add('loaded'); });
+    }
+
+    // ==================== 项目列表渲染 ====================
+    function renderProjectList() {
+      var projects = Utils.getAllProjects();
+      var listEl = document.getElementById('projectList');
+      var emptyEl = document.getElementById('emptyState');
+
+      if (projects.length === 0) {
+        listEl.innerHTML = '';
+        emptyEl.classList.remove('hidden');
+        return;
+      }
+
+      emptyEl.classList.add('hidden');
+      var html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">';
+
+      projects.forEach(function(project) {
+        var tasks = project.tasks || [];
+        var completed = tasks.filter(function(t){ return t.status === 'completed'; }).length;
+        var total = tasks.length;
+        var pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+        var time = Utils.relativeTime(project.createdAt);
+        var desc = Utils.truncate(project.description || '暂无描述', 60);
+
+        html += '<div class="bg-dark-200 border border-gray-700 rounded-2xl p-5 hover:border-primary-500/50 transition-all group">';
+        html += '<div class="flex items-start justify-between mb-3">';
+        html += '<div class="flex items-center gap-2"><span class="text-xl">📂</span><h3 class="font-bold text-white text-sm">' + escapeHtml(project.name) + '</h3></div>';
+        html += '<button onclick="deleteProject(\'' + project.id + '\')" class="p-1 rounded hover:bg-gray-700 text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100" title="删除项目"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>';
+        html += '</div>';
+        html += '<p class="text-xs text-gray-400 leading-relaxed mb-4">' + escapeHtml(desc) + '</p>';
+
+        if (total > 0) {
+          html += '<div class="mb-3">';
+          html += '<div class="flex items-center justify-between text-xs mb-1"><span class="text-gray-500">任务进度</span><span class="text-gray-400">' + completed + '/' + total + ' · ' + pct + '%</span></div>';
+          html += '<div class="w-full bg-gray-700 rounded-full h-1.5 overflow-hidden"><div class="bg-green-500 h-full rounded-full transition-all duration-500" style="width:' + pct + '%"></div></div>';
+          html += '</div>';
+        } else {
+          html += '<div class="mb-3"><span class="text-xs text-gray-500 italic">暂无任务，使用 AI 讨论生成</span></div>';
+        }
+
+        html += '<div class="flex items-center justify-between mt-auto pt-2 border-t border-gray-700/50">';
+        html += '<span class="text-xs text-gray-600">' + time + '</span>';
+        html += '<div class="flex items-center gap-1.5">';
+        html += '<button onclick="openChatForProject(\'' + project.id + '\')" class="text-xs text-gray-400 hover:text-primary-300 bg-gray-700/50 hover:bg-gray-700 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1"><span>💬</span>AI 讨论</button>';
+        html += '<button onclick="openGraph(\'' + project.id + '\')" class="text-xs text-white bg-primary-600 hover:bg-primary-700 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 font-semibold"><span>🗺️</span>图谱</button>';
+        html += '</div></div>';
+        html += '</div>';
+      });
+
+      html += '</div>';
+      listEl.innerHTML = html;
+    }
+
+    function escapeHtml(str) {
+      var div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ==================== 项目删除 ====================
+    window.deleteProject = function(id) {
+      if (!confirm('确定删除此项目？删除后不可恢复。')) return;
+      Utils.deleteProjectById(id);
+      renderProjectList();
+      Utils.showToast('项目已删除', 'success');
+    };
+
+    window.openGraph = function(id) {
+      Utils.setCurrentProjectId(id);
+      window.location.href = 'task-graph.html?project=' + id;
+    };
+
+    // ==================== 项目创建 Modal ====================
+    window.openProjectModal = function() {
+      document.getElementById('projectModal').classList.add('active');
+      document.getElementById('createFormSection').classList.remove('hidden');
+      document.getElementById('createResultSection').classList.add('hidden');
+    };
+
+    window.closeProjectModal = function() {
+      document.getElementById('projectModal').classList.remove('active');
+    };
+
+    window.closeProjectModalAndChat = function() {
+      var projects = Utils.getAllProjects();
+      var latestProject = projects[projects.length - 1];
+      closeProjectModal();
+      if (latestProject) {
+        setTimeout(function(){ openChatForProject(latestProject.id); }, 300);
+      }
+    };
+
+    window.selectDirectory = function() {
+      var paths = ['/home/user/projects/','/Users/developer/workspace/','/workspace/apps/'];
+      document.getElementById('projectPath').value = paths[Math.floor(Math.random() * paths.length)];
+      Utils.showToast('已选择目录（演示模式）', 'info');
+    };
+
+    window.createProject = async function() {
+      var name = document.getElementById('projectName').value.trim();
+      var desc = document.getElementById('projectDesc').value.trim();
+      var path = document.getElementById('projectPath').value.trim() || '~/projects/';
+      if (!name) { Utils.showToast('请输入项目名称','error'); document.getElementById('projectName').focus(); return; }
+      if (!desc) { Utils.showToast('请输入项目描述','error'); document.getElementById('projectDesc').focus(); return; }
+      if (!/^[a-zA-Z0-9_-]+$/.test(name)) { Utils.showToast('项目名称仅支持字母、数字、连字符和下划线','error'); return; }
+
+      var btn = document.getElementById('btnCreate');
+      btn.disabled = true;
+      btn.textContent = 'AI 正在生成 README...';
+      try {
+        await Utils.sleep(600); Utils.showToast('创建项目目录结构...', 'info');
+        await Utils.sleep(400); Utils.showToast('初始化 Git 仓库...', 'info');
+        await Utils.sleep(300);
+        var readme = await MockAI.generateREADME(name, desc);
+        var project = {
+          id: Utils.generateId('proj'),
+          name: name,
+          description: desc,
+          path: path + '/' + name,
+          readme: readme,
+          tasks: [],
+          createdAt: new Date().toISOString(),
+        };
+        Utils.saveProject(project);
+        showProjectResult(project);
+        renderProjectList();
+        Utils.showToast('项目创建成功！README 已生成', 'success');
+      } catch(err) {
+        Utils.showToast('创建失败，请重试','error');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '创建项目并生成 README';
+      }
+    };
+
+    var lastCreatedReadme = '';
+    function showProjectResult(project) {
+      lastCreatedReadme = project.readme;
+      document.getElementById('createFormSection').classList.add('hidden');
+      document.getElementById('createResultSection').classList.remove('hidden');
+      document.getElementById('readmePreview').innerHTML = Utils.markdownToHtml(project.readme);
+    }
+
+    window.copyReadme = async function() {
+      if (lastCreatedReadme) await Utils.copyToClipboard(lastCreatedReadme);
+    };
+
+    window.resetProjectForm = function() {
+      document.getElementById('projectName').value = '';
+      document.getElementById('projectDesc').value = '';
+      document.getElementById('projectPath').value = '';
+      document.getElementById('createFormSection').classList.remove('hidden');
+      document.getElementById('createResultSection').classList.add('hidden');
+    };
+
+    // ==================== AI 讨论 Modal ====================
+    window.openChatForProject = function(projectId) {
+      chatProjectId = projectId;
+      var project = Utils.getProjectById(projectId);
+      if (!project) { Utils.showToast('项目不存在','error'); return; }
+
+      document.getElementById('chatModal').classList.add('active');
+      document.getElementById('chatProjectLabel').textContent = project.name;
+
+      if (project.tasks && project.tasks.length > 0) {
+        document.getElementById('bottomChatActions').classList.remove('hidden');
+        document.getElementById('taskCountLabel').textContent = project.tasks.length + ' 个任务';
+      } else {
+        document.getElementById('bottomChatActions').classList.add('hidden');
+      }
+
+      var chatMessages = document.getElementById('chatMessages');
+      if (chatMessages.children.length === 0) {
+        addAIMessage('你好！我是 AICodeAgent 的任务助手 🤖\n\n当前讨论项目：**' + project.name + '**\n\n我会帮助你梳理项目需求、拆解任务步骤，并生成可视化的任务图谱。\n\n你可以自由输入需求描述，或者使用下方的快捷按钮来开始讨论。');
+      }
+    };
+
+    window.closeChatModal = function() {
+      document.getElementById('chatModal').classList.remove('active');
+      document.getElementById('chatMessages').innerHTML = '';
+      chatProjectId = null;
+      renderProjectList();
+    };
+
+    function addChatUserMessage(text) {
+      var div = document.createElement('div');
+      div.className = 'self-end max-w-[80%] bg-primary-600 text-white px-4 py-3 rounded-2xl rounded-br-sm text-sm leading-relaxed';
+      div.style.animation = 'toastIn 0.3s ease both';
+      div.textContent = text;
+      document.getElementById('chatMessages').appendChild(div);
+      scrollChatToBottom();
+    }
+
+    function addAIMessage(text) {
+      var wrapper = document.createElement('div');
+      wrapper.className = 'self-start max-w-[85%] flex items-start gap-3';
+      wrapper.style.animation = 'toastIn 0.3s ease both';
+      var avatar = document.createElement('div');
+      avatar.className = 'w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center text-sm shrink-0';
+      avatar.textContent = '🤖';
+      var bubble = document.createElement('div');
+      bubble.className = 'bg-dark-100 border border-gray-700 text-gray-200 px-4 py-3 rounded-2xl rounded-bl-sm text-sm leading-relaxed msg-content';
+      bubble.innerHTML = Utils.markdownToHtml(text);
+      wrapper.appendChild(avatar);
+      wrapper.appendChild(bubble);
+      document.getElementById('chatMessages').appendChild(wrapper);
+      scrollChatToBottom();
+    }
+
+    function showTypingIndicator() {
+      var div = document.createElement('div');
+      div.id = 'typingIndicator';
+      div.className = 'self-start flex items-center gap-1.5 px-4 py-3 bg-dark-100 border border-gray-700 rounded-2xl rounded-bl-sm';
+      div.innerHTML = '<div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>';
+      document.getElementById('chatMessages').appendChild(div);
+      scrollChatToBottom();
+    }
+
+    function hideTypingIndicator() {
+      var el = document.getElementById('typingIndicator');
+      if (el) el.remove();
+    }
+
+    function scrollChatToBottom() {
+      var el = document.getElementById('chatMessages');
+      el.scrollTop = el.scrollHeight;
+    }
+
+    window.sendChatMessage = async function() {
+      var input = document.getElementById('chatInput');
+      var text = input.value.trim();
+      if (!text || chatIsSending) return;
+      chatIsSending = true;
+      document.getElementById('btnSendChat').disabled = true;
+      input.value = '';
+      input.style.height = 'auto';
+      addChatUserMessage(text);
+      showTypingIndicator();
+      try {
+        var response = await MockAI.simulateAIResponse(text);
+        hideTypingIndicator();
+        addAIMessage(response);
+      } catch(err) {
+        hideTypingIndicator();
+        addAIMessage('抱歉，处理时出现了错误，请重试。');
+      }
+      chatIsSending = false;
+      document.getElementById('btnSendChat').disabled = false;
+    };
+
+    window.quickSend = function(text) {
+      document.getElementById('chatInput').value = text;
+      sendChatMessage();
+    };
+
+    window.handleChatKey = function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+      var input = document.getElementById('chatInput');
+      setTimeout(function(){ input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 112) + 'px'; }, 0);
+    };
+
+    window.generateAndConfirm = async function() {
+      if (chatIsSending || !chatProjectId) return;
+      var project = Utils.getProjectById(chatProjectId);
+      if (!project) return;
+
+      chatIsSending = true;
+      document.getElementById('btnSendChat').disabled = true;
+      addChatUserMessage('请确认当前讨论的任务，并生成任务图谱。');
+      showTypingIndicator();
+      try {
+        var desc = project.name + ' - ' + project.description;
+        var plan = await MockAI.generateTaskPlan(desc);
+        hideTypingIndicator();
+        addAIMessage(plan.summary + '\n\n已生成 **' + plan.tasks.length + ' 个任务步骤**，依赖关系已自动建立。\n\n点击下方「查看任务图谱」或关闭弹窗后从项目卡片进入图谱。');
+
+        var tasksWithPos = plan.tasks.map(function(t, i) {
+          return Object.assign({}, t, { x:100 + (i % 3) * 260, y:60 + Math.floor(i / 3) * 180 });
+        });
+        if (tasksWithPos.length > 0) tasksWithPos[0].status = 'completed';
+        if (tasksWithPos.length > 1) tasksWithPos[1].status = 'completed';
+        if (tasksWithPos.length > 2) tasksWithPos[2].status = 'in-progress';
+        if (tasksWithPos.length > 3) tasksWithPos[3].status = 'in-progress';
+
+        project.tasks = tasksWithPos;
+        Utils.saveProject(project);
+
+        document.getElementById('bottomChatActions').classList.remove('hidden');
+        document.getElementById('taskCountLabel').textContent = tasksWithPos.length + ' 个任务';
+        Utils.showToast('任务计划已生成并保存', 'success');
+      } catch(err) {
+        hideTypingIndicator();
+        addAIMessage('生成任务计划时出错，请重试。');
+      }
+      chatIsSending = false;
+      document.getElementById('btnSendChat').disabled = false;
+    };
+
+    // ==================== ESC 关闭弹窗 ====================
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        if (document.getElementById('projectModal').classList.contains('active')) { closeProjectModal(); return; }
+        if (document.getElementById('chatModal').classList.contains('active')) { closeChatModal(); return; }
+      }
     });
+
+    document.addEventListener('DOMContentLoaded', init);
+  })();
   </script>
 </body>
 </html>

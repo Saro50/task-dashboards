@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary-50: #ede9fe;
+  --color-primary-100: #ddd6fe;
+  --color-primary-200: #c4b5fd;
+  --color-primary-300: #a29bfe;
+  --color-primary-400: #8b7efa;
+  --color-primary-500: #6c5ce7;
+  --color-primary-600: #5a4bd1;
+  --color-primary-700: #4a3cb8;
+  --color-primary-800: #3d319a;
+  --color-primary-900: #332a7e;
+
+  --color-dark-50: #32324f;
+  --color-dark-100: #2a2a45;
+  --color-dark-200: #22223a;
+  --color-dark-300: #1a1a2e;
+  --color-dark-400: #151525;
+  --color-dark-500: #0f0f1a;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3a56;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #6c6c84;
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
