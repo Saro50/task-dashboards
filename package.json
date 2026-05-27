@@ -11,6 +11,7 @@
     "build:web": "pnpm --filter @task-dashboards/web build",
     "prisma:migrate": "pnpm --filter @task-dashboards/server prisma:migrate",
     "prisma:generate": "pnpm --filter @task-dashboards/server prisma:generate",
-    "prisma:studio": "pnpm --filter @task-dashboards/server prisma:studio"
+    "prisma:studio": "pnpm --filter @task-dashboards/server prisma:studio",
+    "test": "pnpm --filter @task-dashboards/server test && pnpm --filter @task-dashboards/web test"
   }
 }

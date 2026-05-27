@@ -15,6 +15,12 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export interface DirCheckResult {
+  exists: boolean;
+  isGitRepo: boolean;
+  absolutePath: string;
+}
+
 export const projectApi = {
   list(): Promise<Project[]> {
     return request<Project[]>(BASE);
@@ -33,5 +39,14 @@ export const projectApi = {
   },
   updateStatus(id: string, status: ProjectStatus): Promise<Project> {
     return request<Project>(`${BASE}/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+  },
+  checkDirectory(dirPath: string): Promise<DirCheckResult> {
+    return request<DirCheckResult>(`${BASE}/check-directory`, { method: 'POST', body: JSON.stringify({ path: dirPath }) });
+  },
+  ensureDirectory(dirPath: string): Promise<DirCheckResult> {
+    return request<DirCheckResult>(`${BASE}/ensure-directory`, { method: 'POST', body: JSON.stringify({ path: dirPath }) });
+  },
+  healthCheck(id: string): Promise<Project> {
+    return request<Project>(`${BASE}/${id}/health-check`, { method: 'POST' });
   },
 };

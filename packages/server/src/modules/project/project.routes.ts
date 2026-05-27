@@ -10,4 +10,8 @@ router.put('/:id', ProjectController.update);
 router.del('/:id', ProjectController.remove);
 router.patch('/:id/status', ProjectController.updateStatus);
 
+router.post('/check-directory', ProjectController.checkDirectory);
+router.post('/ensure-directory', ProjectController.ensureDirectory);
+router.post('/:id/health-check', ProjectController.healthCheck);
+
 export default router;

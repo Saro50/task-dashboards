@@ -1,5 +1,6 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import type { Project } from '@/types/project';
+import { projectApi, type DirCheckResult } from '@/api/project';
 
 interface Props {
   open: boolean;
@@ -14,6 +15,9 @@ export default function ProjectModal({ open, project, onClose, onSubmit }: Props
   const [path, setPath] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [dirInfo, setDirInfo] = useState<DirCheckResult | null>(null);
+  const [checkingDir, setCheckingDir] = useState(false);
+  const checkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isEdit = !!project;
 
@@ -30,10 +34,41 @@ export default function ProjectModal({ open, project, onClose, onSubmit }: Props
       }
       setError('');
       setSubmitting(false);
+      setDirInfo(null);
     }
   }, [open, project]);
 
+  useEffect(() => {
+    return () => {
+      if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+    };
+  }, []);
+
   if (!open) return null;
+
+  const checkDirectory = (dirPath: string) => {
+    if (checkTimerRef.current) clearTimeout(checkTimerRef.current);
+    if (!dirPath.trim()) {
+      setDirInfo(null);
+      return;
+    }
+    checkTimerRef.current = setTimeout(async () => {
+      setCheckingDir(true);
+      try {
+        const result = await projectApi.checkDirectory(dirPath.trim());
+        setDirInfo(result);
+      } catch {
+        setDirInfo(null);
+      } finally {
+        setCheckingDir(false);
+      }
+    }, 500);
+  };
+
+  const handlePathChange = (value: string) => {
+    setPath(value);
+    checkDirectory(value);
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -45,9 +80,16 @@ export default function ProjectModal({ open, project, onClose, onSubmit }: Props
       setError('项目名称仅支持字母、数字、连字符和下划线');
       return;
     }
+    if (path.trim() && dirInfo && !dirInfo.exists) {
+      setError('目录不存在，请确认路径');
+      return;
+    }
     setError('');
     setSubmitting(true);
     try {
+      if (path.trim() && dirInfo && dirInfo.exists && !dirInfo.isGitRepo) {
+        await projectApi.ensureDirectory(path.trim());
+      }
       await onSubmit({ name: name.trim(), description: description.trim(), path: path.trim() });
     } catch (err: any) {
       setError(err.message || '操作失败');
@@ -103,7 +145,7 @@ export default function ProjectModal({ open, project, onClose, onSubmit }: Props
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={4}
+              rows={3}
               placeholder="简要描述项目的用途、核心功能和目标..."
               className="w-full bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500 resize-none"
               disabled={submitting}
@@ -117,11 +159,49 @@ export default function ProjectModal({ open, project, onClose, onSubmit }: Props
             <input
               type="text"
               value={path}
-              onChange={(e) => setPath(e.target.value)}
-              placeholder="/home/user/projects/"
+              onChange={(e) => handlePathChange(e.target.value)}
+              placeholder="例如: ~/projects/my-app"
               className="w-full bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500"
               disabled={submitting}
             />
+            <p className="text-xs text-gray-500 mt-1.5">服务器本地路径，输入后自动检查目录状态</p>
+
+            {checkingDir && (
+              <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-1">
+                <span className="inline-block w-3 h-3 border-2 border-gray-600 border-t-primary-500 rounded-full animate-spin" />
+                检查目录...
+              </p>
+            )}
+
+            {dirInfo && !checkingDir && (
+              <div className={`mt-2 rounded-lg px-3 py-2 text-xs flex items-center gap-2 ${
+                dirInfo.exists
+                  ? dirInfo.isGitRepo
+                    ? 'bg-green-900/20 border border-green-700/40'
+                    : 'bg-yellow-900/20 border border-yellow-700/40'
+                  : 'bg-red-900/20 border border-red-700/40'
+              }`}>
+                {dirInfo.exists ? (
+                  dirInfo.isGitRepo ? (
+                    <>
+                      <span className="text-green-400">✓</span>
+                      <span className="text-green-300">目录已存在，Git 已初始化</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-yellow-400">⚠</span>
+                      <span className="text-yellow-300">目录已存在，创建项目后将自动初始化 Git</span>
+                    </>
+                  )
+                ) : (
+                  <>
+                    <span className="text-red-400">✗</span>
+                    <span className="text-red-300">目录不存在，请确认路径</span>
+                  </>
+                )}
+              </div>
+            )}
+
           </div>
 
           <div className="flex gap-3 pt-2">

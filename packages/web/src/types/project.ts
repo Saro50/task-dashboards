@@ -1,4 +1,4 @@
-export type ProjectStatus = 'ACTIVE' | 'ARCHIVED';
+export type ProjectStatus = 'ACTIVE' | 'ARCHIVED' | 'ERROR';
 
 export interface Project {
   id: string;

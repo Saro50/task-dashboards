@@ -41,9 +41,22 @@ function AppContent() {
       const statusLabels: Record<ProjectStatus, string> = {
         ACTIVE: '活跃',
         ARCHIVED: '已归档',
+        ERROR: '异常',
       };
       showToast(`项目状态已更新为「${statusLabels[status]}」`, 'success');
       refetch();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  }, [showToast, refetch]);
+
+  const handleCardClick = useCallback(async (project: Project) => {
+    try {
+      const updated = await projectApi.healthCheck(project.id);
+      if (updated.status === 'ERROR') {
+        showToast('项目目录不存在，已标记为异常', 'error');
+        refetch();
+      }
     } catch (err: any) {
       showToast(err.message, 'error');
     }
@@ -95,6 +108,7 @@ function AppContent() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onStatusChange={handleStatusChange}
+          onCardClick={handleCardClick}
         />
       </main>
 

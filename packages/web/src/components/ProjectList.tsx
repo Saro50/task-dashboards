@@ -9,9 +9,10 @@ interface Props {
   onEdit: (project: Project) => void;
   onDelete: (id: string) => void;
   onStatusChange: (id: string, status: ProjectStatus) => void;
+  onCardClick: (project: Project) => void;
 }
 
-export default function ProjectList({ projects, loading, error, onCreate, onEdit, onDelete, onStatusChange }: Props) {
+export default function ProjectList({ projects, loading, error, onCreate, onEdit, onDelete, onStatusChange, onCardClick }: Props) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -64,6 +65,7 @@ export default function ProjectList({ projects, loading, error, onCreate, onEdit
           onEdit={onEdit}
           onDelete={onDelete}
           onStatusChange={onStatusChange}
+          onClick={onCardClick}
         />
       ))}
     </div>
