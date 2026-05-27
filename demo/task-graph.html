@@ -28,6 +28,14 @@
   <script src="js/utils.js"></script>
   <script src="js/mock-ai.js"></script>
   <style>
+    body { opacity: 0; transition: opacity 0.4s ease; }
+    body.loaded { opacity: 1; }
+    .toast-container { position: fixed; top: 24px; right: 24px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }
+    .toast { display: flex; align-items: center; gap: 8px; padding: 12px 20px; background: #1a1a2e; border: 1px solid #2e2e48; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,.4); font-size: 14px; animation: toastIn 0.25s ease both; min-width: 280px; color: #e8e8f0; }
+    .toast--success { border-left: 3px solid #00cec9; }
+    .toast--error { border-left: 3px solid #ff7675; }
+    .toast--info { border-left: 3px solid #74b9ff; }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
     .node-group { cursor: grab; }
     .node-group.dragging { cursor: grabbing; }
     .node-group:hover .node-rect { filter: brightness(1.2); }
@@ -40,7 +48,7 @@
 <body class="bg-dark-500 text-gray-100 font-sans h-screen flex flex-col overflow-hidden select-none">
 
   <!-- ==================== 顶部导航栏 ==================== -->
-  <nav class="bg-gray-800/90 backdrop-blur-md sticky top-0 z-50 h-14 flex items-center px-5 border-b border-gray-700 shrink-0">
+  <nav class="bg-gray-800/90 backdrop-blur-md sticky top-0 z-50 h-14 flex items-center px-4 sm:px-5 border-b border-gray-700 shrink-0">
     <a href="index.html" class="flex items-center gap-2 text-gray-300 hover:text-white transition-colors text-sm">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
       返回首页
@@ -49,7 +57,18 @@
     <div class="flex items-center gap-2">
       <span class="text-lg">🗺️</span>
       <span class="font-bold text-white">任务图谱呈现</span>
-      <span class="text-xs bg-primary-500/20 text-primary-300 px-2 py-0.5 rounded-full ml-2">原型演示</span>
+      <span class="text-xs bg-primary-500/20 text-primary-300 px-2 py-0.5 rounded-full ml-1">Step 3/3</span>
+    </div>
+    <!-- Step indicators -->
+    <div class="ml-auto hidden sm:flex items-center gap-2 text-xs">
+      <span class="flex items-center gap-1 text-green-400 font-semibold">
+        <span class="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px] font-bold">✓</span>项目创建</span>
+      <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <span class="flex items-center gap-1 text-green-400 font-semibold">
+        <span class="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px] font-bold">✓</span>AI 讨论</span>
+      <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <span class="flex items-center gap-1 text-primary-300 font-semibold">
+        <span class="w-5 h-5 rounded-full bg-primary-600 text-white flex items-center justify-center text-[10px] font-bold">3</span>任务图谱</span>
     </div>
     <div class="ml-auto flex items-center gap-3">
       <button id="btnFitView" title="适应画布" class="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
@@ -242,12 +261,20 @@
 
     // ==================== 初始化 ====================
     function init() {
-      tasks = JSON.parse(JSON.stringify(defaultTasks));
+      // Load from localStorage or use defaults
+      const savedTasks = Utils.storageGet('demo_tasks');
+      if (savedTasks && savedTasks.length > 0) {
+        tasks = JSON.parse(JSON.stringify(savedTasks));
+      } else {
+        tasks = JSON.parse(JSON.stringify(defaultTasks));
+      }
       initViewBox();
       render();
       bindEvents();
       updateStatusCounts();
       setTimeout(() => { if (canvasHint) canvasHint.style.opacity = '0'; }, 5000);
+      // Page load animation
+      requestAnimationFrame(() => document.body.classList.add('loaded'));
     }
 
     function initViewBox() {

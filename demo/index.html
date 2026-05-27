@@ -4,404 +4,123 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AICodeAgent 任务分期看板</title>
-  <link rel="stylesheet" href="css/common.css">
-  <style>
-    /* ========== 首页专属样式 ========== */
-
-    .hero {
-      text-align: center;
-      padding: var(--spacing-2xl) 0 var(--spacing-xl);
-    }
-
-    .hero__logo {
-      width: 80px;
-      height: 80px;
-      margin: 0 auto var(--spacing-lg);
-      background: linear-gradient(135deg, var(--color-primary), var(--color-primary-light));
-      border-radius: 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 40px;
-      box-shadow: var(--shadow-glow);
-      animation: fadeInUp 0.6s ease both;
-    }
-
-    .hero__title {
-      font-size: var(--text-4xl);
-      font-weight: 800;
-      margin-bottom: var(--spacing-md);
-      background: linear-gradient(135deg, var(--text-primary), var(--color-primary-light));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      animation: fadeInUp 0.6s ease 0.1s both;
-    }
-
-    .hero__subtitle {
-      font-size: var(--text-lg);
-      color: var(--text-secondary);
-      max-width: 600px;
-      margin: 0 auto;
-      line-height: 1.8;
-      animation: fadeInUp 0.6s ease 0.2s both;
-    }
-
-    .hero__tags {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: var(--spacing-sm);
-      margin-top: var(--spacing-lg);
-      animation: fadeInUp 0.6s ease 0.3s both;
-    }
-
-    /* 模块卡片区域 */
-    .modules-section {
-      padding: var(--spacing-lg) 0;
-    }
-
-    .modules-section__title {
-      font-size: var(--text-xl);
-      font-weight: 700;
-      margin-bottom: var(--spacing-lg);
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-    }
-
-    .modules-section__title::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: linear-gradient(90deg, var(--border-color), transparent);
-    }
-
-    .module-card {
-      position: relative;
-      overflow: hidden;
-    }
-
-    .module-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 3px;
-      background: linear-gradient(90deg, var(--color-primary), var(--color-primary-light));
-      opacity: 0;
-      transition: opacity var(--transition-normal);
-    }
-
-    .module-card:hover::before {
-      opacity: 1;
-    }
-
-    .module-card__number {
-      position: absolute;
-      top: var(--spacing-lg);
-      right: var(--spacing-lg);
-      font-size: var(--text-4xl);
-      font-weight: 800;
-      color: var(--bg-hover);
-      line-height: 1;
-      transition: color var(--transition-normal);
-    }
-
-    .module-card:hover .module-card__number {
-      color: var(--border-light);
-    }
-
-    .module-card__icon {
-      width: 56px;
-      height: 56px;
-      font-size: 28px;
-      margin-bottom: var(--spacing-md);
-    }
-
-    .module-card__title {
-      font-size: var(--text-xl);
-      font-weight: 700;
-      margin-bottom: var(--spacing-sm);
-      display: flex;
-      align-items: center;
-      gap: var(--spacing-sm);
-    }
-
-    .module-card__desc {
-      font-size: var(--text-sm);
-      color: var(--text-secondary);
-      line-height: 1.8;
-      margin-bottom: var(--spacing-lg);
-    }
-
-    .module-card__features {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--spacing-sm);
-      margin-bottom: var(--spacing-lg);
-    }
-
-    .module-card__feature {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: var(--text-xs);
-      color: var(--text-muted);
-      padding: 4px 10px;
-      background: var(--bg-elevated);
-      border-radius: var(--radius-full);
-    }
-
-    .module-card__link {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--spacing-xs);
-      font-size: var(--text-sm);
-      font-weight: 600;
-      color: var(--color-primary-light);
-      transition: all var(--transition-fast);
-    }
-
-    .module-card__link:hover {
-      color: var(--color-primary);
-      gap: var(--spacing-sm);
-    }
-
-    .module-card__link::after {
-      content: '→';
-      transition: transform var(--transition-fast);
-    }
-
-    .module-card:hover .module-card__link::after {
-      transform: translateX(4px);
-    }
-
-    /* 页脚 */
-    .app-footer {
-      text-align: center;
-      padding: var(--spacing-xl) 0;
-      border-top: 1px solid var(--border-color);
-      margin-top: var(--spacing-2xl);
-    }
-
-    .app-footer__text {
-      font-size: var(--text-xs);
-      color: var(--text-muted);
-    }
-
-    /* 背景装饰 */
-    .bg-decoration {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: -1;
-      overflow: hidden;
-    }
-
-    .bg-decoration__orb {
-      position: absolute;
-      border-radius: 50%;
-      filter: blur(100px);
-      opacity: 0.08;
-    }
-
-    .bg-decoration__orb--1 {
-      width: 600px;
-      height: 600px;
-      background: var(--color-primary);
-      top: -200px;
-      right: -200px;
-      animation: orbFloat 20s ease-in-out infinite;
-    }
-
-    .bg-decoration__orb--2 {
-      width: 400px;
-      height: 400px;
-      background: var(--color-info);
-      bottom: -100px;
-      left: -100px;
-      animation: orbFloat 15s ease-in-out infinite reverse;
-    }
-
-    .bg-decoration__orb--3 {
-      width: 300px;
-      height: 300px;
-      background: var(--color-success);
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      animation: orbFloat 18s ease-in-out infinite 5s;
-    }
-
-    @keyframes orbFloat {
-      0%, 100% { transform: translate(0, 0); }
-      33% { transform: translate(30px, -30px); }
-      66% { transform: translate(-20px, 20px); }
-    }
-  </style>
-</head>
-<body>
-  <!-- 背景装饰 -->
-  <div class="bg-decoration">
-    <div class="bg-decoration__orb bg-decoration__orb--1"></div>
-    <div class="bg-decoration__orb bg-decoration__orb--2"></div>
-    <div class="bg-decoration__orb bg-decoration__orb--3"></div>
-  </div>
-
-  <div class="app-container">
-    <!-- 顶部导航 -->
-    <header class="app-header">
-      <div class="app-header__logo">
-        <span class="app-header__logo-icon">🤖</span>
-        <span>AICodeAgent</span>
-      </div>
-      <nav class="app-header__nav">
-        <a href="index.html" class="active">首页</a>
-        <a href="#" onclick="Utils.showToast('页面开发中，敬请期待', 'info'); return false;">文档</a>
-        <a href="#" onclick="Utils.showToast('项目开源仓库即将上线', 'info'); return false;">GitHub</a>
-      </nav>
-    </header>
-
-    <main class="app-main">
-      <!-- Hero 区域 -->
-      <section class="hero">
-        <div class="hero__logo">🤖</div>
-        <h1 class="hero__title">AICodeAgent 任务分期看板</h1>
-        <p class="hero__subtitle">
-          基于 AI 的智能任务管理工具，帮助开发者梳理、拆分并并行执行开发任务。
-          通过 Worktree 隔离工作区，自动化完成提交合并流程。
-        </p>
-        <div class="hero__tags">
-          <span class="badge badge--primary">AI 驱动</span>
-          <span class="badge badge--success">Git Worktree</span>
-          <span class="badge badge--info">任务图谱</span>
-          <span class="badge badge--warning">自动化流程</span>
-        </div>
-      </section>
-
-      <!-- 模块入口 -->
-      <section class="modules-section">
-        <h2 class="modules-section__title animate-fade-in-up stagger-1">功能模块</h2>
-
-        <div class="card-grid">
-          <!-- 模块 1：项目创建 -->
-          <div class="card card--interactive module-card animate-fade-in-up stagger-2"
-               onclick="window.location.href='project-create.html'">
-            <span class="module-card__number">01</span>
-            <div class="card__icon module-card__icon">🚀</div>
-            <h3 class="card__title module-card__title">项目创建</h3>
-            <p class="card__desc module-card__desc">
-              快速初始化项目并输出项目简介文件。指定目录、设置名称与描述，
-              自动初始化 Git 仓库，AI 扩写生成 README.md 文件。
-            </p>
-            <div class="module-card__features">
-              <span class="module-card__feature">📂 目录选择</span>
-              <span class="module-card__feature">📝 信息录入</span>
-              <span class="module-card__feature">🔧 Git 初始化</span>
-              <span class="module-card__feature">📄 README 生成</span>
-            </div>
-            <div class="card__footer">
-              <a href="project-create.html" class="module-card__link" onclick="event.stopPropagation();">
-                进入模块
-              </a>
-            </div>
-          </div>
-
-          <!-- 模块 2：AI讨论聊天窗 -->
-          <div class="card card--interactive module-card animate-fade-in-up stagger-3"
-               onclick="window.location.href='ai-chat.html'">
-            <span class="module-card__number">02</span>
-            <div class="card__icon module-card__icon">💬</div>
-            <h3 class="card__title module-card__title">AI 讨论聊天窗</h3>
-            <p class="card__desc module-card__desc">
-              与 AI 进行多轮对话讨论任务细节，支持内容选取与手动输入。
-              AI 自动总结任务主题，生成带依赖关系的任务实施步骤路线。
-            </p>
-            <div class="module-card__features">
-              <span class="module-card__feature">🤖 AI 对话</span>
-              <span class="module-card__feature">📋 内容选取</span>
-              <span class="module-card__feature">🎯 主题总结</span>
-              <span class="module-card__feature">🗺️ 步骤路线</span>
-            </div>
-            <div class="card__footer">
-              <a href="ai-chat.html" class="module-card__link" onclick="event.stopPropagation();">
-                进入模块
-              </a>
-            </div>
-          </div>
-
-          <!-- 模块 3：任务图谱呈现 -->
-          <div class="card card--interactive module-card animate-fade-in-up stagger-4"
-               onclick="window.location.href='task-graph.html'">
-            <span class="module-card__number">03</span>
-            <div class="card__icon module-card__icon">🗺️</div>
-            <h3 class="card__title module-card__title">任务图谱呈现</h3>
-            <p class="card__desc module-card__desc">
-              可视化展示任务步骤的实施路线图谱，支持人为编辑与调整。
-              实时追踪每个任务步骤的当前实施状态，掌控项目进度。
-            </p>
-            <div class="module-card__features">
-              <span class="module-card__feature">📊 图谱展示</span>
-              <span class="module-card__feature">✏️ 任务编辑</span>
-              <span class="module-card__feature">📍 状态追踪</span>
-              <span class="module-card__feature">🔗 依赖关系</span>
-            </div>
-            <div class="card__footer">
-              <a href="task-graph.html" class="module-card__link" onclick="event.stopPropagation();">
-                进入模块
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 工作流程说明 -->
-      <section class="modules-section mt-lg">
-        <h2 class="modules-section__title animate-fade-in-up stagger-3">工作流程</h2>
-        <div class="card animate-fade-in-up stagger-4">
-          <div class="flex flex-wrap gap-lg" style="justify-content: center;">
-            <div class="text-center" style="flex: 1; min-width: 160px;">
-              <div style="font-size: 32px; margin-bottom: 8px;">🚀</div>
-              <div style="font-weight: 600; font-size: var(--text-sm);">创建项目</div>
-              <div class="text-muted" style="font-size: var(--text-xs); margin-top: 4px;">初始化项目与仓库</div>
-            </div>
-            <div class="flex items-center hide-mobile" style="color: var(--text-muted);">→</div>
-            <div class="text-center" style="flex: 1; min-width: 160px;">
-              <div style="font-size: 32px; margin-bottom: 8px;">💬</div>
-              <div style="font-weight: 600; font-size: var(--text-sm);">AI 讨论</div>
-              <div class="text-muted" style="font-size: var(--text-xs); margin-top: 4px;">对话梳理任务需求</div>
-            </div>
-            <div class="flex items-center hide-mobile" style="color: var(--text-muted);">→</div>
-            <div class="text-center" style="flex: 1; min-width: 160px;">
-              <div style="font-size: 32px; margin-bottom: 8px;">🗺️</div>
-              <div style="font-weight: 600; font-size: var(--text-sm);">任务图谱</div>
-              <div class="text-muted" style="font-size: var(--text-xs); margin-top: 4px;">可视化拆解与编排</div>
-            </div>
-            <div class="flex items-center hide-mobile" style="color: var(--text-muted);">→</div>
-            <div class="text-center" style="flex: 1; min-width: 160px;">
-              <div style="font-size: 32px; margin-bottom: 8px;">⚡</div>
-              <div style="font-weight: 600; font-size: var(--text-sm);">自动执行</div>
-              <div class="text-muted" style="font-size: var(--text-xs); margin-top: 4px;">Worktree 隔离并行</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 页脚 -->
-      <footer class="app-footer">
-        <p class="app-footer__text">
-          AICodeAgent 任务分期看板 · 交互原型演示 · 纯前端静态页面 · 所有数据由 Mock 模拟
-        </p>
-      </footer>
-    </main>
-  </div>
-
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: {
+        primary: { 50:'#ede9fe',100:'#ddd6fe',200:'#c4b5fd',300:'#a29bfe',400:'#8b7efa',500:'#6c5ce7',600:'#5a4bd1',700:'#4a3cb8',800:'#3d319a',900:'#332a7e' },
+        dark: { 50:'#32324f',100:'#2a2a45',200:'#22223a',300:'#1a1a2e',400:'#151525',500:'#0f0f1a' },
+      }}}}
+  </script>
   <script src="js/utils.js"></script>
   <script src="js/mock-ai.js"></script>
+  <style>
+    body{opacity:0;transition:opacity .4s ease}body.loaded{opacity:1}
+    .toast-container{position:fixed;top:24px;right:24px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+    .toast{display:flex;align-items:center;gap:8px;padding:12px 20px;background:#1a1a2e;border:1px solid #2e2e48;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:14px;animation:toastIn .25s ease both;min-width:280px;color:#e8e8f0}
+    .toast--success{border-left:3px solid #00cec9}.toast--error{border-left:3px solid #ff7675}.toast--info{border-left:3px solid #74b9ff}
+    @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+  </style>
+</head>
+<body class="bg-dark-500 text-gray-100 font-sans min-h-screen">
+
+  <nav class="bg-gray-800/90 backdrop-blur-md sticky top-0 z-50 h-14 flex items-center px-4 sm:px-6 border-b border-gray-700">
+    <div class="flex items-center gap-2 text-lg font-bold text-white"><span class="text-2xl">🤖</span><span class="hidden sm:inline">AICodeAgent</span></div>
+    <div class="ml-auto flex items-center gap-4 text-sm">
+      <a href="index.html" class="text-primary-300 font-semibold">首页</a><span class="text-gray-600">|</span>
+      <a href="project-create.html" class="text-gray-400 hover:text-white transition-colors">项目创建</a>
+      <a href="ai-chat.html" class="text-gray-400 hover:text-white transition-colors">AI 讨论</a>
+      <a href="task-graph.html" class="text-gray-400 hover:text-white transition-colors">任务图谱</a>
+    </div>
+  </nav>
+
+  <main class="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
+
+    <section class="text-center mb-12">
+      <div class="w-20 h-20 mx-auto mb-5 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center text-4xl shadow-lg shadow-primary-500/20">🤖</div>
+      <h1 class="text-3xl sm:text-4xl font-extrabold mb-3 bg-gradient-to-r from-white to-primary-300 bg-clip-text text-transparent">AICodeAgent 任务分期看板</h1>
+      <p class="text-gray-400 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">基于 AI 的智能任务管理工具，帮助开发者梳理、拆分并并行执行开发任务。通过 Worktree 隔离工作区，自动化完成提交合并流程。</p>
+      <div class="flex flex-wrap justify-center gap-2 mt-5">
+        <span class="text-xs bg-primary-500/15 text-primary-300 px-3 py-1 rounded-full">AI 驱动</span>
+        <span class="text-xs bg-green-500/15 text-green-400 px-3 py-1 rounded-full">Git Worktree</span>
+        <span class="text-xs bg-blue-500/15 text-blue-400 px-3 py-1 rounded-full">任务图谱</span>
+        <span class="text-xs bg-yellow-500/15 text-yellow-400 px-3 py-1 rounded-full">自动化流程</span>
+      </div>
+    </section>
+
+    <section class="mb-10">
+      <h2 class="text-xl font-bold mb-5 flex items-center gap-2"><span class="text-primary-400">✨</span> 完整工作流<span class="flex-1 h-px bg-gradient-to-r from-gray-700 to-transparent"></span></h2>
+      <div class="bg-dark-200 border border-gray-700 rounded-2xl p-5 sm:p-8">
+        <div class="flex flex-col sm:flex-row items-center gap-4 sm:gap-0 justify-center">
+          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-primary-600/20 border-2 border-primary-500 flex items-center justify-center text-2xl mb-2">🚀</div><div class="text-sm font-semibold text-white">创建项目</div><div class="text-xs text-gray-500 mt-1">初始化项目与仓库</div></div>
+          <svg class="w-8 h-8 text-primary-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <div class="text-primary-500 text-xl sm:hidden">&#8595;</div>
+          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-primary-600/20 border-2 border-primary-500 flex items-center justify-center text-2xl mb-2">💬</div><div class="text-sm font-semibold text-white">AI 讨论</div><div class="text-xs text-gray-500 mt-1">对话梳理任务需求</div></div>
+          <svg class="w-8 h-8 text-primary-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <div class="text-primary-500 text-xl sm:hidden">&#8595;</div>
+          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-primary-600/20 border-2 border-primary-500 flex items-center justify-center text-2xl mb-2">🗺</div><div class="text-sm font-semibold text-white">任务图谱</div><div class="text-xs text-gray-500 mt-1">可视化拆解与编排</div></div>
+          <svg class="w-8 h-8 text-primary-500 shrink-0 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <div class="text-primary-500 text-xl sm:hidden">&#8595;</div>
+          <div class="flex flex-col items-center text-center flex-1 min-w-0"><div class="w-14 h-14 rounded-full bg-green-600/20 border-2 border-green-500 flex items-center justify-center text-2xl mb-2">⚡</div><div class="text-sm font-semibold text-white">自动执行</div><div class="text-xs text-gray-500 mt-1">Worktree 隔离并行</div></div>
+        </div>
+        <div class="text-center mt-8">
+          <a href="project-create.html" class="inline-flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-8 py-3 rounded-xl text-lg transition-all shadow-lg shadow-primary-500/20 hover:shadow-primary-500/30 font-semibold">🚀 开始完整演示<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg></a>
+          <p class="text-xs text-gray-500 mt-3">点击按钮开始体验完整的项目创建到任务图谱工作流</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-12">
+      <h2 class="text-xl font-bold mb-5 flex items-center gap-2"><span class="text-primary-400">📋</span> 功能模块<span class="flex-1 h-px bg-gradient-to-r from-gray-700 to-transparent"></span></h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <a href="project-create.html" class="group relative bg-dark-200 border border-gray-700 rounded-2xl p-6 hover:border-primary-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-primary-500/10 overflow-hidden">
+          <span class="absolute top-5 right-5 text-4xl font-extrabold text-gray-700/50 group-hover:text-gray-600/50 transition-colors">01</span>
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-2xl mb-4">🚀</div>
+          <h3 class="text-lg font-bold mb-2">项目创建</h3>
+          <p class="text-sm text-gray-400 leading-relaxed mb-4">快速初始化项目并输出项目简介文件。指定目录、设置名称与描述，AI 扩写生成 README.md。</p>
+          <div class="flex flex-wrap gap-1.5 mb-4">
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📂 目录选择</span>
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📝 信息录入</span>
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📄 README</span>
+          </div>
+          <div class="text-xs text-primary-300 font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">进入模块 <span class="group-hover:translate-x-1 transition-transform">&rarr;</span></div>
+        </a>
+        <a href="ai-chat.html" class="group relative bg-dark-200 border border-gray-700 rounded-2xl p-6 hover:border-primary-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-primary-500/10 overflow-hidden">
+          <span class="absolute top-5 right-5 text-4xl font-extrabold text-gray-700/50 group-hover:text-gray-600/50 transition-colors">02</span>
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-2xl mb-4">💬</div>
+          <h3 class="text-lg font-bold mb-2">AI 讨论聊天窗</h3>
+          <p class="text-sm text-gray-400 leading-relaxed mb-4">与 AI 多轮对话讨论任务细节，AI 自动总结任务主题并生成带依赖关系的步骤路线。</p>
+          <div class="flex flex-wrap gap-1.5 mb-4">
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">🤖 AI 对话</span>
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📋 内容选取</span>
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">🗺 步骤路线</span>
+          </div>
+          <div class="text-xs text-primary-300 font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">进入模块 <span class="group-hover:translate-x-1 transition-transform">&rarr;</span></div>
+        </a>
+        <a href="task-graph.html" class="group relative bg-dark-200 border border-gray-700 rounded-2xl p-6 hover:border-primary-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-primary-500/10 overflow-hidden">
+          <span class="absolute top-5 right-5 text-4xl font-extrabold text-gray-700/50 group-hover:text-gray-600/50 transition-colors">03</span>
+          <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-2xl mb-4">🗺</div>
+          <h3 class="text-lg font-bold mb-2">任务图谱呈现</h3>
+          <p class="text-sm text-gray-400 leading-relaxed mb-4">可视化展示任务步骤的实施路线图谱，支持人为编辑与调整，实时追踪任务状态。</p>
+          <div class="flex flex-wrap gap-1.5 mb-4">
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">📊 图谱展示</span>
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">✏️ 任务编辑</span>
+            <span class="text-xs bg-dark-50 text-gray-400 px-2 py-0.5 rounded-full">🔗 依赖关系</span>
+          </div>
+          <div class="text-xs text-primary-300 font-semibold flex items-center gap-1 group-hover:gap-2 transition-all">进入模块 <span class="group-hover:translate-x-1 transition-transform">&rarr;</span></div>
+        </a>
+      </div>
+    </section>
+
+    <footer class="text-center py-8 border-t border-gray-700/50">
+      <p class="text-xs text-gray-500">AICodeAgent 任务分期看板 &middot; 交互原型演示 &middot; 纯前端静态页面 &middot; 所有数据由 Mock 模拟</p>
+    </footer>
+  </main>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      requestAnimationFrame(() => document.body.classList.add('loaded'));
+    });
+  </script>
 </body>
 </html>

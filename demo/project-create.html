@@ -7,565 +7,196 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: {
-              DEFAULT: '#6c5ce7',
-              50: '#e8e5f8',
-              100: '#d1cbf2',
-              200: '#b3a9e5',
-              300: '#9587d8',
-              400: '#a29bfe',
-              500: '#7c6cf0',
-              600: '#6c5ce7',
-              700: '#5a4bd1',
-              800: '#4839bb',
-              900: '#3628a5',
-            },
-            surface: {
-              DEFAULT: '#1a1a2e',
-              50: '#32324f',
-              100: '#2a2a45',
-              200: '#22223a',
-              300: '#1a1a2e',
-              400: '#151525',
-              500: '#0f0f1a',
-            },
-            success: '#00cec9',
-            warning: '#fdcb6e',
-            danger: '#ff7675',
-            info: '#74b9ff',
-          },
-          fontFamily: {
-            sans: ['-apple-system', 'BlinkMacSystemFont', '"Segoe UI"', 'Roboto', '"Helvetica Neue"', 'Arial', '"Noto Sans SC"', 'sans-serif'],
-            mono: ['"JetBrains Mono"', '"Fira Code"', '"Cascadia Code"', '"SF Mono"', 'Consolas', 'monospace'],
-          },
-        },
-      },
-    }
+      theme: { extend: { colors: {
+        primary: { 50:'#ede9fe',100:'#ddd6fe',200:'#c4b5fd',300:'#a29bfe',400:'#8b7efa',500:'#6c5ce7',600:'#5a4bd1',700:'#4a3cb8',800:'#3d319a',900:'#332a7e' },
+        dark: { 50:'#32324f',100:'#2a2a45',200:'#22223a',300:'#1a1a2e',400:'#151525',500:'#0f0f1a' },
+      }}}}
   </script>
-  <style type="text/tailwindcss">
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #1a1a2e; }
-    ::-webkit-scrollbar-thumb { background: #3a3a56; border-radius: 9999px; }
-    ::-webkit-scrollbar-thumb:hover { background: #6c6c84; }
-    @keyframes blink-cursor {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0; }
-    }
-    .typewriter-cursor::after {
-      content: '\25AE';
-      color: #a29bfe;
-      animation: blink-cursor 0.8s step-end infinite;
-      margin-left: 1px;
-    }
-    .md-render h2 { font-size: 1.25rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #e8e8f0; }
-    .md-render h3 { font-size: 1.1rem; font-weight: 600; margin: 0.875rem 0 0.375rem; color: #e8e8f0; }
-    .md-render h4 { font-size: 1rem; font-weight: 600; margin: 0.75rem 0 0.25rem; color: #e8e8f0; }
-    .md-render p { margin: 0.375rem 0; color: #a0a0b8; line-height: 1.75; }
-    .md-render strong { color: #e8e8f0; font-weight: 600; }
-    .md-render em { font-style: italic; color: #a29bfe; }
-    .md-render code { background: #0f0f1a; padding: 2px 6px; border-radius: 4px; font-family: "JetBrains Mono", monospace; font-size: 0.8em; color: #a29bfe; }
-    .md-render pre { background: #0f0f1a; border: 1px solid #2e2e48; border-radius: 8px; padding: 12px 16px; margin: 0.5rem 0; overflow-x: auto; }
-    .md-render pre code { background: none; padding: 0; font-size: 0.8rem; color: #a0a0b8; white-space: pre-wrap; line-height: 1.7; }
-    .md-render ul { list-style: disc; padding-left: 1.25rem; margin: 0.375rem 0; }
-    .md-render ol { list-style: decimal; padding-left: 1.25rem; margin: 0.375rem 0; }
-    .md-render li { color: #a0a0b8; line-height: 1.75; margin: 0.125rem 0; }
-    .md-render blockquote { border-left: 3px solid #6c5ce7; padding-left: 12px; margin: 0.5rem 0; color: #a0a0b8; font-style: italic; }
-    .md-render hr { border: none; border-top: 1px solid #2e2e48; margin: 1rem 0; }
-    .md-render a { color: #a29bfe; text-decoration: underline; }
+  <script src="js/utils.js"></script>
+  <script src="js/mock-ai.js"></script>
+  <style>
+    body{opacity:0;transition:opacity .4s ease}body.loaded{opacity:1}
+    .toast-container{position:fixed;top:24px;right:24px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+    .toast{display:flex;align-items:center;gap:8px;padding:12px 20px;background:#1a1a2e;border:1px solid #2e2e48;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.4);font-size:14px;animation:toastIn .25s ease both;min-width:280px;color:#e8e8f0}
+    .toast--success{border-left:3px solid #00cec9}.toast--error{border-left:3px solid #ff7675}.toast--info{border-left:3px solid #74b9ff}
+    @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+    .md-content h3{font-size:1rem;font-weight:700;color:#e8e8f0;margin:12px 0 6px}
+    .md-content h4{font-size:.9rem;font-weight:600;color:#a0a0b8;margin:10px 0 4px}
+    .md-content p{margin:6px 0;line-height:1.7}
+    .md-content ul,.md-content ol{padding-left:20px;margin:6px 0}
+    .md-content li{margin:3px 0;line-height:1.6}
+    .md-content code{background:#22223a;padding:1px 6px;border-radius:4px;font-size:.85em}
+    .md-content strong{color:#a29bfe}
   </style>
 </head>
-<body class="bg-surface-500 text-gray-200 font-sans min-h-screen">
+<body class="bg-dark-500 text-gray-100 font-sans min-h-screen flex flex-col">
 
-  <!-- ==================== Top Navigation ==================== -->
-  <header class="bg-gray-800/90 backdrop-blur-md sticky top-0 z-50 border-b border-gray-700/50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <a href="index.html" class="flex items-center gap-2 text-gray-400 hover:text-white transition-colors duration-200 group" title="返回首页">
-          <svg class="w-5 h-5 group-hover:-translate-x-0.5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-          <span class="text-sm hidden sm:inline">返回</span>
+  <!-- Nav -->
+  <nav class="bg-gray-800/90 backdrop-blur-md sticky top-0 z-50 h-14 flex items-center px-4 sm:px-6 border-b border-gray-700 shrink-0">
+    <a href="index.html" class="flex items-center gap-2 text-gray-300 hover:text-white transition-colors text-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      返回首页
+    </a>
+    <div class="mx-4 h-5 w-px bg-gray-600"></div>
+    <div class="flex items-center gap-2">
+      <span class="text-lg">🚀</span>
+      <span class="font-bold text-white text-sm sm:text-base">项目创建</span>
+      <span class="text-xs bg-primary-500/20 text-primary-300 px-2 py-0.5 rounded-full ml-1">Step 1/3</span>
+    </div>
+    <div class="ml-auto hidden sm:flex items-center gap-2 text-xs">
+      <span class="flex items-center gap-1 text-primary-300 font-semibold">
+        <span class="w-5 h-5 rounded-full bg-primary-600 text-white flex items-center justify-center text-[10px] font-bold">1</span>项目创建</span>
+      <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <span class="flex items-center gap-1 text-gray-500">
+        <span class="w-5 h-5 rounded-full bg-gray-700 text-gray-500 flex items-center justify-center text-[10px] font-bold">2</span>AI 讨论</span>
+      <svg class="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+      <span class="flex items-center gap-1 text-gray-500">
+        <span class="w-5 h-5 rounded-full bg-gray-700 text-gray-500 flex items-center justify-center text-[10px] font-bold">3</span>任务图谱</span>
+    </div>
+  </nav>
+
+
+  <!-- Main content -->
+  <main class="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+    <div class="mb-8">
+      <h1 class="text-2xl sm:text-3xl font-extrabold mb-2 bg-gradient-to-r from-white to-primary-300 bg-clip-text text-transparent">创建新项目</h1>
+      <p class="text-gray-400 text-sm leading-relaxed">填写项目基本信息，AI 将自动生成项目 README 文件并初始化 Git 仓库。</p>
+    </div>
+
+    <div class="bg-dark-200 border border-gray-700 rounded-2xl p-5 sm:p-8 mb-6">
+      <div class="mb-5">
+        <label class="block text-sm font-semibold text-gray-300 mb-2">📂 项目名称 <span class="text-red-400">*</span></label>
+        <input id="projectName" type="text" placeholder="例如: my-awesome-app" class="w-full bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500">
+        <p class="text-xs text-gray-500 mt-1.5">用于目录名和仓库标识，仅支持字母、数字、连字符</p>
+      </div>
+      <div class="mb-5">
+        <label class="block text-sm font-semibold text-gray-300 mb-2">📝 项目描述 <span class="text-red-400">*</span></label>
+        <textarea id="projectDesc" rows="4" placeholder="简要描述项目的用途、核心功能和目标..." class="w-full bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500 resize-none"></textarea>
+        <p class="text-xs text-gray-500 mt-1.5">AI 将根据描述自动生成 README.md 文件内容</p>
+      </div>
+      <div class="mb-6">
+        <label class="block text-sm font-semibold text-gray-300 mb-2">📁 目标路径</label>
+        <div class="flex gap-3">
+          <input id="projectPath" type="text" placeholder="/home/user/projects/" class="flex-1 bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-4 py-3 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 transition-all placeholder-gray-500">
+          <button onclick="selectDirectory()" class="px-4 py-3 bg-gray-700 hover:bg-gray-600 text-gray-200 text-sm font-semibold rounded-xl transition-colors flex items-center gap-1.5 shrink-0">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+            浏览
+          </button>
+        </div>
+        <p class="text-xs text-gray-500 mt-1.5">留空则使用默认路径 ~/projects/（演示模式：此为模拟操作）</p>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button id="btnCreate" onclick="createProject()" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+          创建项目并生成 README
+        </button>
+        <button onclick="resetForm()" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold rounded-xl transition-colors text-sm">重置</button>
+      </div>
+    </div>
+
+
+    <!-- Result section (hidden by default) -->
+    <div id="resultSection" class="hidden">
+      <div class="bg-green-900/30 border border-green-700/50 rounded-2xl p-5 mb-5 flex items-start gap-3">
+        <span class="text-2xl shrink-0">✅</span>
+        <div>
+          <h3 class="font-bold text-green-300 mb-1">项目创建成功！</h3>
+          <p class="text-sm text-green-200/70">项目已初始化，README.md 已由 AI 自动生成。以下是生成的内容预览：</p>
+        </div>
+      </div>
+      <div class="bg-dark-200 border border-gray-700 rounded-2xl overflow-hidden mb-6">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700 bg-dark-100">
+          <div class="flex items-center gap-2 text-sm"><span class="text-gray-400">📄</span><span class="text-gray-300 font-semibold">README.md</span><span class="text-xs text-gray-500 ml-2">AI 生成</span></div>
+          <button onclick="copyReadme()" class="text-xs text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>复制</button>
+        </div>
+        <div id="readmePreview" class="p-5 text-sm text-gray-300 md-content max-h-96 overflow-y-auto leading-relaxed"></div>
+      </div>
+      <div id="projectSummary" class="bg-dark-200 border border-gray-700 rounded-2xl p-5 mb-6">
+        <h3 class="text-sm font-bold text-gray-300 mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>项目信息</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <div class="flex items-center gap-2 text-gray-400"><span class="text-gray-500">名称:</span><span id="sumName" class="text-white font-mono">—</span></div>
+          <div class="flex items-center gap-2 text-gray-400"><span class="text-gray-500">路径:</span><span id="sumPath" class="text-white font-mono text-xs">—</span></div>
+          <div class="flex items-center gap-2 text-gray-400 sm:col-span-2"><span class="text-gray-500">描述:</span><span id="sumDesc" class="text-white">—</span></div>
+        </div>
+      </div>
+      <div class="flex flex-col sm:flex-row gap-3">
+        <a id="btnNextStep" href="ai-chat.html" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white font-semibold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm">
+          💬 进入 AI 讨论，梳理任务需求
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
         </a>
-        <div class="w-px h-6 bg-gray-700"></div>
-        <div class="flex items-center gap-2">
-          <span class="text-2xl">🚀</span>
-          <h1 class="text-lg font-bold text-white">项目创建</h1>
-        </div>
+        <a href="index.html" class="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-gray-300 font-semibold rounded-xl transition-colors text-sm text-center">返回首页</a>
       </div>
-      <div class="flex items-center gap-3">
-        <span class="text-xs text-gray-500 hidden sm:inline">AICodeAgent · 模块 01</span>
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-600/20 text-primary-400 border border-primary-600/30">原型演示</span>
-      </div>
-    </div>
-  </header>
-
-  <!-- ==================== Step Progress Bar ==================== -->
-  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    <div class="relative flex items-center justify-between" id="progressBar">
-      <div class="absolute top-1/2 left-0 right-0 h-0.5 bg-gray-700 -translate-y-1/2 z-0"></div>
-      <div id="progressConnectorActive" class="absolute top-1/2 left-0 h-0.5 bg-primary-600 -translate-y-1/2 z-0 transition-all duration-500" style="width: 0%"></div>
-      <div class="step-item relative z-10 flex flex-col items-center" data-step="1">
-        <div id="step1Circle" class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 border-primary-500 bg-primary-600 text-white transition-all duration-300 shadow-lg shadow-primary-600/30">1</div>
-        <span class="mt-2 text-xs font-medium text-primary-400 transition-colors duration-300">信息填写</span>
-      </div>
-      <div class="step-item relative z-10 flex flex-col items-center" data-step="2">
-        <div id="step2Circle" class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 border-gray-600 bg-surface-500 text-gray-500 transition-all duration-300">2</div>
-        <span class="mt-2 text-xs font-medium text-gray-500 transition-colors duration-300">AI 生成</span>
-      </div>
-      <div class="step-item relative z-10 flex flex-col items-center" data-step="3">
-        <div id="step3Circle" class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 border-gray-600 bg-surface-500 text-gray-500 transition-all duration-300">3</div>
-        <span class="mt-2 text-xs font-medium text-gray-500 transition-colors duration-300">Git 初始化</span>
-      </div>
-      <div class="step-item relative z-10 flex flex-col items-center" data-step="4">
-        <div id="step4Circle" class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 border-gray-600 bg-surface-500 text-gray-500 transition-all duration-300">4</div>
-        <span class="mt-2 text-xs font-medium text-gray-500 transition-colors duration-300">完成</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- ==================== Main Content ==================== -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-      <!-- ========== Left: Form Area ========== -->
-      <div class="space-y-6">
-        <div class="bg-surface-300 rounded-xl border border-gray-700/50 p-6 space-y-6">
-          <div class="flex items-center gap-3 mb-2">
-            <div class="w-10 h-10 rounded-lg bg-primary-600/20 flex items-center justify-center text-xl">📝</div>
-            <div>
-              <h2 class="text-lg font-bold text-white">项目信息</h2>
-              <p class="text-xs text-gray-500">填写项目基本信息，AI 将自动生成 README</p>
-            </div>
-          </div>
-
-          <!-- Target Directory -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-400 mb-2">目标目录</label>
-            <div class="flex items-center gap-2">
-              <div class="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg bg-surface-50 border border-gray-700 text-yellow-400">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>
-              </div>
-              <div class="flex-1 relative">
-                <input type="text" id="inputDirectory" placeholder="/home/user/projects/my-project" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 font-mono" oninput="validateDirectory()">
-                <div id="directoryError" class="hidden mt-1 text-xs text-red-400 flex items-center gap-1">
-                  <svg class="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-                  <span></span>
-                </div>
-                <div id="directoryValid" class="hidden mt-1 text-xs text-emerald-400 flex items-center gap-1">
-                  <svg class="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
-                  <span>路径格式正确</span>
-                </div>
-              </div>
-            </div>
-            <p class="text-xs text-gray-600 mt-1.5 ml-12">支持绝对路径，如 /home/user/projects 或 C:\Users\projects</p>
-          </div>
-
-          <!-- Project Name -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-400 mb-2">项目名称 <span class="text-red-400">*</span></label>
-            <input type="text" id="inputName" placeholder="my-awesome-project" maxlength="64" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 font-mono" oninput="validateName()">
-            <div class="flex items-center justify-between mt-1.5">
-              <div id="nameError" class="hidden text-xs text-red-400 flex items-center gap-1">
-                <svg class="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
-                <span></span>
-              </div>
-              <span id="nameCounter" class="text-xs text-gray-600 ml-auto">0 / 64</span>
-            </div>
-          </div>
-
-          <!-- Project Description -->
-          <div>
-            <label class="block text-sm font-semibold text-gray-400 mb-2">项目描述</label>
-            <textarea id="inputDescription" placeholder="简要描述项目的用途、目标和核心功能..." rows="4" maxlength="500" class="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm placeholder-gray-500 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-all duration-200 resize-y min-h-[100px] leading-relaxed" oninput="validateDescription()"></textarea>
-            <div class="flex items-center justify-end mt-1">
-              <span id="descCounter" class="text-xs text-gray-600">0 / 500</span>
-            </div>
-          </div>
-
-          <div class="border-t border-gray-700/50"></div>
-
-          <!-- AI Generate Button -->
-          <button id="btnGenerate" onclick="handleGenerate()" disabled class="w-full flex items-center justify-center gap-2.5 px-6 py-3 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-primary-600/20 hover:shadow-primary-600/40 hover:scale-[1.02] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-primary-600/20">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            <span id="btnGenerateText">AI 生成 README</span>
-            <svg id="btnGenerateSpinner" class="hidden w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-          </button>
-
-          <!-- Confirm Create Button -->
-          <button id="btnConfirm" onclick="handleConfirmCreate()" disabled class="w-full flex items-center justify-center gap-2.5 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/40 hover:scale-[1.02] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:scale-100 disabled:hover:shadow-emerald-600/20">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <span id="btnConfirmText">确认创建项目</span>
-          </button>
-        </div>
-
-        <!-- Quick Tips -->
-        <div class="bg-surface-300/50 rounded-xl border border-gray-700/30 p-5">
-          <div class="flex items-center gap-2 mb-3">
-            <span class="text-lg">💡</span>
-            <h3 class="text-sm font-semibold text-gray-400">使用提示</h3>
-          </div>
-          <ul class="space-y-2 text-xs text-gray-500 leading-relaxed">
-            <li class="flex items-start gap-2"><span class="text-primary-400 mt-0.5">•</span>项目名称将作为 Git 仓库标识，建议使用英文、数字和连字符</li>
-            <li class="flex items-start gap-2"><span class="text-primary-400 mt-0.5">•</span>描述越详细，AI 生成的 README 质量越高</li>
-            <li class="flex items-start gap-2"><span class="text-primary-400 mt-0.5">•</span>创建完成后会自动初始化 Git 仓库并生成初始提交</li>
-          </ul>
-        </div>
-      </div>
-
-      <!-- ========== Right: Preview Area ========== -->
-      <div class="space-y-6">
-        <!-- README Preview Card -->
-        <div class="bg-surface-300/80 rounded-xl border border-gray-700/50 overflow-hidden">
-          <div class="flex items-center justify-between px-5 py-3 border-b border-gray-700/50 bg-surface-200/50">
-            <div class="flex items-center gap-2">
-              <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-              <span class="text-sm font-medium text-gray-400">README.md 预览</span>
-            </div>
-            <div id="previewStatus" class="flex items-center gap-1.5 text-xs text-gray-600">
-              <span class="w-2 h-2 rounded-full bg-gray-600"></span>等待生成
-            </div>
-          </div>
-          <div id="readmePreview" class="p-5 min-h-[320px] max-h-[500px] overflow-y-auto">
-            <div id="previewEmpty" class="flex flex-col items-center justify-center py-16 text-center">
-              <div class="text-5xl mb-4 opacity-30">📄</div>
-              <p class="text-sm text-gray-500 font-medium">README 预览区</p>
-              <p class="text-xs text-gray-600 mt-1">填写左侧表单后，点击「AI 生成 README」查看预览</p>
-            </div>
-            <div id="previewContent" class="hidden md-render"></div>
-            <div id="previewTypewriter" class="hidden md-render typewriter-cursor"></div>
-          </div>
-        </div>
-
-        <!-- Directory Structure Card -->
-        <div class="bg-surface-300/80 rounded-xl border border-gray-700/50 overflow-hidden">
-          <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-700/50 bg-surface-200/50">
-            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-            <span class="text-sm font-medium text-gray-400">项目目录结构</span>
-          </div>
-          <div id="dirStructure" class="p-5">
-            <div class="font-mono text-sm leading-loose text-gray-500">
-              <div id="dirTreeEmpty" class="text-xs text-gray-600 italic">项目名称待输入...</div>
-              <div id="dirTreeContent" class="hidden space-y-0.5 transition-all duration-300"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Git Status Card -->
-        <div class="bg-surface-300/80 rounded-xl border border-gray-700/50 overflow-hidden">
-          <div class="flex items-center gap-2 px-5 py-3 border-b border-gray-700/50 bg-surface-200/50">
-            <svg class="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-            <span class="text-sm font-medium text-gray-400">Git 仓库状态</span>
-          </div>
-          <div class="p-5 space-y-3">
-            <div id="gitStatusList" class="space-y-3">
-              <div class="flex items-center gap-3" id="gitInit">
-                <div class="w-6 h-6 rounded-full flex items-center justify-center bg-gray-700/50 text-gray-600 text-xs" id="gitInitIcon">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-500" id="gitInitText">等待初始化</p>
-                  <p class="text-xs text-gray-600" id="gitInitSubtext">git init</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-3" id="gitAdd">
-                <div class="w-6 h-6 rounded-full flex items-center justify-center bg-gray-700/50 text-gray-600 text-xs" id="gitAddIcon">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-500" id="gitAddText">等待暂存文件</p>
-                  <p class="text-xs text-gray-600" id="gitAddSubtext">git add .</p>
-                </div>
-              </div>
-              <div class="flex items-center gap-3" id="gitCommit">
-                <div class="w-6 h-6 rounded-full flex items-center justify-center bg-gray-700/50 text-gray-600 text-xs" id="gitCommitIcon">
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </div>
-                <div>
-                  <p class="text-sm text-gray-500" id="gitCommitText">等待初始提交</p>
-                  <p class="text-xs text-gray-600" id="gitCommitSubtext">git commit -m "Initial commit"</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
     </div>
   </main>
 
-  <script src="js/utils.js"></script>
-  <script src="js/mock-ai.js"></script>
+
   <script>
-    // =========================== State ===========================
-    let currentStep = 1;
-    let generatedREADME = '';
-    let isGenerating = false;
-    let isCreating = false;
-
-    // =========================== Validation ===========================
-    function validateDirectory() {
-      const input = document.getElementById('inputDirectory');
-      const errorEl = document.getElementById('directoryError');
-      const validEl = document.getElementById('directoryValid');
-      const val = input.value.trim();
-      if (!val) {
-        errorEl.classList.add('hidden'); validEl.classList.add('hidden');
-        input.classList.remove('border-red-500', 'border-emerald-500'); input.classList.add('border-gray-600');
-        return;
-      }
-      const isValid = /^(\/[a-zA-Z0-9._-]+)+\/?$/.test(val) || /^[A-Za-z]:\\[^\n]+$/.test(val);
-      if (isValid) {
-        errorEl.classList.add('hidden'); validEl.classList.remove('hidden');
-        input.classList.remove('border-red-500', 'border-gray-600'); input.classList.add('border-emerald-500');
-      } else {
-        errorEl.classList.remove('hidden'); validEl.classList.add('hidden');
-        errorEl.querySelector('span').textContent = '请输入有效的绝对路径';
-        input.classList.remove('border-emerald-500', 'border-gray-600'); input.classList.add('border-red-500');
-      }
-      updateGenerateButton();
-    }
-
-    function validateName() {
-      const input = document.getElementById('inputName');
-      const errorEl = document.getElementById('nameError');
-      const counterEl = document.getElementById('nameCounter');
-      const val = input.value.trim();
-      counterEl.textContent = input.value.length + ' / 64';
-      if (!val) {
-        errorEl.classList.add('hidden'); input.classList.remove('border-red-500'); input.classList.add('border-gray-600');
-      } else if (val.length < 2) {
-        errorEl.classList.remove('hidden');
-        errorEl.querySelector('span').textContent = '项目名称至少 2 个字符';
-        input.classList.remove('border-gray-600'); input.classList.add('border-red-500');
-      } else if (!/^[a-zA-Z0-9][a-zA-Z0-9._\-]*$/.test(val)) {
-        errorEl.classList.remove('hidden');
-        errorEl.querySelector('span').textContent = '仅支持英文、数字、点、下划线和连字符，且以字母或数字开头';
-        input.classList.remove('border-gray-600'); input.classList.add('border-red-500');
-      } else {
-        errorEl.classList.add('hidden'); input.classList.remove('border-red-500'); input.classList.add('border-gray-600');
-      }
-      updateDirectoryTree(); updateGenerateButton();
-    }
-
-    function validateDescription() {
-      const textarea = document.getElementById('inputDescription');
-      document.getElementById('descCounter').textContent = textarea.value.length + ' / 500';
-      updateGenerateButton();
-    }
-
-    function isNameValid() {
-      const val = document.getElementById('inputName').value.trim();
-      return val.length >= 2 && /^[a-zA-Z0-9][a-zA-Z0-9._\-]*$/.test(val);
-    }
-
-    function updateGenerateButton() {
-      document.getElementById('btnGenerate').disabled = !isNameValid() || isGenerating;
-    }
-
-    // =========================== Directory Tree ===========================
-    function updateDirectoryTree() {
-      const name = document.getElementById('inputName').value.trim();
-      const emptyEl = document.getElementById('dirTreeEmpty');
-      const contentEl = document.getElementById('dirTreeContent');
-      if (!name) { emptyEl.classList.remove('hidden'); contentEl.classList.add('hidden'); return; }
-      emptyEl.classList.add('hidden'); contentEl.classList.remove('hidden');
-      const slug = name.toLowerCase().replace(/\s+/g, '-');
-      contentEl.innerHTML =
-        '<div class="text-yellow-400/80">\uD83D\uDCC1 ' + slug + '/</div>' +
-        '<div class="ml-5 text-blue-400/70">\u251C\u2500\u2500 \uD83D\uDCC1 src/</div>' +
-        '<div class="ml-5 text-blue-400/70">\u251C\u2500\u2500 \uD83D\uDCC1 docs/</div>' +
-        '<div class="ml-5 text-blue-400/70">\u251C\u2500\u2500 \uD83D\uDCC1 tests/</div>' +
-        '<div class="ml-5 text-green-400/70">\u251C\u2500\u2500 \uD83D\uDCC4 package.json</div>' +
-        '<div class="ml-5 text-purple-400/70">\u251C\u2500\u2500 \uD83D\uDCC4 README.md</div>' +
-        '<div class="ml-5 text-gray-500">\u2514\u2500\u2500 \uD83D\uDCC4 .gitignore</div>';
-    }
-
-    // =========================== Progress Bar ===========================
-    function setStep(step) {
-      currentStep = step;
-      var totalSteps = 4;
-      var progressPercent = ((step - 1) / (totalSteps - 1)) * 100;
-      document.getElementById('progressConnectorActive').style.width = progressPercent + '%';
-      var checkSvg = '<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>';
-      for (var i = 1; i <= totalSteps; i++) {
-        var circle = document.getElementById('step' + i + 'Circle');
-        var stepEl = circle.closest('.step-item');
-        var label = stepEl.querySelector('span');
-        circle.classList.remove('border-primary-500','bg-primary-600','text-white','shadow-lg','shadow-primary-600/30','border-emerald-500','bg-emerald-600','border-gray-600','bg-surface-500','text-gray-500');
-        label.classList.remove('text-primary-400','text-emerald-400','text-gray-500');
-        if (i < step) {
-          circle.classList.add('border-emerald-500','bg-emerald-600','text-white','shadow-lg','shadow-emerald-600/30');
-          circle.innerHTML = checkSvg;
-          label.classList.add('text-emerald-400');
-        } else if (i === step) {
-          circle.classList.add('border-primary-500','bg-primary-600','text-white','shadow-lg','shadow-primary-600/30');
-          circle.textContent = i;
-          label.classList.add('text-primary-400');
-        } else {
-          circle.classList.add('border-gray-600','bg-surface-500','text-gray-500');
-          circle.textContent = i;
-          label.classList.add('text-gray-500');
-        }
-      }
-    }
-
-    // =========================== Markdown Rendering ===========================
-    function renderMarkdown(md) {
-      if (!md) return '';
-      var html = md.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      // Code blocks
-      html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(_, lang, code) { return '<pre><code>' + code.trim() + '</code></pre>'; });
-      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-      // Headings
-      html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
-      html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
-      html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
-      html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
-      // Bold & Italic
-      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-      html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-      // Blockquote
-      html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-      // Unordered list
-      html = html.replace(/^- (.+)$/gm, '<ul><li>$1</li></ul>');
-      html = html.replace(/<\/ul>\s*<ul>/g, '');
-      // Ordered list
-      html = html.replace(/^\d+\. (.+)$/gm, '<ol><li>$1</li></ol>');
-      html = html.replace(/<\/ol>\s*<ol>/g, '');
-      // HR
-      html = html.replace(/^---$/gm, '<hr>');
-      // Links
-      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
-      // Paragraphs
-      html = html.replace(/\n\n/g, '</p><p>');
-      html = '<p>' + html + '</p>';
-      html = html.replace(/<p>\s*<\/p>/g, '');
-      html = html.replace(/<p>\s*(<h[2-4]|<pre|<ul|<ol|<blockquote|<hr)/g, '$1');
-      html = html.replace(/(<\/h[2-4]>|<\/pre>|<\/ul>|<\/ol>|<\/blockquote>|<hr>)\s*<\/p>/g, '$1');
-      return html;
-    }
-
-    // =========================== Typewriter Effect ===========================
-    function typewriterEffect(container, speed) {
-      speed = speed || 12;
-      container.innerHTML = '';
-      container.classList.remove('hidden');
-      document.getElementById('previewEmpty').classList.add('hidden');
-      document.getElementById('previewContent').classList.add('hidden');
-      var rawMd = generatedREADME;
-      var displayedLength = 0;
-      return new Promise(function(resolve) {
-        var interval = setInterval(function() {
-          displayedLength += Math.floor(Math.random() * 6) + 3;
-          if (displayedLength >= rawMd.length) {
-            displayedLength = rawMd.length;
-            clearInterval(interval);
-            container.classList.remove('typewriter-cursor');
-            container.innerHTML = renderMarkdown(rawMd);
-            resolve();
-          } else {
-            container.innerHTML = renderMarkdown(rawMd.substring(0, displayedLength));
-          }
-          var previewEl = document.getElementById('readmePreview');
-          previewEl.scrollTop = previewEl.scrollHeight;
-        }, speed);
-      });
-    }
-
-    // =========================== Generate README ===========================
-    async function handleGenerate() {
-      if (isGenerating) return;
-      var name = document.getElementById('inputName').value.trim();
-      var desc = document.getElementById('inputDescription').value.trim();
-      if (!isNameValid()) return;
-      isGenerating = true;
-      var btn = document.getElementById('btnGenerate');
-      var btnText = document.getElementById('btnGenerateText');
-      var spinner = document.getElementById('btnGenerateSpinner');
-      var statusEl = document.getElementById('previewStatus');
-      btn.disabled = true;
-      btnText.textContent = 'AI 正在生成...';
-      spinner.classList.remove('hidden');
-      statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-primary-500 animate-pulse"></span><span class="text-primary-400">生成中...</span>';
-      try {
-        generatedREADME = await MockAI.generateREADME(name, desc);
-        setStep(2);
-        var typewriterEl = document.getElementById('previewTypewriter');
-        await typewriterEffect(typewriterEl, 12);
-        var contentEl = document.getElementById('previewContent');
-        contentEl.innerHTML = renderMarkdown(generatedREADME);
-        contentEl.classList.remove('hidden');
-        typewriterEl.classList.add('hidden');
-        statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-emerald-400">生成完成</span>';
-        document.getElementById('btnConfirm').disabled = false;
-        Utils.showToast('README 生成完成！', 'success');
-      } catch (err) {
-        console.error('Generate error:', err);
-        statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-red-400">生成失败</span>';
-        Utils.showToast('README 生成失败，请重试', 'error');
-      } finally {
-        isGenerating = false;
-        btnText.textContent = 'AI 生成 README';
-        spinner.classList.add('hidden');
-        updateGenerateButton();
-      }
-    }
-
-    // =========================== Confirm Create ===========================
-    async function handleConfirmCreate() {
-      if (isCreating || !generatedREADME) return;
-      isCreating = true;
-      var btnConfirm = document.getElementById('btnConfirm');
-      var btnConfirmText = document.getElementById('btnConfirmText');
-      btnConfirm.disabled = true;
-      btnConfirmText.textContent = '正在创建...';
-      try {
-        setStep(3);
-        await simulateGitStep('gitInit', '仓库已初始化', 'git init \u2713', 800);
-        await simulateGitStep('gitAdd', '文件已暂存', 'git add . \u2713', 600);
-        await simulateGitStep('gitCommit', '初始提交完成', 'git commit -m "Initial commit" \u2713', 1000);
-        setStep(4);
-        Utils.showToast('\uD83C\uDF89 项目创建成功！', 'success');
-        btnConfirmText.textContent = '\u2713 项目已创建';
-        btnConfirm.classList.remove('bg-emerald-600','hover:bg-emerald-700','shadow-emerald-600/20','hover:shadow-emerald-600/40');
-        btnConfirm.classList.add('bg-emerald-500/20','text-emerald-400','border','border-emerald-500/30');
-      } catch (err) {
-        console.error('Create error:', err);
-        Utils.showToast('项目创建失败，请重试', 'error');
-        btnConfirm.disabled = false;
-        btnConfirmText.textContent = '确认创建项目';
-      } finally {
-        isCreating = false;
-      }
-    }
-
-    async function simulateGitStep(id, text, subtext, delay) {
-      var iconEl = document.getElementById(id + 'Icon');
-      var textEl = document.getElementById(id + 'Text');
-      var subtextEl = document.getElementById(id + 'Subtext');
-      // Loading state
-      iconEl.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin text-primary-400" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
-      iconEl.classList.remove('bg-gray-700/50','text-gray-600');
-      iconEl.classList.add('bg-primary-600/20','text-primary-400');
-      textEl.classList.remove('text-gray-500');
-      textEl.classList.add('text-primary-400');
-      await Utils.sleep(delay);
-      // Done state
-      iconEl.innerHTML = '<svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-      iconEl.classList.remove('bg-primary-600/20','text-primary-400');
-      iconEl.classList.add('bg-emerald-600/20','text-emerald-400');
-      textEl.classList.remove('text-primary-400');
-      textEl.classList.add('text-emerald-400');
-      textEl.textContent = text;
-      subtextEl.textContent = subtext;
-    }
-
-    // =========================== Init ===========================
-    document.addEventListener('DOMContentLoaded', function() {
-      setStep(1);
-      updateGenerateButton();
+  (() => {
+    'use strict';
+    document.addEventListener('DOMContentLoaded', () => {
+      requestAnimationFrame(() => document.body.classList.add('loaded'));
+      loadSavedData();
     });
+    function loadSavedData() {
+      var project = Utils.storageGet('demo_project');
+      if (project && project.name) {
+        document.getElementById('projectName').value = project.name || '';
+        document.getElementById('projectDesc').value = project.description || '';
+        document.getElementById('projectPath').value = project.path || '';
+        if (project.readme) showResult(project);
+      }
+    }
+    window.selectDirectory = function() {
+      var paths = ['/home/user/projects/','/Users/developer/workspace/','/workspace/apps/'];
+      document.getElementById('projectPath').value = paths[Math.floor(Math.random() * paths.length)];
+      Utils.showToast('已选择目录（演示模式）', 'info');
+    };
+    window.createProject = async function() {
+      var name = document.getElementById('projectName').value.trim();
+      var desc = document.getElementById('projectDesc').value.trim();
+      var path = document.getElementById('projectPath').value.trim() || '~/projects/';
+      if (!name) { Utils.showToast('请输入项目名称','error'); document.getElementById('projectName').focus(); return; }
+      if (!desc) { Utils.showToast('请输入项目描述','error'); document.getElementById('projectDesc').focus(); return; }
+      if (!/^[a-zA-Z0-9_-]+$/.test(name)) { Utils.showToast('项目名称仅支持字母、数字、连字符和下划线','error'); return; }
+      var btn = document.getElementById('btnCreate');
+      btn.disabled = true;
+      btn.textContent = 'AI 正在生成 README...';
+      try {
+        await Utils.sleep(600); Utils.showToast('创建项目目录结构...', 'info');
+        await Utils.sleep(400); Utils.showToast('初始化 Git 仓库...', 'info');
+        await Utils.sleep(300);
+        var readme = await MockAI.generateREADME(name, desc);
+        var project = { name: name, description: desc, path: path + name, readme: readme, createdAt: new Date().toISOString() };
+        Utils.storageSet('demo_project', project);
+        showResult(project);
+        Utils.showToast('项目创建成功！README 已生成', 'success');
+      } catch (err) { Utils.showToast('创建失败，请重试', 'error'); }
+      finally { btn.disabled = false; btn.textContent = '创建项目并生成 README'; }
+    };
+    function showResult(project) {
+      document.getElementById('resultSection').classList.remove('hidden');
+      document.getElementById('resultSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('readmePreview').innerHTML = Utils.markdownToHtml(project.readme);
+      document.getElementById('sumName').textContent = project.name;
+      document.getElementById('sumPath').textContent = project.path;
+      document.getElementById('sumDesc').textContent = project.description;
+    }
+    window.copyReadme = async function() {
+      var project = Utils.storageGet('demo_project');
+      if (project && project.readme) await Utils.copyToClipboard(project.readme);
+    };
+    window.resetForm = function() {
+      document.getElementById('projectName').value = '';
+      document.getElementById('projectDesc').value = '';
+      document.getElementById('projectPath').value = '';
+      document.getElementById('resultSection').classList.add('hidden');
+      Utils.storageRemove('demo_project');
+      Utils.showToast('表单已重置', 'info');
+    };
+  })();
   </script>
 </body>
 </html>
+
