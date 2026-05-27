@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 讨论聊天窗 - AICodeAgent 任务分期看板</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: '#6c5ce7',
+              light: '#a29bfe',
+              dark: '#5a4bd1',
+              50: '#f0eeff',
+              100: '#ded9ff',
+              200: '#c4b5ff',
+              300: '#a29bfe',
+              400: '#8b7cf7',
+              500: '#6c5ce7',
+              600: '#5a4bd1',
+              700: '#4a3cb0',
+              800: '#3d3190',
+              900: '#2d245f',
+            },
+            surface: {
+              DEFAULT: '#1a1a2e',
+              50: '#32324f',
+              100: '#2a2a45',
+              200: '#22223a',
+              300: '#1a1a2e',
+              400: '#151525',
+              500: '#0f0f1a',
+            },
+            success: '#00cec9',
+            warning: '#fdcb6e',
+            danger: '#ff7675',
+            info: '#74b9ff',
+          },
+          fontFamily: {
+            sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'Noto Sans SC', 'sans-serif'],
+            mono: ['JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', 'Consolas', 'monospace'],
+          },
+        },
+      },
+    }
+  </script>
+  <script src="js/utils.js"></script>
+  <script src="js/mock-ai.js"></script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #1a1a2e; }
+    ::-webkit-scrollbar-thumb { background: #3a3a56; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #6c6c84; }
+
+    .ai-content p { margin-bottom: 0.5rem; }
+    .ai-content p:last-child { margin-bottom: 0; }
+    .ai-content ul, .ai-content ol { margin: 0.5rem 0; padding-left: 1.25rem; }
+    .ai-content li { margin-bottom: 0.25rem; list-style: disc; }
+    .ai-content ol li { list-style: decimal; }
+    .ai-content strong { font-weight: 700; color: #e8e8f0; }
+    .ai-content em { font-style: italic; }
+    .ai-content h3 { font-size: 1rem; font-weight: 700; margin: 0.75rem 0 0.5rem; color: #e8e8f0; }
+    .ai-content h4 { font-size: 0.875rem; font-weight: 700; margin: 0.5rem 0 0.25rem; color: #e8e8f0; }
+    .ai-content code {
+      background: #0f0f1a;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.8em;
+      color: #a29bfe;
+    }
+
+    @keyframes blink-cursor {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .typing-cursor::after {
+      content: '▍';
+      animation: blink-cursor 0.8s infinite;
+      color: #a29bfe;
+      font-weight: 400;
+    }
+
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body class="bg-surface-500 text-gray-200 font-sans min-h-screen">
+
+  <!-- 顶部导航栏 -->
+  <nav class="bg-gray-800/90 backdrop-blur sticky top-0 z-50 border-b border-gray-700/60 h-16 flex items-center px-6">
+    <div class="flex items-center gap-3">
+      <a href="index.html" class="flex items-center gap-2 text-gray-400 hover:text-primary-300 transition-all duration-300 ease-in-out text-sm group">
+        <svg class="w-4 h-4 transform group-hover:-translate-x-1 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+        返回首页
+      </a>
+      <span class="text-gray-600">|</span>
+      <div class="flex items-center gap-2">
+        <span class="text-2xl">💬</span>
+        <h1 class="text-lg font-bold text-gray-100">AI 讨论聊天窗</h1>
+      </div>
+    </div>
+    <div class="ml-auto flex items-center gap-4">
+      <span class="text-xs text-gray-500 hidden sm:inline">与 AI 讨论任务细节，生成实施步骤路线</span>
+      <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+    </div>
+  </nav>
+
+  <!-- 主内容区 -->
+  <div class="flex h-[calc(100vh-64px)]">
+
+    <!-- 左侧聊天主区域 -->
+    <div class="lg:w-[70%] w-2/3 flex flex-col bg-surface-500 relative">
+
+      <!-- 聊天消息区域 -->
+      <div id="chatMessages" class="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+        <!-- 欢迎消息 -->
+        <div class="flex items-start gap-3 max-w-[80%]">
+          <div class="w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center flex-shrink-0 text-sm">🤖</div>
+          <div>
+            <div class="bg-gray-700 text-gray-100 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed ai-content">
+              <p>👋 你好！我是 AICodeAgent AI 助手。</p>
+              <p class="mt-2">我可以帮你讨论任务需求、梳理实现思路，并生成详细的任务步骤路线。</p>
+              <p class="mt-2">你可以直接输入问题，或者使用下方的快捷操作开始：</p>
+              <ul class="mt-1">
+                <li>📋 <strong>选取内容讨论</strong> — 选择代码或文件内容进行分析</li>
+                <li>🎯 <strong>总结任务主题</strong> — 基于对话内容总结核心主题</li>
+                <li>🗺️ <strong>生成任务路线</strong> — 生成带依赖关系的任务步骤</li>
+              </ul>
+            </div>
+            <div class="text-xs text-gray-500 mt-1 ml-1">AI 助手 · 刚刚</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 输入区域 -->
+      <div class="sticky bottom-0 bg-gray-900/80 backdrop-blur border-t border-gray-700/60">
+        <!-- 快捷操作按钮组 -->
+        <div class="flex gap-2 px-6 pt-3 pb-2">
+          <button onclick="handleQuickAction('discuss')" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/60 hover:bg-gray-600/80 text-gray-300 hover:text-white rounded-lg text-xs transition-all duration-300 ease-in-out border border-gray-600/40 hover:border-primary-500/50">
+            <span>📋</span> 选取内容讨论
+          </button>
+          <button onclick="handleQuickAction('summarize')" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/60 hover:bg-gray-600/80 text-gray-300 hover:text-white rounded-lg text-xs transition-all duration-300 ease-in-out border border-gray-600/40 hover:border-primary-500/50">
+            <span>🎯</span> 总结任务主题
+          </button>
+          <button onclick="handleQuickAction('plan')" class="flex items-center gap-1.5 px-3 py-1.5 bg-gray-700/60 hover:bg-gray-600/80 text-gray-300 hover:text-white rounded-lg text-xs transition-all duration-300 ease-in-out border border-gray-600/40 hover:border-primary-500/50">
+            <span>🗺️</span> 生成任务路线
+          </button>
+        </div>
+
+        <!-- 输入框 + 发送按钮 -->
+        <div class="flex items-end gap-3 px-6 pb-4 pt-1">
+          <div class="flex-1 relative">
+            <textarea
+              id="chatInput"
+              rows="1"
+              placeholder="输入消息，与 AI 讨论任务细节..."
+              class="w-full bg-gray-800/80 border border-gray-600/50 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 resize-none focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/30 transition-all duration-300 ease-in-out max-h-32"
+              onkeydown="handleInputKeydown(event)"
+              oninput="autoResizeTextarea(this)"
+            ></textarea>
+          </div>
+          <button
+            id="sendBtn"
+            onclick="sendMessage()"
+            class="bg-primary-500 hover:bg-primary-600 disabled:bg-gray-700 disabled:text-gray-500 text-white px-5 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ease-in-out flex items-center gap-2 flex-shrink-0"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+            </svg>
+            发送
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧任务摘要面板 -->
+    <div class="lg:w-[30%] w-1/3 bg-gray-800/50 border-l border-gray-700 flex flex-col overflow-hidden">
+      <!-- 面板标题 -->
+      <div class="p-4 border-b border-gray-700/60 flex items-center gap-2">
+        <span class="text-lg">📋</span>
+        <h2 class="text-sm font-bold text-gray-200">任务摘要面板</h2>
+      </div>
+
+      <!-- 可滚动内容 -->
+      <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+
+        <!-- 任务主题区域 -->
+        <div id="taskThemeSection">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-1.5 h-1.5 rounded-full bg-primary-400"></span>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">任务主题</h3>
+          </div>
+          <div id="taskThemeContent" class="bg-gray-700/30 rounded-lg p-3 text-sm text-gray-400 italic border border-gray-700/40">
+            暂无任务主题，开始与 AI 对话后将自动总结...
+          </div>
+        </div>
+
+        <!-- 讨论要点 -->
+        <div id="discussionPointsSection" class="hidden">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="w-1.5 h-1.5 rounded-full bg-info"></span>
+            <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">讨论要点</h3>
+          </div>
+          <div id="discussionPoints" class="flex flex-col gap-2"></div>
+        </div>
+
+        <!-- 任务步骤区域 -->
+        <div id="taskPlanSection" class="hidden">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-success"></span>
+              <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">任务步骤</h3>
+            </div>
+            <span id="taskCount" class="text-xs text-gray-500"></span>
+          </div>
+          <div id="taskPlanCards" class="flex flex-col gap-3"></div>
+        </div>
+
+        <!-- 空状态提示 -->
+        <div id="emptyState" class="flex-1 flex flex-col items-center justify-center py-8 text-center">
+          <div class="text-4xl mb-3 opacity-40">💬</div>
+          <p class="text-sm text-gray-500 font-medium">开始对话以生成任务摘要</p>
+          <p class="text-xs text-gray-600 mt-1">AI 将自动分析对话内容并提取关键信息</p>
+        </div>
+      </div>
+
+      <!-- 底部确认按钮 -->
+      <div id="confirmSection" class="p-4 border-t border-gray-700/60 hidden">
+        <button
+          onclick="confirmAndCreate()"
+          class="w-full bg-primary-500 hover:bg-primary-600 py-2.5 rounded-lg transition-all duration-300 ease-in-out text-white text-sm font-semibold flex items-center justify-center gap-2 hover:shadow-lg hover:shadow-primary-500/20"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          确认并创建任务
+        </button>
+        <p class="text-xs text-gray-500 text-center mt-2">确认后跳转至任务图谱页面</p>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 选取内容讨论 Modal -->
+  <div id="contentModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center hidden opacity-0 transition-opacity duration-300 ease-in-out">
+    <div class="bg-gray-800 border border-gray-700 rounded-2xl w-[90%] max-w-2xl max-h-[80vh] flex flex-col shadow-2xl transform scale-95 transition-transform duration-300 ease-in-out" id="contentModalInner">
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-5 border-b border-gray-700">
+        <div class="flex items-center gap-2">
+          <span class="text-xl">📋</span>
+          <h3 class="text-base font-bold text-gray-100">选取内容讨论</h3>
+        </div>
+        <button onclick="closeContentModal()" class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-gray-200 hover:bg-gray-700 rounded-lg transition-all duration-200">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Body -->
+      <div class="p-5 flex-1 overflow-y-auto">
+        <p class="text-sm text-gray-400 mb-4">选择一个模拟文件内容发送给 AI 进行讨论：</p>
+
+        <div class="flex flex-col gap-3" id="fileContentList">
+          <!-- 文件 1 -->
+          <div class="bg-gray-900 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:border-primary-500/50 transition-all duration-300 ease-in-out" onclick="selectFileContent(0)">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="text-yellow-400 text-sm">📄</span>
+                <span class="text-sm font-semibold text-gray-200">index.ts</span>
+              </div>
+              <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">入口文件</span>
+            </div>
+            <pre class="bg-gray-900 rounded-lg p-3 font-mono text-sm text-gray-400 overflow-x-auto"><code>import { createApp } from './app';
+import { config } from './config';
+
+const app = createApp(config);
+app.start();</code></pre>
+          </div>
+
+          <!-- 文件 2 -->
+          <div class="bg-gray-900 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:border-primary-500/50 transition-all duration-300 ease-in-out" onclick="selectFileContent(1)">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="text-blue-400 text-sm">📄</span>
+                <span class="text-sm font-semibold text-gray-200">api/handlers.ts</span>
+              </div>
+              <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">API 处理</span>
+            </div>
+            <pre class="bg-gray-900 rounded-lg p-3 font-mono text-sm text-gray-400 overflow-x-auto"><code>export async function handleRequest(req, res) {
+  const { method, path } = req;
+  const handler = routes[path]?.[method];
+  if (!handler) return res.status(404);
+  return handler(req, res);
+}</code></pre>
+          </div>
+
+          <!-- 文件 3 -->
+          <div class="bg-gray-900 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:border-primary-500/50 transition-all duration-300 ease-in-out" onclick="selectFileContent(2)">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="text-green-400 text-sm">📄</span>
+                <span class="text-sm font-semibold text-gray-200">models/task.ts</span>
+              </div>
+              <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">数据模型</span>
+            </div>
+            <pre class="bg-gray-900 rounded-lg p-3 font-mono text-sm text-gray-400 overflow-x-auto"><code>interface Task {
+  id: string;
+  title: string;
+  status: 'pending' | 'running' | 'done';
+  dependencies: string[];
+  createdAt: Date;
+}</code></pre>
+          </div>
+
+          <!-- 文件 4 -->
+          <div class="bg-gray-900 rounded-lg p-3 border border-gray-700/50 cursor-pointer hover:border-primary-500/50 transition-all duration-300 ease-in-out" onclick="selectFileContent(3)">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="text-purple-400 text-sm">📄</span>
+                <span class="text-sm font-semibold text-gray-200">utils/parser.ts</span>
+              </div>
+              <span class="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">工具函数</span>
+            </div>
+            <pre class="bg-gray-900 rounded-lg p-3 font-mono text-sm text-gray-400 overflow-x-auto"><code>export function parseMarkdown(text: string) {
+  return text.split('\n').map(line => ({
+    type: line.startsWith('#') ? 'heading' : 'text',
+    content: line,
+  }));
+}</code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript 逻辑 -->
+  <script>
+    // ===== 状态管理 =====
+    const state = {
+      messages: [],
+      isAiResponding: false,
+      taskTheme: '',
+      discussionPoints: [],
+      taskPlan: null,
+      messageCount: 0,
+    };
+
+    // ===== DOM 引用 =====
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const taskThemeContent = document.getElementById('taskThemeContent');
+    const taskPlanCards = document.getElementById('taskPlanCards');
+    const taskCount = document.getElementById('taskCount');
+    const emptyState = document.getElementById('emptyState');
+    const confirmSection = document.getElementById('confirmSection');
+    const discussionPointsSection = document.getElementById('discussionPointsSection');
+    const discussionPoints = document.getElementById('discussionPoints');
+    const taskPlanSection = document.getElementById('taskPlanSection');
+    const contentModal = document.getElementById('contentModal');
+    const contentModalInner = document.getElementById('contentModalInner');
+
+    // ===== 模拟文件内容数据 =====
+    const fileContents = [
+      { name: 'index.ts', description: '入口文件，创建并启动应用' },
+      { name: 'api/handlers.ts', description: 'API 请求处理路由逻辑' },
+      { name: 'models/task.ts', description: 'Task 数据模型定义' },
+      { name: 'utils/parser.ts', description: 'Markdown 解析工具函数' },
+    ];
+
+    function getTimestamp() {
+      return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function autoResizeTextarea(ta) {
+      ta.style.height = 'auto';
+      ta.style.height = Math.min(ta.scrollHeight, 128) + 'px';
+    }
+
+    function handleInputKeydown(event) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function scrollToBottom() {
+      requestAnimationFrame(() => { chatMessages.scrollTop = chatMessages.scrollHeight; });
+    }
+
+    function setAiResponding(isResponding) {
+      state.isAiResponding = isResponding;
+      chatInput.disabled = isResponding;
+      sendBtn.disabled = isResponding;
+      if (isResponding) {
+        sendBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> 等待';
+      } else {
+        sendBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg> 发送';
+      }
+    }
+
+    function addUserMessage(text) {
+      state.messageCount++;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex flex-col items-end max-w-[80%] ml-auto';
+      wrapper.style.animation = 'fadeInUp 0.3s ease both';
+      const bubble = document.createElement('div');
+      bubble.className = 'bg-primary-500 text-white rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed max-w-full';
+      bubble.textContent = text;
+      const ts = document.createElement('div');
+      ts.className = 'text-xs text-gray-500 mt-1 mr-1';
+      ts.textContent = '你 · ' + getTimestamp();
+      wrapper.appendChild(bubble);
+      wrapper.appendChild(ts);
+      chatMessages.appendChild(wrapper);
+      state.messages.push({ role: 'user', content: text });
+      scrollToBottom();
+    }
+
+    async function addAiMessage(text) {
+      state.messageCount++;
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex items-start gap-3 max-w-[80%]';
+      wrapper.style.animation = 'fadeInUp 0.3s ease both';
+      const avatar = document.createElement('div');
+      avatar.className = 'w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center flex-shrink-0 text-sm';
+      avatar.textContent = '🤖';
+      const cw = document.createElement('div');
+      const bubble = document.createElement('div');
+      bubble.className = 'bg-gray-700 text-gray-100 rounded-2xl rounded-bl-sm px-4 py-3 text-sm leading-relaxed ai-content typing-cursor';
+      const ts = document.createElement('div');
+      ts.className = 'text-xs text-gray-500 mt-1 ml-1';
+      cw.appendChild(bubble);
+      cw.appendChild(ts);
+      wrapper.appendChild(avatar);
+      wrapper.appendChild(cw);
+      chatMessages.appendChild(wrapper);
+      // 打字机效果
+      const htmlContent = Utils.markdownToHtml(text);
+      let idx = 0;
+      const total = htmlContent.length;
+      await new Promise((resolve) => {
+        const iv = setInterval(() => {
+          idx += Math.floor(Math.random() * 3) + 1;
+          if (idx >= total) { idx = total; clearInterval(iv); bubble.classList.remove('typing-cursor'); resolve(); }
+          bubble.innerHTML = htmlContent.substring(0, idx);
+          scrollToBottom();
+        }, 15);
+      });
+      bubble.innerHTML = formatMessageContent(text);
+      ts.textContent = 'AI 助手 · ' + getTimestamp();
+      state.messages.push({ role: 'ai', content: text });
+      scrollToBottom();
+    }
+
+    function addThinkingIndicator() {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'flex items-start gap-3 max-w-[80%]';
+      wrapper.id = 'thinkingIndicator';
+      wrapper.style.animation = 'fadeInUp 0.3s ease both';
+      const avatar = document.createElement('div');
+      avatar.className = 'w-8 h-8 rounded-full bg-primary-500/20 flex items-center justify-center flex-shrink-0 text-sm';
+      avatar.textContent = '🤖';
+      const bubble = document.createElement('div');
+      bubble.className = 'bg-gray-700 text-gray-100 rounded-2xl rounded-bl-sm px-4 py-3 text-sm animate-pulse';
+      bubble.innerHTML = '<span class="text-gray-400">AI 正在思考...</span>';
+      wrapper.appendChild(avatar);
+      wrapper.appendChild(bubble);
+      chatMessages.appendChild(wrapper);
+      scrollToBottom();
+    }
+
+    function removeThinkingIndicator() {
+      const el = document.getElementById('thinkingIndicator');
+      if (el) {
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(-10px)';
+        el.style.transition = 'all 0.2s ease';
+        setTimeout(() => el.remove(), 200);
+      }
+    }
+
+    function formatMessageContent(text) {
+      let html = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+        const langLabel = lang ? '<span class="text-primary-300">' + lang + '</span>' : '<span>code</span>';
+        return '<div class="bg-gray-900 rounded-lg overflow-hidden my-2 border border-gray-700/50">' +
+          '<div class="flex items-center justify-between px-3 py-1.5 bg-gray-800/80 border-b border-gray-700/50">' +
+          '<span class="text-xs text-gray-500">' + langLabel + '</span>' +
+          '<button onclick="Utils.copyToClipboard(this.parentElement.nextElementSibling.textContent)" class="text-xs text-gray-500 hover:text-gray-300 transition-colors">复制</button>' +
+          '</div>' +
+          '<pre class="p-3 font-mono text-sm text-gray-300 overflow-x-auto whitespace-pre-wrap"><code>' + code.trim() + '</code></pre></div>';
+      });
+      const codeBlocks = [];
+      html = html.replace(/(<div class="bg-gray-900[\s\S]*?<\/div>)/g, (match) => {
+        codeBlocks.push(match);
+        return '__CODE_BLOCK_' + (codeBlocks.length - 1) + '__';
+      });
+      html = Utils.markdownToHtml(html);
+      codeBlocks.forEach((block, i) => {
+        html = html.replace('<p>__CODE_BLOCK_' + i + '__</p>', block);
+        html = html.replace('__CODE_BLOCK_' + i + '__', block);
+      });
+      return html;
+    }
+
+    async function sendMessage() {
+      const text = chatInput.value.trim();
+      if (!text || state.isAiResponding) return;
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      addUserMessage(text);
+      setAiResponding(true);
+      addThinkingIndicator();
+      try {
+        const response = await MockAI.simulateAIResponse(text);
+        removeThinkingIndicator();
+        await Utils.sleep(200);
+        await addAiMessage(response);
+        updateDiscussionPoints(text);
+      } catch (error) {
+        removeThinkingIndicator();
+        await addAiMessage('抱歉，处理时出现了错误。请重试。');
+      }
+      setAiResponding(false);
+      chatInput.focus();
+    }
+
+    async function handleQuickAction(action) {
+      if (state.isAiResponding) return;
+      switch (action) {
+        case 'discuss': openContentModal(); break;
+        case 'summarize': await handleSummarize(); break;
+        case 'plan': await handleGeneratePlan(); break;
+      }
+    }
+
+    function openContentModal() {
+      contentModal.classList.remove('hidden');
+      requestAnimationFrame(() => {
+        contentModal.style.opacity = '1';
+        contentModalInner.style.transform = 'scale(1)';
+      });
+    }
+
+    function closeContentModal() {
+      contentModal.style.opacity = '0';
+      contentModalInner.style.transform = 'scale(0.95)';
+      setTimeout(() => { contentModal.classList.add('hidden'); }, 300);
+    }
+
+    contentModal.addEventListener('click', (e) => {
+      if (e.target === contentModal) closeContentModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeContentModal();
+    });
+
+    async function selectFileContent(index) {
+      closeContentModal();
+      await Utils.sleep(300);
+      const file = fileContents[index];
+      addUserMessage('选取文件: ' + file.name + '\n' + file.description);
+      setAiResponding(true);
+      addThinkingIndicator();
+      const response = await MockAI.simulateAIResponse('分析 ' + file.name + ' 文件：' + file.description);
+      removeThinkingIndicator();
+      await Utils.sleep(200);
+      await addAiMessage(response);
+      updateDiscussionPoints(file.name + ': ' + file.description);
+      setAiResponding(false);
+      chatInput.focus();
+    }
+
+    async function handleSummarize() {
+      if (state.messages.length === 0) {
+        Utils.showToast('请先进行一些对话，AI 才能总结任务主题', 'info');
+        return;
+      }
+      addUserMessage('请总结当前讨论的任务主题');
+      setAiResponding(true);
+      addThinkingIndicator();
+      const response = await MockAI.simulateAIResponse('总结任务主题和计划');
+      removeThinkingIndicator();
+      await Utils.sleep(200);
+      await addAiMessage(response);
+      const themes = [
+        '基于 TypeScript 的任务管理系统开发',
+        '前后端分离架构的 Web 应用搭建',
+        'AI 辅助任务管理与自动化执行平台',
+      ];
+      state.taskTheme = themes[Math.floor(Math.random() * themes.length)];
+      taskThemeContent.className = 'bg-gray-700/30 rounded-lg p-3 text-sm text-gray-200 border border-primary-500/30';
+      taskThemeContent.innerHTML = '<div class="flex items-center gap-2 mb-1"><span class="text-primary-300 font-semibold">📌</span><span class="font-semibold">' + state.taskTheme + '</span></div><p class="text-xs text-gray-400 mt-1">基于对话内容自动总结 · ' + getTimestamp() + '</p>';
+      emptyState.classList.add('hidden');
+      Utils.showToast('任务主题已更新', 'success');
+      setAiResponding(false);
+      chatInput.focus();
+    }
+
+    async function handleGeneratePlan() {
+      if (state.messages.length === 0) {
+        Utils.showToast('请先进行一些对话，AI 才能生成任务路线', 'info');
+        return;
+      }
+      addUserMessage('请生成任务实施步骤路线');
+      setAiResponding(true);
+      addThinkingIndicator();
+      try {
+        const plan = await MockAI.generateTaskPlan(state.taskTheme || 'Web 应用开发');
+        removeThinkingIndicator();
+        await Utils.sleep(200);
+        await addAiMessage('已为你生成任务实施步骤路线！共 ' + plan.tasks.length + ' 个任务步骤。\n\n' + plan.summary + '\n\n请在右侧任务摘要面板查看详细步骤。');
+        state.taskPlan = plan;
+        renderTaskPlan(plan);
+        emptyState.classList.add('hidden');
+        Utils.showToast('已生成 ' + plan.tasks.length + ' 个任务步骤', 'success');
+      } catch (error) {
+        removeThinkingIndicator();
+        await addAiMessage('生成任务路线时出错，请重试。');
+      }
+      setAiResponding(false);
+      chatInput.focus();
+    }
+
+    function updateDiscussionPoints(text) {
+      const truncated = text.length > 40 ? text.substring(0, 40) + '...' : text;
+      state.discussionPoints.push(truncated);
+      discussionPointsSection.classList.remove('hidden');
+      const pointEl = document.createElement('div');
+      pointEl.className = 'flex items-start gap-2 text-xs text-gray-400 bg-gray-700/30 rounded-lg p-2 border border-gray-700/30';
+      pointEl.innerHTML = '<span class="text-primary-400 mt-0.5 flex-shrink-0">•</span><span>' + truncated + '</span>';
+      pointEl.style.animation = 'fadeInUp 0.3s ease both';
+      discussionPoints.appendChild(pointEl);
+      emptyState.classList.add('hidden');
+    }
+
+    function renderTaskPlan(plan) {
+      taskPlanSection.classList.remove('hidden');
+      taskCount.textContent = '共 ' + plan.tasks.length + ' 步';
+      taskPlanCards.innerHTML = '';
+      plan.tasks.forEach((task, index) => {
+        const card = document.createElement('div');
+        card.className = 'bg-gray-700/50 rounded-lg p-3 border-l-4 border-primary-500 transition-all duration-300 ease-in-out hover:bg-gray-700/70 cursor-default';
+        card.style.animation = 'fadeInUp 0.3s ease ' + (index * 0.1) + 's both';
+        const statusIcon = task.status === 'pending' ? '⏳' : task.status === 'running' ? '🔄' : '✅';
+        const depText = task.dependencies.length > 0
+          ? '<span class="text-gray-500">依赖: ' + task.dependencies.map(function(d) { return d.split('-')[0]; }).join(', ') + '</span>'
+          : '<span class="text-green-400">无前置依赖</span>';
+        card.innerHTML = '<div class="flex items-center justify-between mb-1"><div class="flex items-center gap-2"><span class="text-xs font-mono text-gray-500">' + task.id.split('-')[0].toUpperCase() + '</span><span class="text-sm font-semibold text-gray-200">' + task.title + '</span></div><span class="text-sm">' + statusIcon + '</span></div><p class="text-xs text-gray-400 mb-1.5 leading-relaxed">' + task.description + '</p><div class="text-xs">' + depText + '</div>';
+        taskPlanCards.appendChild(card);
+      });
+      confirmSection.classList.remove('hidden');
+    }
+
+    function confirmAndCreate() {
+      if (!state.taskPlan) {
+        Utils.showToast('请先生成任务步骤路线', 'info');
+        return;
+      }
+      Utils.storageSet('ai-chat-task-plan', state.taskPlan);
+      Utils.storageSet('ai-chat-task-theme', state.taskTheme);
+      Utils.showToast('任务已确认，正在跳转至任务图谱...', 'success');
+      setTimeout(function() { window.location.href = 'task-graph.html'; }, 1000);
+    }
+
+    // 初始化
+    chatInput.focus();
+  </script>
+</body>
+</html>
