@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>任务图谱呈现 — AICodeAgent 任务分期看板</title>
+  <link rel="stylesheet" href="css/common.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              50: '#ede9fe', 100: '#ddd6fe', 200: '#c4b5fd', 300: '#a29bfe',
+              400: '#8b7efa', 500: '#6c5ce7', 600: '#5a4bd1', 700: '#4a3cb8',
+              800: '#3d319a', 900: '#332a7e',
+            },
+            dark: {
+              50: '#32324f', 100: '#2a2a45', 200: '#22223a',
+              300: '#1a1a2e', 400: '#151525', 500: '#0f0f1a',
+            },
+          },
+        },
+      },
+    }
+  </script>
+  <script src="js/utils.js"></script>
+  <script src="js/mock-ai.js"></script>
+  <style>
+    .node-group { cursor: grab; }
+    .node-group.dragging { cursor: grabbing; }
+    .node-group:hover .node-rect { filter: brightness(1.2); }
+    .node-group.selected .node-rect { stroke-width: 2.5; stroke-dasharray: 6 3; }
+    .node-group.dragging .node-rect { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.5)); }
+    @keyframes dashFlow { to { stroke-dashoffset: -20; } }
+    .edge-path-animated { stroke-dasharray: 5 5; animation: dashFlow 1s linear infinite; }
+  </style>
+</head>
+<body class="bg-dark-500 text-gray-100 font-sans h-screen flex flex-col overflow-hidden select-none">
+
+  <!-- ==================== 顶部导航栏 ==================== -->
+  <nav class="bg-gray-800/90 backdrop-blur-md sticky top-0 z-50 h-14 flex items-center px-5 border-b border-gray-700 shrink-0">
+    <a href="index.html" class="flex items-center gap-2 text-gray-300 hover:text-white transition-colors text-sm">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+      返回首页
+    </a>
+    <div class="mx-4 h-5 w-px bg-gray-600"></div>
+    <div class="flex items-center gap-2">
+      <span class="text-lg">🗺️</span>
+      <span class="font-bold text-white">任务图谱呈现</span>
+      <span class="text-xs bg-primary-500/20 text-primary-300 px-2 py-0.5 rounded-full ml-2">原型演示</span>
+    </div>
+    <div class="ml-auto flex items-center gap-3">
+      <button id="btnFitView" title="适应画布" class="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+      </button>
+      <button id="btnResetZoom" title="重置缩放" class="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M1 4v6h6M23 20v-6h-6"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+      </button>
+      <button id="btnLoadAI" title="从 AI 生成任务计划" class="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        AI 生成计划
+      </button>
+    </div>
+  </nav>
+
+  <!-- ==================== 主体区域 ==================== -->
+  <div class="flex flex-1 overflow-hidden relative">
+
+    <!-- 左侧：SVG 图谱画布 -->
+    <div id="canvasWrapper" class="flex-1 relative bg-dark-500 overflow-hidden cursor-crosshair">
+      <div id="zoomIndicator" class="absolute top-3 left-3 bg-gray-800/80 backdrop-blur-sm text-xs text-gray-400 px-2.5 py-1 rounded-lg z-10 pointer-events-none">
+        缩放: 100%
+      </div>
+      <div id="canvasHint" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-gray-800/70 backdrop-blur-sm text-xs text-gray-500 px-4 py-2 rounded-full z-10 pointer-events-none transition-opacity duration-500">
+        滚轮缩放 · 拖拽平移画布 · 点击节点编辑 · 拖拽节点移动
+      </div>
+      <svg id="graphSvg" class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#6b7280" />
+          </marker>
+          <marker id="arrowhead-hl" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto" markerUnits="strokeWidth">
+            <polygon points="0 0, 10 3.5, 0 7" fill="#a29bfe" />
+          </marker>
+          <pattern id="gridPattern" width="30" height="30" patternUnits="userSpaceOnUse">
+            <circle cx="15" cy="15" r="0.8" fill="#2a2a45" />
+          </pattern>
+        </defs>
+        <rect id="gridBg" width="10000" height="10000" x="-5000" y="-5000" fill="url(#gridPattern)" />
+        <g id="graphGroup">
+          <g id="edgesLayer"></g>
+          <g id="nodesLayer"></g>
+        </g>
+      </svg>
+    </div>
+
+    <!-- 右侧：任务详情/编辑面板 -->
+    <aside id="detailPanel" class="w-80 bg-gray-800 border-l border-gray-700 transform translate-x-full transition-transform duration-300 ease-in-out absolute right-0 top-0 bottom-0 z-40 flex flex-col overflow-y-auto">
+      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-700 shrink-0">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <svg class="w-4 h-4 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+          任务详情
+        </h3>
+        <button id="btnClosePanel" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="p-4 flex flex-col gap-4 flex-1">
+        <div class="text-xs text-gray-500" id="taskIdDisplay">ID: —</div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1.5">任务标题</label>
+          <input id="editTitle" type="text" class="w-full bg-gray-700 border border-gray-600 rounded-lg text-white text-sm px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/30 transition-all placeholder-gray-500" placeholder="输入任务标题">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1.5">任务描述</label>
+          <textarea id="editDesc" rows="3" class="w-full bg-gray-700 border border-gray-600 rounded-lg text-white text-sm px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/30 transition-all placeholder-gray-500 resize-none" placeholder="输入任务描述"></textarea>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1.5">任务状态</label>
+          <select id="editStatus" class="w-full bg-gray-700 border border-gray-600 rounded-lg text-white text-sm px-3 py-2 outline-none focus:border-primary-500 transition-all cursor-pointer">
+            <option value="pending">⏳ 待执行</option>
+            <option value="in-progress">🔄 进行中</option>
+            <option value="completed">✅ 已完成</option>
+            <option value="blocked">🚫 阻塞</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-400 mb-1.5">依赖关系</label>
+          <div id="depsContainer" class="flex flex-col gap-2 mb-2"></div>
+          <div class="flex gap-2">
+            <select id="addDepSelect" class="flex-1 bg-gray-700 border border-gray-600 rounded-lg text-white text-xs px-2 py-1.5 outline-none focus:border-primary-500 transition-all cursor-pointer">
+              <option value="">选择要添加的依赖…</option>
+            </select>
+            <button id="btnAddDep" class="px-2.5 py-1.5 text-xs font-semibold bg-primary-600 hover:bg-primary-700 rounded-lg text-white transition-colors">添加</button>
+          </div>
+        </div>
+
+        <div class="border-t border-gray-700 my-1"></div>
+
+        <div class="flex gap-2 mt-auto">
+          <button id="btnSave" class="flex-1 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            保存修改
+          </button>
+          <button id="btnCancel" class="flex-1 bg-gray-600 hover:bg-gray-500 text-white text-sm font-semibold py-2 rounded-lg transition-colors">取消</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ==================== 底部状态统计栏 ==================== -->
+  <footer id="statusBar" class="bg-gray-800/50 backdrop-blur-md border-t border-gray-700 px-6 py-3 flex items-center gap-6 shrink-0 z-30">
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-gray-400 font-semibold">总任务</span>
+      <span id="totalCount" class="text-sm font-bold text-white">0</span>
+    </div>
+    <div class="w-px h-4 bg-gray-600"></div>
+    <div class="flex items-center gap-4">
+      <div class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded-full bg-gray-500 inline-block"></span>
+        <span class="text-xs text-gray-400">待执行</span>
+        <span id="pendingCount" class="text-xs font-bold text-gray-300">0</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded-full bg-blue-500 inline-block"></span>
+        <span class="text-xs text-gray-400">进行中</span>
+        <span id="inProgressCount" class="text-xs font-bold text-blue-300">0</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded-full bg-green-500 inline-block"></span>
+        <span class="text-xs text-gray-400">已完成</span>
+        <span id="completedCount" class="text-xs font-bold text-green-300">0</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span>
+        <span class="text-xs text-gray-400">阻塞</span>
+        <span id="blockedCount" class="text-xs font-bold text-red-300">0</span>
+      </div>
+    </div>
+    <div class="w-px h-4 bg-gray-600"></div>
+    <div class="flex items-center gap-3 flex-1">
+      <span class="text-xs text-gray-400 font-semibold shrink-0">进度</span>
+      <div class="flex-1 bg-gray-700 rounded-full h-2 overflow-hidden">
+        <div id="progressBar" class="bg-green-500 h-full rounded-full transition-all duration-500 ease-out" style="width: 0%"></div>
+      </div>
+      <span id="progressPercent" class="text-xs font-bold text-green-400 shrink-0">0%</span>
+    </div>
+  </footer>
+
+  <!-- ==================== JavaScript ==================== -->
+  <script>
+  (() => {
+    'use strict';
+
+    // ==================== 常量与配置 ====================
+    const NODE_WIDTH = 200;
+    const NODE_HEIGHT = 70;
+    const NODE_RX = 12;
+    const STATUS_COLORS = {
+      'pending':     { bg: '#374151', border: '#4B5563', text: '#9CA3AF', label: '待执行' },
+      'in-progress': { bg: '#1E3A5F', border: '#3B82F6', text: '#60A5FA', label: '进行中' },
+      'completed':   { bg: '#166534', border: '#22C55E', text: '#4ADE80', label: '已完成' },
+      'blocked':     { bg: '#7F1D1D', border: '#EF4444', text: '#F87171', label: '阻塞' },
+    };
+
+    // ==================== 状态 ====================
+    let tasks = [];
+    let selectedTaskId = null;
+    let panelOpen = false;
+    let viewBox = { x: 0, y: 0, w: 0, h: 0 };
+    let zoom = 1;
+    let dragState = null;
+    let panState = null;
+
+    // ==================== DOM 引用 ====================
+    const svg = document.getElementById('graphSvg');
+    const graphGroup = document.getElementById('graphGroup');
+    const edgesLayer = document.getElementById('edgesLayer');
+    const nodesLayer = document.getElementById('nodesLayer');
+    const detailPanel = document.getElementById('detailPanel');
+    const canvasWrapper = document.getElementById('canvasWrapper');
+    const zoomIndicator = document.getElementById('zoomIndicator');
+    const canvasHint = document.getElementById('canvasHint');
+
+    // ==================== 初始数据 ====================
+    const defaultTasks = [
+      { id: 'task-1', title: '环境搭建与项目初始化', description: '创建项目目录结构，配置开发环境，初始化基础配置文件。', status: 'completed', dependencies: [], x: 400, y: 60 },
+      { id: 'task-2', title: '数据库模型设计', description: '设计数据库 ER 图，定义数据模型和表结构关系。', status: 'completed', dependencies: ['task-1'], x: 200, y: 200 },
+      { id: 'task-3', title: '核心 API 接口开发', description: '实现 RESTful API 接口，包括用户、订单、商品等核心模块。', status: 'in-progress', dependencies: ['task-2'], x: 200, y: 360 },
+      { id: 'task-4', title: '前端页面搭建', description: '构建用户交互界面，完成页面布局和组件开发。', status: 'in-progress', dependencies: ['task-1'], x: 620, y: 200 },
+      { id: 'task-5', title: '用户认证模块', description: '实现 JWT 认证、登录注册、权限管理等功能。', status: 'pending', dependencies: ['task-2', 'task-4'], x: 420, y: 360 },
+      { id: 'task-6', title: '功能集成与联调', description: '将前后端模块进行集成，完成接口联调和功能验证。', status: 'pending', dependencies: ['task-3', 'task-5'], x: 300, y: 520 },
+      { id: 'task-7', title: '测试与文档编写', description: '编写单元测试和 E2E 测试，完善项目文档和部署说明。', status: 'blocked', dependencies: ['task-6'], x: 300, y: 680 },
+    ];
+
+    // ==================== 初始化 ====================
+    function init() {
+      tasks = JSON.parse(JSON.stringify(defaultTasks));
+      initViewBox();
+      render();
+      bindEvents();
+      updateStatusCounts();
+      setTimeout(() => { if (canvasHint) canvasHint.style.opacity = '0'; }, 5000);
+    }
+
+    function initViewBox() {
+      const rect = canvasWrapper.getBoundingClientRect();
+      viewBox = { x: -50, y: -30, w: rect.width, h: rect.height };
+      zoom = 1;
+      applyViewBox();
+    }
+
+    function applyViewBox() {
+      svg.setAttribute('viewBox', `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`);
+      zoomIndicator.textContent = `缩放: ${Math.round(zoom * 100)}%`;
+    }
+
+    // ==================== 渲染 ====================
+    function render() { renderEdges(); renderNodes(); }
+
+    function renderEdges() {
+      edgesLayer.innerHTML = '';
+      tasks.forEach(task => {
+        task.dependencies.forEach(depId => {
+          const dep = tasks.find(t => t.id === depId);
+          if (!dep) return;
+          drawEdge(dep, task);
+        });
+      });
+    }
+
+    function drawEdge(fromTask, toTask) {
+      const x1 = fromTask.x + NODE_WIDTH / 2;
+      const y1 = fromTask.y + NODE_HEIGHT;
+      const x2 = toTask.x + NODE_WIDTH / 2;
+      const y2 = toTask.y;
+      const midY = (y1 + y2) / 2;
+      const d = `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+      const hl = selectedTaskId && (fromTask.id === selectedTaskId || toTask.id === selectedTaskId);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', hl ? '#a29bfe' : '#4B5563');
+      path.setAttribute('stroke-width', hl ? '2' : '1.5');
+      path.setAttribute('marker-end', hl ? 'url(#arrowhead-hl)' : 'url(#arrowhead)');
+      if (hl) path.classList.add('edge-path-animated');
+      edgesLayer.appendChild(path);
+    }
+
+    function renderNodes() {
+      nodesLayer.innerHTML = '';
+      tasks.forEach(task => drawNode(task));
+    }
+
+    function drawNode(task) {
+      const colors = STATUS_COLORS[task.status] || STATUS_COLORS.pending;
+      const isSelected = selectedTaskId === task.id;
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', `translate(${task.x}, ${task.y})`);
+      g.setAttribute('data-task-id', task.id);
+      g.classList.add('node-group');
+      if (isSelected) g.classList.add('selected');
+
+      // Shadow
+      const shadow = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      shadow.setAttribute('width', NODE_WIDTH); shadow.setAttribute('height', NODE_HEIGHT);
+      shadow.setAttribute('rx', NODE_RX); shadow.setAttribute('fill', 'rgba(0,0,0,0.3)');
+      shadow.setAttribute('transform', 'translate(3,3)');
+      g.appendChild(shadow);
+
+      // Main rect
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.classList.add('node-rect');
+      rect.setAttribute('width', NODE_WIDTH); rect.setAttribute('height', NODE_HEIGHT);
+      rect.setAttribute('rx', NODE_RX); rect.setAttribute('fill', colors.bg);
+      rect.setAttribute('stroke', isSelected ? '#a29bfe' : colors.border);
+      rect.setAttribute('stroke-width', isSelected ? '2.5' : '1.5');
+      if (isSelected) rect.setAttribute('stroke-dasharray', '6 3');
+      g.appendChild(rect);
+
+      // Left status indicator bar (clipped)
+      const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+      clipPath.setAttribute('id', `clip-${task.id}`);
+      const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      clipRect.setAttribute('x','0'); clipRect.setAttribute('y','0');
+      clipRect.setAttribute('width', NODE_WIDTH); clipRect.setAttribute('height', NODE_HEIGHT);
+      clipRect.setAttribute('rx', NODE_RX);
+      clipPath.appendChild(clipRect);
+      g.appendChild(clipPath);
+      const indicator = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      indicator.setAttribute('x','0'); indicator.setAttribute('y','0');
+      indicator.setAttribute('width','5'); indicator.setAttribute('height', NODE_HEIGHT);
+      indicator.setAttribute('fill', colors.border);
+      indicator.setAttribute('clip-path', `url(#clip-${task.id})`);
+      g.appendChild(indicator);
+
+      // Title text
+      const title = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      title.setAttribute('x','16'); title.setAttribute('y','30');
+      title.setAttribute('fill','#F3F4F6');
+      title.setAttribute('font-size','13'); title.setAttribute('font-weight','600');
+      title.setAttribute('font-family','-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+      title.textContent = task.title.length > 12 ? task.title.slice(0,12)+'…' : task.title;
+      g.appendChild(title);
+
+      // Status text
+      const st = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      st.setAttribute('x','16'); st.setAttribute('y','50');
+      st.setAttribute('fill', colors.text); st.setAttribute('font-size','11');
+      st.setAttribute('font-family','-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+      st.textContent = colors.label;
+      g.appendChild(st);
+
+      // Dependency count badge
+      if (task.dependencies.length > 0) {
+        const badge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        badge.setAttribute('transform', `translate(${NODE_WIDTH - 30}, 8)`);
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        bg.setAttribute('cx','10'); bg.setAttribute('cy','8'); bg.setAttribute('r','9');
+        bg.setAttribute('fill','rgba(0,0,0,0.3)');
+        badge.appendChild(bg);
+        const bt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        bt.setAttribute('x','10'); bt.setAttribute('y','12');
+        bt.setAttribute('text-anchor','middle'); bt.setAttribute('fill','#9CA3AF');
+        bt.setAttribute('font-size','10'); bt.setAttribute('font-weight','600');
+        bt.setAttribute('font-family','-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
+        bt.textContent = `↑${task.dependencies.length}`;
+        badge.appendChild(bt);
+        g.appendChild(badge);
+      }
+
+      nodesLayer.appendChild(g);
+    }
+
+    // ==================== 事件绑定 ====================
+    function bindEvents() {
+      svg.addEventListener('mousedown', onMouseDown);
+      svg.addEventListener('mousemove', onMouseMove);
+      svg.addEventListener('mouseup', onMouseUp);
+      svg.addEventListener('mouseleave', onMouseUp);
+      svg.addEventListener('wheel', onWheel, { passive: false });
+      svg.addEventListener('click', onSvgClick);
+      document.getElementById('btnClosePanel').addEventListener('click', closePanel);
+      document.getElementById('btnSave').addEventListener('click', saveEdit);
+      document.getElementById('btnCancel').addEventListener('click', cancelEdit);
+      document.getElementById('btnAddDep').addEventListener('click', addDependency);
+      document.getElementById('btnFitView').addEventListener('click', fitView);
+      document.getElementById('btnResetZoom').addEventListener('click', resetZoom);
+      document.getElementById('btnLoadAI').addEventListener('click', loadFromAI);
+      window.addEventListener('resize', () => {
+        const rect = canvasWrapper.getBoundingClientRect();
+        viewBox.w = rect.width / zoom;
+        viewBox.h = rect.height / zoom;
+        applyViewBox();
+      });
+    }
+
+    function getSvgPoint(e) {
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      return pt.matrixTransform(svg.getScreenCTM().inverse());
+    }
+
+    function onMouseDown(e) {
+      const nodeGroup = e.target.closest('.node-group');
+      if (nodeGroup) {
+        e.preventDefault();
+        const taskId = nodeGroup.getAttribute('data-task-id');
+        const task = tasks.find(t => t.id === taskId);
+        if (!task) return;
+        const svgPt = getSvgPoint(e);
+        dragState = { taskId, offsetX: svgPt.x - task.x, offsetY: svgPt.y - task.y };
+        nodeGroup.classList.add('dragging');
+        return;
+      }
+      panState = { startX: e.clientX, startY: e.clientY, vbStartX: viewBox.x, vbStartY: viewBox.y };
+      svg.style.cursor = 'grabbing';
+    }
+
+    function onMouseMove(e) {
+      if (dragState) {
+        const svgPt = getSvgPoint(e);
+        const task = tasks.find(t => t.id === dragState.taskId);
+        if (!task) return;
+        task.x = svgPt.x - dragState.offsetX;
+        task.y = svgPt.y - dragState.offsetY;
+        render();
+        return;
+      }
+      if (panState) {
+        const rect = canvasWrapper.getBoundingClientRect();
+        const scale = viewBox.w / rect.width;
+        const dx = (e.clientX - panState.startX) * scale;
+        const dy = (e.clientY - panState.startY) * scale;
+        viewBox.x = panState.vbStartX - dx;
+        viewBox.y = panState.vbStartY - dy;
+        applyViewBox();
+      }
+    }
+
+    function onMouseUp() {
+      if (dragState) {
+        const ng = nodesLayer.querySelector(`[data-task-id="${dragState.taskId}"]`);
+        if (ng) ng.classList.remove('dragging');
+        dragState = null;
+      }
+      if (panState) { panState = null; svg.style.cursor = 'crosshair'; }
+    }
+
+    function onWheel(e) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 1.1 : 0.9;
+      const svgPt = getSvgPoint(e);
+      const newW = viewBox.w * delta;
+      const newH = viewBox.h * delta;
+      if (newW < 200 || newW > 5000) return;
+      const ratioX = (svgPt.x - viewBox.x) / viewBox.w;
+      const ratioY = (svgPt.y - viewBox.y) / viewBox.h;
+      viewBox.x = svgPt.x - newW * ratioX;
+      viewBox.y = svgPt.y - newH * ratioY;
+      viewBox.w = newW;
+      viewBox.h = newH;
+      zoom = canvasWrapper.getBoundingClientRect().width / newW;
+      applyViewBox();
+    }
+
+    function onSvgClick(e) {
+      if (dragState) return;
+      const nodeGroup = e.target.closest('.node-group');
+      if (nodeGroup) {
+        selectTask(nodeGroup.getAttribute('data-task-id'));
+      } else {
+        deselectTask();
+      }
+    }
+
+    // ==================== 选中 & 面板 ====================
+    function selectTask(taskId) {
+      selectedTaskId = taskId;
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+      document.getElementById('taskIdDisplay').textContent = `ID: ${task.id}`;
+      document.getElementById('editTitle').value = task.title;
+      document.getElementById('editDesc').value = task.description;
+      document.getElementById('editStatus').value = task.status;
+      renderDepsList(task);
+      updateDepSelect(task);
+      openPanel();
+      render();
+    }
+
+    function deselectTask() { selectedTaskId = null; closePanel(); render(); }
+
+    function openPanel() {
+      if (panelOpen) return;
+      panelOpen = true;
+      detailPanel.classList.remove('translate-x-full');
+      detailPanel.classList.add('translate-x-0');
+    }
+
+    function closePanel() {
+      if (!panelOpen) return;
+      panelOpen = false;
+      detailPanel.classList.remove('translate-x-0');
+      detailPanel.classList.add('translate-x-full');
+      selectedTaskId = null;
+      render();
+    }
+
+    // ==================== 依赖管理 ====================
+    function renderDepsList(task) {
+      const container = document.getElementById('depsContainer');
+      container.innerHTML = '';
+      if (task.dependencies.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-500 italic">暂无依赖关系</div>';
+        return;
+      }
+      task.dependencies.forEach(depId => {
+        const dep = tasks.find(t => t.id === depId);
+        const depTitle = dep ? dep.title : depId;
+        const depStatus = dep ? dep.status : 'pending';
+        const colors = STATUS_COLORS[depStatus] || STATUS_COLORS.pending;
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between bg-gray-700/50 rounded-lg px-3 py-1.5';
+        row.innerHTML = `<div class="flex items-center gap-2 min-w-0"><span class="w-2 h-2 rounded-full shrink-0" style="background:${colors.border}"></span><span class="text-xs text-gray-200 truncate">${depTitle}</span></div><button class="text-gray-500 hover:text-red-400 transition-colors p-0.5 shrink-0" data-remove-dep="${depId}" title="移除此依赖"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>`;
+        container.appendChild(row);
+      });
+      container.querySelectorAll('[data-remove-dep]').forEach(btn => {
+        btn.addEventListener('click', () => removeDependency(btn.getAttribute('data-remove-dep')));
+      });
+    }
+
+    function updateDepSelect(task) {
+      const select = document.getElementById('addDepSelect');
+      select.innerHTML = '<option value="">选择要添加的依赖…</option>';
+      tasks.forEach(t => {
+        if (t.id === task.id || task.dependencies.includes(t.id) || wouldCreateCycle(task.id, t.id)) return;
+        const opt = document.createElement('option');
+        opt.value = t.id; opt.textContent = t.title;
+        select.appendChild(opt);
+      });
+    }
+
+    function wouldCreateCycle(taskId, newDepId) {
+      const visited = new Set(); const queue = [newDepId];
+      while (queue.length) {
+        const cur = queue.shift();
+        if (cur === taskId) return true;
+        if (visited.has(cur)) continue;
+        visited.add(cur);
+        const t = tasks.find(x => x.id === cur);
+        if (t) t.dependencies.forEach(d => queue.push(d));
+      }
+      return false;
+    }
+
+    function addDependency() {
+      if (!selectedTaskId) return;
+      const task = tasks.find(t => t.id === selectedTaskId);
+      if (!task) return;
+      const depId = document.getElementById('addDepSelect').value;
+      if (!depId) { Utils.showToast('请选择一个依赖任务', 'info'); return; }
+      if (task.dependencies.includes(depId)) { Utils.showToast('该依赖已存在', 'info'); return; }
+      task.dependencies.push(depId);
+      renderDepsList(task); updateDepSelect(task); render();
+      Utils.showToast('已添加依赖关系', 'success');
+    }
+
+    function removeDependency(depId) {
+      if (!selectedTaskId) return;
+      const task = tasks.find(t => t.id === selectedTaskId);
+      if (!task) return;
+      task.dependencies = task.dependencies.filter(d => d !== depId);
+      renderDepsList(task); updateDepSelect(task); render();
+      Utils.showToast('已移除依赖关系', 'success');
+    }
+
+    // ==================== 保存 & 取消 ====================
+    function saveEdit() {
+      if (!selectedTaskId) return;
+      const task = tasks.find(t => t.id === selectedTaskId);
+      if (!task) return;
+      const newTitle = document.getElementById('editTitle').value.trim();
+      if (!newTitle) { Utils.showToast('任务标题不能为空', 'error'); return; }
+      task.title = newTitle;
+      task.description = document.getElementById('editDesc').value.trim();
+      task.status = document.getElementById('editStatus').value;
+      render(); updateStatusCounts();
+      Utils.showToast('任务已更新', 'success');
+    }
+
+    function cancelEdit() { closePanel(); }
+
+    // ==================== 状态统计 ====================
+    function updateStatusCounts() {
+      const total = tasks.length;
+      const counts = { pending: 0, 'in-progress': 0, completed: 0, blocked: 0 };
+      tasks.forEach(t => { if (counts[t.status] !== undefined) counts[t.status]++; });
+      document.getElementById('totalCount').textContent = total;
+      document.getElementById('pendingCount').textContent = counts.pending;
+      document.getElementById('inProgressCount').textContent = counts['in-progress'];
+      document.getElementById('completedCount').textContent = counts.completed;
+      document.getElementById('blockedCount').textContent = counts.blocked;
+      const pct = total > 0 ? Math.round((counts.completed / total) * 100) : 0;
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressPercent').textContent = pct + '%';
+    }
+
+    // ==================== 工具栏 ====================
+    function fitView() {
+      if (tasks.length === 0) return;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      tasks.forEach(t => {
+        minX = Math.min(minX, t.x); minY = Math.min(minY, t.y);
+        maxX = Math.max(maxX, t.x + NODE_WIDTH); maxY = Math.max(maxY, t.y + NODE_HEIGHT);
+      });
+      const pad = 80;
+      const cW = maxX - minX + pad * 2;
+      const cH = maxY - minY + pad * 2;
+      const rect = canvasWrapper.getBoundingClientRect();
+      const scale = Math.min(rect.width / cW, rect.height / cH, 1.5);
+      zoom = scale;
+      viewBox.w = rect.width / scale; viewBox.h = rect.height / scale;
+      viewBox.x = minX - pad - (viewBox.w - cW) / 2 + pad;
+      viewBox.y = minY - pad - (viewBox.h - cH) / 2 + pad;
+      applyViewBox();
+      Utils.showToast('已适应画布视图', 'success');
+    }
+
+    function resetZoom() { initViewBox(); Utils.showToast('已重置缩放', 'success'); }
+
+    async function loadFromAI() {
+      const btn = document.getElementById('btnLoadAI');
+      btn.disabled = true;
+      btn.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>AI 生成中…`;
+      try {
+        const plan = await MockAI.generateTaskPlan('web 前端项目任务图谱');
+        tasks = plan.tasks.map((t, i) => ({
+          ...t, x: 100 + (i % 3) * 260, y: 60 + Math.floor(i / 3) * 180,
+        }));
+        if (tasks.length > 0) tasks[0].status = 'completed';
+        if (tasks.length > 1) tasks[1].status = 'completed';
+        if (tasks.length > 2) tasks[2].status = 'in-progress';
+        if (tasks.length > 3) tasks[3].status = 'in-progress';
+        if (tasks.length > 4) tasks[4].status = 'pending';
+        if (tasks.length > 5) tasks[5].status = 'blocked';
+        selectedTaskId = null; closePanel();
+        render(); updateStatusCounts(); fitView();
+        Utils.showToast('AI 任务计划已生成', 'success');
+      } catch (err) {
+        Utils.showToast('生成失败，请重试', 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>AI 生成计划`;
+      }
+    }
+
+    // ==================== 启动 ====================
+    document.addEventListener('DOMContentLoaded', init);
+  })();
+  </script>
+</body>
+</html>
