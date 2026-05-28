@@ -47,8 +47,8 @@ export async function removeConfig(ctx: Context) {
 export async function healthCheck(ctx: Context) {
   try {
     const baseUrl = await Service.getBaseUrl();
-    const result = await Opencode.healthCheck(baseUrl);
-    ctx.body = { healthy: true, config: result.data };
+    await Opencode.healthCheck(baseUrl);
+    ctx.body = { healthy: true };
   } catch (err: any) {
     ctx.status = 502;
     ctx.body = { error: 'Failed to connect to opencode server', detail: err.message };

@@ -11,7 +11,6 @@ export interface EngineConfigUpsertInput {
 
 export interface OpencodeHealth {
   healthy: boolean;
-  config?: Record<string, unknown>;
 }
 
 export interface OpencodeAgent {
