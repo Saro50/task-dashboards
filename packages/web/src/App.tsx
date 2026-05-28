@@ -4,6 +4,7 @@ import type { EngineStatus } from './components/Layout';
 import ProjectList from './components/ProjectList';
 import ProjectModal from './components/ProjectModal';
 import EngineConfigModal from './components/EngineConfigModal';
+import AIChatWidget from './components/AIChatWidget';
 import { ToastProvider, useToast } from './components/Toast';
 import { useProjects } from './hooks/useProjects';
 import { projectApi } from './api/project';
@@ -146,6 +147,8 @@ function AppContent() {
         open={engineConfigOpen}
         onClose={() => { setEngineConfigOpen(false); checkEngineStatus(); }}
       />
+
+      <AIChatWidget engineStatus={engineStatus} />
     </Layout>
   );
 }
