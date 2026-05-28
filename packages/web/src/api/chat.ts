@@ -45,11 +45,11 @@ export const chatApi = {
     return request<ChatMessage[]>(`${BASE}/sessions/${sessionId}/messages${query}`);
   },
 
-  sendMessage(sessionId: string, text: string, directory?: string): Promise<void> {
+  sendMessage(sessionId: string, text: string, directory?: string, agent?: string): Promise<void> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
     return request<void>(`${BASE}/sessions/${sessionId}/send${query}`, {
       method: 'POST',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, agent }),
     });
   },
 
@@ -111,6 +111,14 @@ export const chatApi = {
         onEvent({ type: 'session.created', properties: JSON.parse(e.data) });
       } catch (err) {
         log.error(S, 'SSE parse error session.created', err);
+      }
+    });
+
+    es.addEventListener('session.updated', (e) => {
+      try {
+        onEvent({ type: 'session.updated', properties: JSON.parse(e.data) });
+      } catch (err) {
+        log.error(S, 'SSE parse error session.updated', err);
       }
     });
 

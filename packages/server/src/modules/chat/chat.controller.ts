@@ -59,7 +59,7 @@ export async function sendMessage(ctx: Context) {
       ctx.body = { error: 'text is required' };
       return;
     }
-    await Service.sendMessage(id, text, directory);
+    await Service.sendMessage(id, text, directory, agent);
     logger.info(S, 'sendMessage promptAsync accepted');
     ctx.status = 204;
   } catch (err: any) {

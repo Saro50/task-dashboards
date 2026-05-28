@@ -175,6 +175,8 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
+  const [showAgentList, setShowAgentList] = useState(false);
+  const [agents, setAgents] = useState<Array<{ name: string; description?: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -186,6 +188,8 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
     streamingText,
     isLoading,
     isConnected,
+    selectedAgent,
+    setSelectedAgent,
     loadSessions,
     createSession,
     switchSession,
@@ -194,6 +198,17 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
     deleteSession,
     connectSSE,
   } = useChat(directory);
+
+  const loadAgents = useCallback(async () => {
+    try {
+      const res = await fetch('/api/engine/agents');
+      if (res.ok) {
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data?.data ?? [];
+        setAgents(list.filter((a: any) => a.mode === 'primary' && !a.hidden));
+      }
+    } catch {}
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -207,6 +222,7 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
     log.info(S, 'open changed', { open, engineStatus, directory });
     if (open) {
       loadSessions();
+      loadAgents();
       connectSSE();
     }
   }, [open]);
@@ -266,6 +282,32 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
     return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   }
 
+  const [chatSize, setChatSize] = useState({ w: 480, h: 640 });
+  const resizingRef = useRef(false);
+  const startRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    startRef.current = { x: e.clientX, y: e.clientY, w: chatSize.w, h: chatSize.h };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const dw = startRef.current.x - ev.clientX;
+      const dh = startRef.current.y - ev.clientY;
+      setChatSize({
+        w: Math.min(Math.max(startRef.current.w + dw, 360), window.innerWidth - 32),
+        h: Math.min(Math.max(startRef.current.h + dh, 400), window.innerHeight - 32),
+      });
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [chatSize]);
+
   return (
     <>
       <button
@@ -291,7 +333,10 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
       </button>
 
       {open && (
-        <div className="fixed bottom-24 right-6 z-[100] w-[400px] max-w-[calc(100vw-2rem)] h-[560px] max-h-[70vh] bg-dark-300 border border-gray-700 rounded-2xl shadow-2xl flex flex-col animate-[scaleIn_0.2s_ease_both]">
+        <div
+          className="fixed bottom-24 right-6 z-[100] bg-dark-300 border border-gray-700 rounded-2xl shadow-2xl flex flex-col animate-[scaleIn_0.2s_ease_both]"
+          style={{ width: chatSize.w, height: chatSize.h, maxWidth: 'calc(100vw - 2rem)', maxHeight: 'calc(100vh - 2rem)' }}
+        >
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 shrink-0">
             <div className="flex items-center gap-2">
               <span className="text-lg">🤖</span>
@@ -301,7 +346,7 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
             <div className="flex items-center gap-2">
               <div className="relative">
                 <button
-                  onClick={() => setShowSessionList((prev) => !prev)}
+                  onClick={() => { setShowSessionList((prev) => !prev); setShowAgentList(false); }}
                   className="text-xs text-gray-400 hover:text-white transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700 cursor-pointer max-w-[160px]"
                 >
                   <span className="truncate">{currentSession?.title || '选择会话'}</span>
@@ -345,6 +390,38 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="relative">
+                <button
+                  onClick={() => { setShowAgentList((prev) => !prev); setShowSessionList(false); }}
+                  className="text-xs text-gray-400 hover:text-white transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700 cursor-pointer"
+                >
+                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <span>{selectedAgent}</span>
+                </button>
+
+                {showAgentList && (
+                  <div className="absolute right-0 top-full mt-1 w-48 bg-dark-50 border border-gray-700 rounded-xl shadow-xl overflow-hidden z-10">
+                    {agents.map((agent) => (
+                      <div
+                        key={agent.name}
+                        onClick={() => { setSelectedAgent(agent.name); setShowAgentList(false); }}
+                        className={`flex flex-col px-3 py-2 text-xs cursor-pointer hover:bg-gray-700 transition-colors ${
+                          agent.name === selectedAgent ? 'bg-gray-700/50 text-white' : 'text-gray-300'
+                        }`}
+                      >
+                        <span className="font-medium">{agent.name}</span>
+                        {agent.description && (
+                          <span className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{agent.description}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -465,6 +542,23 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
               </button>
             </div>
           </form>
+
+          <div
+            onMouseDown={startResize}
+            className="absolute top-0 left-0 w-4 h-full cursor-col-resize z-10 flex items-center justify-center"
+          >
+            <div className="w-1 h-8 rounded-full bg-gray-600 hover:bg-gray-500 transition-colors" />
+          </div>
+          <div
+            onMouseDown={startResize}
+            className="absolute top-0 left-0 right-0 h-4 cursor-row-resize z-10 flex items-center justify-center"
+          >
+            <div className="h-1 w-8 rounded-full bg-gray-600 hover:bg-gray-500 transition-colors" />
+          </div>
+          <div
+            onMouseDown={startResize}
+            className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize z-20"
+          />
         </div>
       )}
     </>

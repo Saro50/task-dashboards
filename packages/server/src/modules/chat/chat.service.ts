@@ -34,11 +34,11 @@ export async function getMessages(sessionId: string, directory?: string) {
   return result.data;
 }
 
-export async function sendMessage(sessionId: string, text: string, directory?: string) {
+export async function sendMessage(sessionId: string, text: string, directory?: string, agent?: string) {
   const baseUrl = await getBaseUrl();
-  logger.info(S, 'sendMessage calling sendPromptAsync', { baseUrl, sessionId, directory, text: text.slice(0, 80) });
+  logger.info(S, 'sendMessage calling sendPromptAsync', { baseUrl, sessionId, directory, agent, text: text.slice(0, 80) });
   try {
-    const result = await Opencode.sendPromptAsync(baseUrl, sessionId, text, directory);
+    const result = await Opencode.sendPromptAsync(baseUrl, sessionId, text, directory, agent);
     logger.info(S, 'sendPromptAsync returned', { result });
   } catch (err: any) {
     logger.error(S, 'sendPromptAsync threw', { message: err.message, stack: err.stack?.slice(0, 200) });

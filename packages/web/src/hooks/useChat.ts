@@ -12,6 +12,7 @@ export function useChat(directory?: string) {
   const [streamingText, setStreamingText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [selectedAgent, setSelectedAgent] = useState<string>('build');
   const eventSourceRef = useRef<EventSource | null>(null);
   const directoryRef = useRef(directory);
   directoryRef.current = directory;
@@ -116,6 +117,15 @@ export function useChat(directory?: string) {
             });
           }
         }
+
+        if (payload.type === 'session.updated') {
+          const info = payload.properties?.info as { id: string; title: string; directory: string; time: { created: number; updated: number } } | undefined;
+          if (info?.id) {
+            setSessions((prev) =>
+              prev.map((s) => s.id === info.id ? { ...s, title: info.title || s.title, time: info.time || s.time } : s)
+            );
+          }
+        }
       },
       () => {
         log.warn(S, 'SSE error / disconnected');
@@ -193,13 +203,13 @@ export function useChat(directory?: string) {
     setIsLoading(true);
 
     try {
-      await chatApi.sendMessage(currentSessionId, text, directory);
+      await chatApi.sendMessage(currentSessionId, text, directory, selectedAgent);
       log.info(S, 'sendMessage API call completed');
     } catch (err) {
       log.error(S, 'sendMessage error', err);
       setIsLoading(false);
     }
-  }, [currentSessionId, directory]);
+  }, [currentSessionId, directory, selectedAgent]);
 
   const abortGeneration = useCallback(async () => {
     if (!currentSessionId) return;
@@ -236,6 +246,8 @@ export function useChat(directory?: string) {
     streamingText,
     isLoading,
     isConnected,
+    selectedAgent,
+    setSelectedAgent,
     loadSessions,
     createSession,
     switchSession,
