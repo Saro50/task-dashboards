@@ -22,9 +22,14 @@ export interface ChatPart {
   id: string;
   type: string;
   text?: string;
+  tool?: string;
+  name?: string;
+  reason?: string;
+  messageID?: string;
   state?: {
     status: string;
     title?: string;
+    input?: Record<string, unknown>;
     output?: string;
   };
   [key: string]: unknown;
@@ -35,6 +40,9 @@ export interface SSEEventPayload {
   properties: {
     part?: ChatPart;
     delta?: string;
+    messageID?: string;
+    partID?: string;
+    field?: string;
     info?: {
       id: string;
       sessionID: string;

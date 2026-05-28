@@ -2,13 +2,173 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent, type Form
 import type { EngineStatus } from './Layout';
 import { useChat } from '@/hooks/useChat';
 import { log } from '@/utils/log';
-import type { ChatMessage } from '@/types/chat';
+import type { ChatMessage, ChatPart } from '@/types/chat';
 
 const S = 'AIChatWidget';
 
 interface Props {
   directory?: string;
   engineStatus: EngineStatus;
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`w-3 h-3 text-gray-500 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
+      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function ToolStatusLabel({ status }: { status: string }) {
+  if (status === 'running') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-yellow-400">
+        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+        运行中
+      </span>
+    );
+  }
+  if (status === 'completed') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-green-400">
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+        完成
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-red-400">
+        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        错误
+      </span>
+    );
+  }
+  return (
+    <span className="text-[10px] text-gray-500">等待中</span>
+  );
+}
+
+function Collapsible({ title, icon, defaultOpen = false, children }: {
+  title: React.ReactNode;
+  icon?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-lg bg-dark-100/50 border border-gray-700/50 overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-400 hover:text-gray-300 hover:bg-dark-100 transition-colors cursor-pointer"
+      >
+        <ChevronIcon open={open} />
+        {icon}
+        <span className="truncate flex-1 text-left">{title}</span>
+      </button>
+      {open && <div className="px-2.5 pb-2">{children}</div>}
+    </div>
+  );
+}
+
+function PartRenderer({ part }: { part: ChatPart }) {
+  if (part.type === 'text' && part.text) {
+    return <p className="whitespace-pre-wrap break-words">{part.text}</p>;
+  }
+
+  if (part.type === 'reasoning' && part.text) {
+    const t = part.text;
+    const preview = t.length > 60 ? t.slice(0, 60) + '...' : t;
+    return (
+      <Collapsible
+        title={<span className="italic text-gray-500">思考: {preview}</span>}
+        icon={
+          <svg className="w-3 h-3 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        }
+      >
+        <p className="text-xs text-gray-500 italic whitespace-pre-wrap break-words border-l-2 border-gray-600 pl-2 leading-relaxed">
+          {part.text}
+        </p>
+      </Collapsible>
+    );
+  }
+
+  if (part.type === 'tool') {
+    const toolName = part.tool || 'tool';
+    const state = part.state;
+    const title = state?.title || toolName;
+    const preview = state?.output
+      ? (state.output.length > 80 ? state.output.slice(0, 80) + '...' : state.output)
+      : null;
+
+    return (
+      <Collapsible
+        title={
+          <span className="flex items-center gap-1.5">
+            <span className="font-mono text-gray-300">{title}</span>
+            <ToolStatusLabel status={state?.status || 'pending'} />
+            {preview && <span className="text-gray-600 truncate hidden sm:inline">{preview}</span>}
+          </span>
+        }
+        icon={
+          <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        }
+      >
+        <div className="space-y-1">
+          {state?.input && (
+            <div className="rounded bg-dark-300/80 px-2 py-1">
+              <p className="text-[10px] text-gray-500 mb-0.5">输入</p>
+              <pre className="text-xs text-gray-400 whitespace-pre-wrap break-all font-mono">
+                {JSON.stringify(state.input, null, 2).slice(0, 500)}
+              </pre>
+            </div>
+          )}
+          {state?.output && (
+            <div className="rounded bg-dark-300/80 px-2 py-1">
+              <p className="text-[10px] text-gray-500 mb-0.5">输出</p>
+              <pre className="text-xs text-gray-400 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto">
+                {state.output.slice(0, 1000)}
+              </pre>
+            </div>
+          )}
+        </div>
+      </Collapsible>
+    );
+  }
+
+  if (part.type === 'agent') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-gray-700/50 text-gray-400 border border-gray-600/50">
+        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+        {part.name}
+      </span>
+    );
+  }
+
+  return null;
+}
+
+function hasVisibleParts(msg: ChatMessage): boolean {
+  return msg.parts.some((p) =>
+    p.type === 'text' || p.type === 'reasoning' || p.type === 'tool' || p.type === 'agent'
+  );
 }
 
 export default function AIChatWidget({ directory, engineStatus }: Props) {
@@ -101,13 +261,6 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
   }, [handleSubmit]);
 
   const engineDisabled = engineStatus !== 'connected';
-
-  function getMessageText(msg: ChatMessage): string {
-    return msg.parts
-      .filter((p) => p.type === 'text' && p.text)
-      .map((p) => p.text!)
-      .join('\n');
-  }
 
   function formatTime(timestamp: number): string {
     return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -218,22 +371,31 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
 
             {messages.map((msg) => {
               const isUser = msg.info.role === 'user';
-              const text = getMessageText(msg);
-              if (!text) return null;
+              if (!hasVisibleParts(msg)) return null;
+
+              if (isUser) {
+                const text = msg.parts
+                  .filter((p) => p.type === 'text')
+                  .map((p) => ('text' in p ? p.text : ''))
+                  .join('\n');
+                if (!text) return null;
+                return (
+                  <div key={msg.info.id} className="flex justify-end">
+                    <div className="max-w-[80%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm leading-relaxed bg-primary-600 text-white">
+                      <p className="whitespace-pre-wrap break-words">{text}</p>
+                      <p className="text-[10px] mt-1 text-primary-200">{formatTime(msg.info.time.created)}</p>
+                    </div>
+                  </div>
+                );
+              }
 
               return (
-                <div key={msg.info.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-                      isUser
-                        ? 'bg-primary-600 text-white rounded-br-md'
-                        : 'bg-dark-50 border border-gray-700 text-gray-200 rounded-bl-md'
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap break-words">{text}</p>
-                    <p className={`text-[10px] mt-1 ${isUser ? 'text-primary-200' : 'text-gray-500'}`}>
-                      {formatTime(msg.info.time.created)}
-                    </p>
+                <div key={msg.info.id} className="flex justify-start">
+                  <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm leading-relaxed bg-dark-50 border border-gray-700 text-gray-200 space-y-2">
+                    {msg.parts.map((part) => (
+                      <PartRenderer key={part.id} part={part} />
+                    ))}
+                    <p className="text-[10px] text-gray-500">{formatTime(msg.info.time.created)}</p>
                   </div>
                 </div>
               );
@@ -286,6 +448,11 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
                 rows={1}
                 className="flex-1 bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20 transition-all placeholder-gray-500 resize-none min-h-[36px] max-h-[120px] disabled:opacity-50"
                 style={{ height: 'auto' }}
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = Math.min(target.scrollHeight, 120) + 'px';
+                }}
               />
               <button
                 type="submit"
