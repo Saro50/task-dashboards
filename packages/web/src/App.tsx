@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import Layout from './components/Layout';
 import ProjectList from './components/ProjectList';
 import ProjectModal from './components/ProjectModal';
+import EngineConfigModal from './components/EngineConfigModal';
 import { ToastProvider, useToast } from './components/Toast';
 import { useProjects } from './hooks/useProjects';
 import { projectApi } from './api/project';
@@ -13,6 +14,7 @@ function AppContent() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [engineConfigOpen, setEngineConfigOpen] = useState(false);
 
   const handleCreate = useCallback(() => {
     setEditingProject(null);
@@ -76,7 +78,7 @@ function AppContent() {
   }, [editingProject, showToast, refetch]);
 
   return (
-    <Layout>
+    <Layout onOpenEngineConfig={() => setEngineConfigOpen(true)}>
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <div className="mb-8 flex items-start justify-between">
           <div>
@@ -117,6 +119,11 @@ function AppContent() {
         project={editingProject}
         onClose={() => { setModalOpen(false); setEditingProject(null); }}
         onSubmit={handleModalSubmit}
+      />
+
+      <EngineConfigModal
+        open={engineConfigOpen}
+        onClose={() => setEngineConfigOpen(false)}
       />
     </Layout>
   );
