@@ -48,7 +48,7 @@ export async function healthCheck(ctx: Context) {
   try {
     const baseUrl = await Service.getBaseUrl();
     const result = await Opencode.healthCheck(baseUrl);
-    ctx.body = result.data;
+    ctx.body = { healthy: true, config: result.data };
   } catch (err: any) {
     ctx.status = 502;
     ctx.body = { error: 'Failed to connect to opencode server', detail: err.message };

@@ -1,11 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Layout from './components/Layout';
+import type { EngineStatus } from './components/Layout';
 import ProjectList from './components/ProjectList';
 import ProjectModal from './components/ProjectModal';
 import EngineConfigModal from './components/EngineConfigModal';
 import { ToastProvider, useToast } from './components/Toast';
 import { useProjects } from './hooks/useProjects';
 import { projectApi } from './api/project';
+import { engineApi } from './api/engine';
 import type { Project, ProjectStatus } from './types/project';
 
 function AppContent() {
@@ -15,6 +17,25 @@ function AppContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [engineConfigOpen, setEngineConfigOpen] = useState(false);
+  const [engineStatus, setEngineStatus] = useState<EngineStatus>('disconnected');
+
+  const checkEngineStatus = useCallback(async () => {
+    try {
+      await engineApi.healthCheck();
+      setEngineStatus('connected');
+    } catch {
+      try {
+        await engineApi.getConfig();
+        setEngineStatus('error');
+      } catch {
+        setEngineStatus('disconnected');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    checkEngineStatus();
+  }, [checkEngineStatus]);
 
   const handleCreate = useCallback(() => {
     setEditingProject(null);
@@ -78,7 +99,7 @@ function AppContent() {
   }, [editingProject, showToast, refetch]);
 
   return (
-    <Layout onOpenEngineConfig={() => setEngineConfigOpen(true)}>
+    <Layout onOpenEngineConfig={() => setEngineConfigOpen(true)} engineStatus={engineStatus}>
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <div className="mb-8 flex items-start justify-between">
           <div>
@@ -123,7 +144,7 @@ function AppContent() {
 
       <EngineConfigModal
         open={engineConfigOpen}
-        onClose={() => setEngineConfigOpen(false)}
+        onClose={() => { setEngineConfigOpen(false); checkEngineStatus(); }}
       />
     </Layout>
   );

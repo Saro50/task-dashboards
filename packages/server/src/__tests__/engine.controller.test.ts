@@ -110,10 +110,10 @@ describe('engine.controller', () => {
   describe('healthCheck', () => {
     it('should return health data', async () => {
       (Service.getBaseUrl as any).mockResolvedValue('http://localhost:4096');
-      (Opencode.healthCheck as any).mockResolvedValue({ data: { healthy: true, version: '1.0.0' } });
+      (Opencode.healthCheck as any).mockResolvedValue({ data: { model: 'gpt-4' } });
       const ctx = mockCtx();
       await healthCheck(ctx);
-      expect(ctx.body).toEqual({ healthy: true, version: '1.0.0' });
+      expect(ctx.body).toEqual({ healthy: true, config: { model: 'gpt-4' } });
     });
 
     it('should return 502 on connection failure', async () => {

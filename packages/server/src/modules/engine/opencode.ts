@@ -7,7 +7,7 @@ export async function createClient(baseUrl: string) {
 
 export async function healthCheck(baseUrl: string) {
   const client = await createClient(baseUrl);
-  return client.global.health();
+  return client.config.get();
 }
 
 export async function listAgents(baseUrl: string) {

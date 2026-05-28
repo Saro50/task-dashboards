@@ -148,11 +148,11 @@ export default function EngineConfigModal({ open, onClose }: Props) {
 
           {healthResult && (
             <div className="bg-green-900/20 border border-green-700/40 rounded-lg px-4 py-3">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2">
                 <span className="text-green-400">✓</span>
                 <span className="text-green-300 text-sm font-semibold">连接成功</span>
-                {healthResult.version && (
-                  <span className="text-xs text-green-400/70 ml-auto">v{healthResult.version}</span>
+                {healthResult.config?.model && (
+                  <span className="text-xs text-green-400/70 ml-auto">{String(healthResult.config.model)}</span>
                 )}
               </div>
             </div>
