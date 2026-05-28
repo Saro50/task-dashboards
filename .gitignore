@@ -6,3 +6,4 @@ dist/
 !.d.ts
 .DS_Store
 demo/
+ui
