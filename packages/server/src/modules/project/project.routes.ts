@@ -1,5 +1,5 @@
 import Router from 'koa-router';
-import * as ProjectController from './project.controller';
+import * as ProjectController from './project.controller.js';
 
 const router = new Router({ prefix: '/api/projects' });
 

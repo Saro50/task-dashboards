@@ -1,5 +1,5 @@
 import Router from 'koa-router';
-import * as ChatController from './chat.controller';
+import * as ChatController from './chat.controller.js';
 
 const router = new Router({ prefix: '/api/chat' });
 

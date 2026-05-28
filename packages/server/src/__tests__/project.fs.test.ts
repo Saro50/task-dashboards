@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { checkDir, ensureDir } from '../modules/project/project.fs';
+import { checkDir, ensureDir } from '../modules/project/project.fs.js';
 
 describe('checkDir', () => {
   it('should return exists=false when directory does not exist', () => {

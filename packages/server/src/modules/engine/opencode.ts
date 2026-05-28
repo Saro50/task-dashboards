@@ -1,5 +1,5 @@
-import type { OpencodeClient } from '@opencode-ai/sdk';
-import { logger } from '../../logger';
+import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
+import { logger } from '../../logger.js';
 
 const S = 'opencode';
 
@@ -9,7 +9,6 @@ let _baseUrl: string | null = null;
 async function getClient(baseUrl: string) {
   if (_client && _baseUrl === baseUrl) return _client;
   logger.info(S, 'getClient creating new client', { baseUrl });
-  const { createOpencodeClient } = await import('@opencode-ai/sdk');
   _client = createOpencodeClient({ baseUrl });
   _baseUrl = baseUrl;
   logger.info(S, 'getClient client created');
@@ -24,6 +23,7 @@ export function resetClient() {
 export async function healthCheck(baseUrl: string) {
   logger.info(S, 'healthCheck', { baseUrl });
   const client = await getClient(baseUrl);
+  
   await client.app.agents();
   logger.info(S, 'healthCheck passed');
 }
@@ -109,10 +109,10 @@ export async function getSessionStatus(baseUrl: string, directory?: string) {
   return result;
 }
 
-export async function subscribeEvents(baseUrl: string, directory?: string) {
+export async function subscribeEvents(baseUrl: string, directory?: string): Promise<{ stream: AsyncGenerator<any> }> {
   logger.info(S, 'subscribeEvents', { baseUrl, directory });
   const client = await getClient(baseUrl);
   const result = await client.event.subscribe({ query: { directory } });
   logger.info(S, 'subscribeEvents stream obtained');
-  return result;
+  return result as { stream: AsyncGenerator<any> };
 }

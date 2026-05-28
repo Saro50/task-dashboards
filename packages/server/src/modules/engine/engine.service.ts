@@ -1,5 +1,5 @@
-import prisma from '../../prisma';
-import type { EngineConfigUpsertInput } from './types';
+import prisma from '../../prisma.js';
+import type { EngineConfigUpsertInput } from './types.js';
 
 export async function get() {
   return prisma.engineConfig.findUnique({ where: { id: 'default' } });

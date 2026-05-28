@@ -1,6 +1,6 @@
 import { Context } from 'koa';
-import * as Service from './engine.service';
-import * as Opencode from './opencode';
+import * as Service from './engine.service.js';
+import * as Opencode from './opencode.js';
 
 export async function getConfig(ctx: Context) {
   const config = await Service.get();

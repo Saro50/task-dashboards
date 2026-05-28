@@ -1,5 +1,5 @@
 import Router from 'koa-router';
-import * as EngineController from './engine.controller';
+import * as EngineController from './engine.controller.js';
 
 const router = new Router({ prefix: '/api/engine' });
 

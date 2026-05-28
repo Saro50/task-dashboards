@@ -1,7 +1,7 @@
 import { Context } from 'koa';
-import * as Service from './chat.service';
-import { logger } from '../../logger';
-import type { CreateSessionBody, SendMessageBody } from './types';
+import * as Service from './chat.service.js';
+import { logger } from '../../logger.js';
+import type { CreateSessionBody, SendMessageBody } from './types.js';
 
 const S = 'chat.ctrl';
 
@@ -113,7 +113,7 @@ export async function subscribeEvents(ctx: Context) {
       }
     });
 
-    const FORWARD_EVENTS = new Set([
+    const FORWARD_EVENTS = new Set<string>([
       'message.part.updated',
       'message.part.delta',
       'message.updated',

@@ -8,13 +8,13 @@ const { mockEngineConfig } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock('../prisma', () => ({
+vi.mock('../prisma.js', () => ({
   default: {
     engineConfig: mockEngineConfig,
   },
 }));
 
-import * as Service from '../modules/engine/engine.service';
+import * as Service from '../modules/engine/engine.service.js';
 
 const mockConfig = { id: 'default', baseUrl: 'http://localhost:4096', createdAt: new Date(), updatedAt: new Date() };
 

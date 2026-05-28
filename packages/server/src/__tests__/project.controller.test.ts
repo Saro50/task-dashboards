@@ -1,18 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../modules/project/project.service', () => ({
+vi.mock('../modules/project/project.service.js', () => ({
   getById: vi.fn(),
   update: vi.fn(),
 }));
 
-vi.mock('../modules/project/project.fs', () => ({
+vi.mock('../modules/project/project.fs.js', () => ({
   checkDir: vi.fn(),
   ensureDir: vi.fn(),
 }));
 
-import * as Service from '../modules/project/project.service';
-import { checkDir } from '../modules/project/project.fs';
-import { healthCheck, updateStatus } from '../modules/project/project.controller';
+import * as Service from '../modules/project/project.service.js';
+import { checkDir } from '../modules/project/project.fs.js';
+import { healthCheck, updateStatus } from '../modules/project/project.controller.js';
 
 function mockCtx(params = {}) {
   return {

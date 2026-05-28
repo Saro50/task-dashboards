@@ -1,6 +1,6 @@
 import { Context } from 'koa';
-import * as Service from './project.service';
-import { checkDir, ensureDir } from './project.fs';
+import * as Service from './project.service.js';
+import { checkDir, ensureDir } from './project.fs.js';
 
 export async function list(ctx: Context) {
   ctx.body = await Service.list();

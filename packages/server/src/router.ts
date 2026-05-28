@@ -1,7 +1,7 @@
 import Router from 'koa-router';
-import projectRoutes from './modules/project/project.routes';
-import engineRoutes from './modules/engine/engine.routes';
-import chatRoutes from './modules/chat/chat.routes';
+import projectRoutes from './modules/project/project.routes.js';
+import engineRoutes from './modules/engine/engine.routes.js';
+import chatRoutes from './modules/chat/chat.routes.js';
 
 const router = new Router();
 

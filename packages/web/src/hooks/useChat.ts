@@ -24,7 +24,7 @@ export function useChat(directory?: string) {
     try {
       log.info(S, 'loadMessages', { sessionId, directory: directoryRef.current });
       const msgs = await chatApi.getMessages(sessionId, directoryRef.current);
-      log.info(S, 'loadMessages result', { count: msgs?.length });
+      log.info(S, 'loadMessages result', { count: msgs?.length ,msgs})
       setMessages(msgs);
     } catch (err) {
       log.error(S, 'loadMessages error', err);
@@ -46,7 +46,7 @@ export function useChat(directory?: string) {
     const es = chatApi.subscribeEvents(
       (payload: SSEEventPayload) => {
         setIsConnected(true);
-
+        console.log('Received SSE event', payload);
         if (payload.type === 'message.updated') {
           const info = payload.properties?.info;
           if (info?.role === 'assistant' && !info?.finish) {
@@ -182,6 +182,13 @@ export function useChat(directory?: string) {
       return;
     }
 
+    setMessages((prev) => [
+      ...prev,
+      {
+        info: { id: `temp-${Date.now()}`, sessionID: currentSessionId, role: 'user', time: { created: Date.now() / 1000 } },
+        parts: [{ id: `temp-part-${Date.now()}`, type: 'text', text }],
+      },
+    ]);
     setStreamingText('');
     setIsLoading(true);
 

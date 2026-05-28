@@ -2,8 +2,8 @@ import 'dotenv/config';
 import Koa from 'koa';
 import cors from '@koa/cors';
 import bodyParser from 'koa-bodyparser';
-import { errorHandler } from './middleware/error';
-import router from './router';
+import { errorHandler } from './middleware/error.js';
+import router from './router.js';
 
 const app = new Koa();
 const PORT = process.env.PORT || 3001;

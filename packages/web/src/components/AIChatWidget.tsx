@@ -286,11 +286,6 @@ export default function AIChatWidget({ directory, engineStatus }: Props) {
                 rows={1}
                 className="flex-1 bg-dark-50 border border-gray-600 rounded-xl text-white text-sm px-3 py-2 outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20 transition-all placeholder-gray-500 resize-none min-h-[36px] max-h-[120px] disabled:opacity-50"
                 style={{ height: 'auto' }}
-                onInput={(e) => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = 'auto';
-                  target.style.height = Math.min(target.scrollHeight, 120) + 'px';
-                }}
               />
               <button
                 type="submit"

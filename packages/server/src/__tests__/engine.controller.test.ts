@@ -1,21 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-vi.mock('../modules/engine/engine.service', () => ({
+vi.mock('../modules/engine/engine.service.js', () => ({
   get: vi.fn(),
   upsert: vi.fn(),
   remove: vi.fn(),
   getBaseUrl: vi.fn(),
 }));
 
-vi.mock('../modules/engine/opencode', () => ({
+vi.mock('../modules/engine/opencode.js', () => ({
   healthCheck: vi.fn(),
   listAgents: vi.fn(),
   listProviders: vi.fn(),
   getConfig: vi.fn(),
 }));
 
-import * as Service from '../modules/engine/engine.service';
-import * as Opencode from '../modules/engine/opencode';
+import * as Service from '../modules/engine/engine.service.js';
+import * as Opencode from '../modules/engine/opencode.js';
 import {
   getConfig,
   upsertConfig,
@@ -24,7 +24,7 @@ import {
   listAgents,
   listProviders,
   getOpencodeConfig,
-} from '../modules/engine/engine.controller';
+} from '../modules/engine/engine.controller.js';
 
 function mockCtx() {
   return {

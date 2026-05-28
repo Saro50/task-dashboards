@@ -1,6 +1,6 @@
-import * as Opencode from '../engine/opencode';
-import * as EngineService from '../engine/engine.service';
-import { logger } from '../../logger';
+import * as Opencode from '../engine/opencode.js';
+import * as EngineService from '../engine/engine.service.js';
+import { logger } from '../../logger.js';
 
 const S = 'chat.service';
 
