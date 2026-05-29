@@ -1,4 +1,4 @@
-import { BaseEdge, getSmoothStepPath } from '@xyflow/react';
+import { BaseEdge, getBezierPath } from '@xyflow/react';
 import type { EdgeProps } from '@xyflow/react';
 
 export default function TaskEdge({
@@ -11,14 +11,13 @@ export default function TaskEdge({
   targetPosition,
   selected,
 }: EdgeProps) {
-  const [edgePath] = getSmoothStepPath({
+  const [edgePath] = getBezierPath({
     sourceX,
     sourceY,
     targetX,
     targetY,
     sourcePosition,
     targetPosition,
-    borderRadius: 8,
   });
 
   return (
