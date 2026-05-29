@@ -21,9 +21,20 @@ export function useTasks(projectId: string | undefined) {
     }
   }, [projectId]);
 
+  const refresh = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setError(null);
+      const data = await taskApi.list(projectId);
+      setTasks(data.tasks);
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }, [projectId]);
+
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
-  return { tasks, loading, error, refetch: fetchTasks };
+  return { tasks, loading, error, refetch: refresh };
 }

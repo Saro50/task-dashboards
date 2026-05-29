@@ -1,12 +1,13 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ReactFlow, Background, Controls, MiniMap, type Node, type Edge, type MiniMapNodeProps } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, type Node, type Edge, type MiniMapNodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { EngineStatus } from '@/components/Layout';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
 import { taskApi } from '@/api/task';
 import { useTasks } from '@/hooks/useTasks';
 import { useTopics } from '@/hooks/useTopics';
+import { useTaskExecution } from '@/hooks/useTaskExecution';
 import { useToast } from '@/components/Toast';
 import TaskNode from '@/components/TaskNode';
 import TaskEdge from '@/components/TaskEdge';
@@ -64,6 +65,11 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
+  const { executeChain, cancelExecution, executing } = useTaskExecution({
+    topicId,
+    onTaskUpdated: refetch,
+  });
+
   const topicName = useMemo(
     () => topics.find((t) => t.id === topicId)?.name ?? '',
     [topics, topicId]
@@ -79,36 +85,60 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     [filteredTasks, selectedTaskId]
   );
 
-  const { nodes: flowNodes, edges: flowEdges } = useMemo(() => {
-    const nodes: Node[] = filteredTasks.map((task) => ({
-      id: task.id,
-      type: 'task',
-      position: { x: 0, y: 0 },
-      data: {
-        title: task.title,
-        status: task.status,
-        description: task.description,
-        depCount: task.dependencies.filter((depId) => filteredTasks.some((t) => t.id === depId)).length,
-        selected: task.id === selectedTaskId,
-      },
-    }));
+  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
+  const [flowEdges, setFlowEdges] = useEdgesState<Edge>([]);
+  const prevTaskIds = useRef<string>('');
 
+  useEffect(() => {
+    const taskIds = filteredTasks.map((t) => t.id).sort().join(',');
+    const taskMap = new Map(filteredTasks.map((t) => [t.id, t]));
     const filteredTaskIds = new Set(filteredTasks.map((t) => t.id));
-    const edges: Edge[] = [];
-    for (const task of filteredTasks) {
-      for (const depId of task.dependencies) {
-        if (!filteredTaskIds.has(depId)) continue;
-        edges.push({
-          id: `${depId}-${task.id}`,
-          source: depId,
-          target: task.id,
-          type: 'task',
-        });
-      }
-    }
 
-    return applyDagreLayout(nodes, edges);
-  }, [filteredTasks, selectedTaskId]);
+    if (taskIds !== prevTaskIds.current) {
+      prevTaskIds.current = taskIds;
+
+      const nodes: Node[] = filteredTasks.map((task) => ({
+        id: task.id,
+        type: 'task',
+        position: { x: 0, y: 0 },
+        data: {
+          title: task.title,
+          status: task.status,
+          description: task.description,
+          depCount: task.dependencies.filter((depId) => filteredTaskIds.has(depId)).length,
+          selected: task.id === selectedTaskId,
+        },
+      }));
+
+      const edges: Edge[] = [];
+      for (const task of filteredTasks) {
+        for (const depId of task.dependencies) {
+          if (!filteredTaskIds.has(depId)) continue;
+          edges.push({ id: `${depId}-${task.id}`, source: depId, target: task.id, type: 'task' });
+        }
+      }
+
+      const { nodes: layoutedNodes } = applyDagreLayout(nodes, edges);
+      setFlowNodes(layoutedNodes);
+      setFlowEdges(edges);
+    } else {
+      setFlowNodes((prev) =>
+        prev.map((node) => {
+          const task = taskMap.get(node.id);
+          if (!task) return node;
+          const prevData = node.data as any;
+          const newSelected = task.id === selectedTaskId;
+          if (prevData.status === task.status && prevData.selected === newSelected) {
+            return node;
+          }
+          return {
+            ...node,
+            data: { ...node.data, status: task.status, selected: newSelected },
+          };
+        })
+      );
+    }
+  }, [filteredTasks, selectedTaskId, setFlowNodes, setFlowEdges]);
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     setSelectedTaskId(node.id);
@@ -162,6 +192,30 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           <span className="font-medium text-gray-800">{topicName || '任务图谱'}</span>
           <span className="text-xs text-gray-400 ml-1">{filteredTasks.length} 个任务</span>
         </div>
+        <div className="flex items-center gap-2">
+          {executing ? (
+            <button
+              onClick={cancelExecution}
+              className="inline-flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-red-200 bg-red-50"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+              </svg>
+              停止执行
+            </button>
+          ) : (
+            <button
+              onClick={() => executeChain(filteredTasks)}
+              disabled={!filteredTasks.some((t) => t.status === 'PENDING')}
+              className="inline-flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+              </svg>
+              执行任务链
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex-1 relative">
@@ -175,12 +229,14 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         <ReactFlow
           nodes={flowNodes}
           edges={flowEdges}
+          onNodesChange={onNodesChange}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
-          fitView
-          fitViewOptions={{ padding: 0.2 }}
+          onInit={(instance) => {
+            setTimeout(() => instance.fitView({ padding: 0.2 }), 50);
+          }}
           minZoom={0.3}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}

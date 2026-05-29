@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import type { TaskStatus } from '@/types/task';
@@ -24,7 +25,7 @@ interface TaskNodeData {
   selected?: boolean;
 }
 
-export default function TaskNode({ data, selected }: NodeProps) {
+export default memo(function TaskNode({ data, selected }: NodeProps) {
   const d = data as unknown as TaskNodeData;
   const cfg = statusColors[d.status];
 
@@ -54,4 +55,4 @@ export default function TaskNode({ data, selected }: NodeProps) {
       <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-gray-400 !border-0" />
     </div>
   );
-}
+});
