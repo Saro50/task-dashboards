@@ -1,6 +1,7 @@
 import { Context } from 'koa';
 import * as Service from './project.service.js';
 import { checkDir, ensureDir } from './project.fs.js';
+import { reqLogger } from '../../logger.js';
 
 export async function list(ctx: Context) {
   ctx.body = await Service.list();
@@ -113,6 +114,7 @@ export async function checkDirectory(ctx: Context) {
 }
 
 export async function ensureDirectory(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
   const { path: dirPath } = ctx.request.body as any;
   if (!dirPath || typeof dirPath !== 'string') {
     ctx.status = 400;
@@ -121,8 +123,10 @@ export async function ensureDirectory(ctx: Context) {
   }
   try {
     const result = ensureDir(dirPath);
+    log.info('project.ctrl', 'ensureDirectory', { path: dirPath });
     ctx.body = result;
   } catch (err: any) {
+    log.error('project.ctrl', 'ensureDirectory error', err.message);
     ctx.status = 500;
     ctx.body = { error: err.message || 'Failed to initialize directory' };
   }

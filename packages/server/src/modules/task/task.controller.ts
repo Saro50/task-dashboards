@@ -1,5 +1,6 @@
 import { Context } from 'koa';
 import * as Service from './task.service.js';
+import { reqLogger } from '../../logger.js';
 import type { ImportTaskPlanRequest } from './types.js';
 
 export async function list(ctx: Context) {
@@ -13,6 +14,7 @@ export async function listByTopic(ctx: Context) {
 }
 
 export async function importTaskPlan(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
   const body = ctx.request.body as ImportTaskPlanRequest;
   if (!body.tasks || !Array.isArray(body.tasks) || body.tasks.length === 0) {
     ctx.status = 400;
@@ -44,6 +46,7 @@ export async function importTaskPlan(ctx: Context) {
   }
 
   const result = await Service.importPlan(ctx.params.projectId, body);
+  log.info('task.ctrl', 'importTaskPlan', { count: result?.tasks?.length });
   ctx.status = 201;
   ctx.body = result;
 }

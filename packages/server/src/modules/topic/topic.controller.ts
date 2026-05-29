@@ -1,5 +1,6 @@
 import { Context } from 'koa';
 import * as Service from './topic.service.js';
+import { reqLogger } from '../../logger.js';
 
 export async function list(ctx: Context) {
   const [topics, dependencies, orphanTasks] = await Promise.all([
@@ -38,8 +39,10 @@ export async function update(ctx: Context) {
 }
 
 export async function remove(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
   try {
     await Service.remove(ctx.params.topicId);
+    log.info('topic.ctrl', 'remove', { topicId: ctx.params.topicId });
     ctx.status = 204;
   } catch (err: any) {
     if (err.code === 'P2025') {

@@ -20,6 +20,7 @@ function mockCtx(params = {}) {
     request: { body: {} } as any,
     body: null as any,
     status: 200 as number,
+    state: {},
   } as any;
 }
 

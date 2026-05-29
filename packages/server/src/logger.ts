@@ -39,8 +39,9 @@ function formatArgs(args: unknown[]): string {
   return args.map((a) => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
 }
 
-function write(level: string, scope: string, args: unknown[]) {
-  const line = `${timestamp()} [${level}] [${scope}] ${formatArgs(args)}\n`;
+function write(level: string, scope: string, args: unknown[], reqId?: string) {
+  const idPart = reqId ? ` [${reqId}]` : '';
+  const line = `${timestamp()} [${level}] [${scope}]${idPart} ${formatArgs(args)}\n`;
   try {
     getStream().write(line);
   } catch {}
@@ -59,3 +60,18 @@ export const logger = {
     write('ERROR', scope, args);
   },
 };
+
+export function reqLogger(reqId: string | undefined) {
+  const id = reqId || '-';
+  return {
+    info(scope: string, ...args: unknown[]) {
+      write('INFO', scope, args, id);
+    },
+    warn(scope: string, ...args: unknown[]) {
+      write('WARN', scope, args, id);
+    },
+    error(scope: string, ...args: unknown[]) {
+      write('ERROR', scope, args, id);
+    },
+  };
+}
