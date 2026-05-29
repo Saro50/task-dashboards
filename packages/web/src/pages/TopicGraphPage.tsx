@@ -2,8 +2,8 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ReactFlow, Background, Controls, MiniMap, type Node, type Edge, type MiniMapNodeProps } from '@xyflow/react';
 import type { EngineStatus } from '@/components/Layout';
-import { taskApi } from '@/api/task';
 import { useTopics } from '@/hooks/useTopics';
+import { useProject } from '@/hooks/useProject';
 import { useToast } from '@/components/Toast';
 import TopicNode from '@/components/TopicNode';
 import TaskNode from '@/components/TaskNode';
@@ -67,6 +67,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { topics, dependencies, orphanTasks, loading, error, refetch } = useTopics(projectId);
+  const { project } = useProject(projectId);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
@@ -127,44 +128,8 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
   const handleCreateTask = useCallback(() => {
     log.info(S, 'handleCreateTask');
-    chatRef.current?.openWithMessage('请帮我创建一组任务计划，用于实现一个功能模块');
+    chatRef.current?.openWithMessage('请帮我创建一个主题，讨论并规划一个功能模块的实现');
   }, []);
-
-  const handleDebugImport = useCallback(async () => {
-    log.info(S, 'handleDebugImport', { projectId });
-    try {
-      const resp = await taskApi.importPlan(projectId!, '用户认证模块', '实现完整的用户注册、登录、鉴权功能', [
-        { ref: 'task-1', title: '设计用户数据模型', description: '定义 User schema，包含邮箱、密码哈希、角色等字段', dependencies: [] },
-        { ref: 'task-2', title: '实现注册接口', description: 'POST /api/auth/register，含参数校验和密码加密', dependencies: ['task-1'] },
-        { ref: 'task-3', title: '实现登录接口', description: 'POST /api/auth/login，返回 JWT token', dependencies: ['task-1'] },
-        { ref: 'task-4', title: '实现 JWT 鉴权中间件', description: '校验 token，注入 user context', dependencies: ['task-3'] },
-        { ref: 'task-5', title: '编写集成测试', description: '覆盖注册、登录、鉴权完整流程', dependencies: ['task-2', 'task-3', 'task-4'] },
-      ]);
-      log.info(S, 'handleDebugImport response', resp);
-      showToast('已导入 5 个模拟任务', 'success');
-      refetch();
-    } catch (err: any) {
-      log.error(S, 'handleDebugImport error', err);
-      showToast(err.message, 'error');
-    }
-  }, [projectId, showToast, refetch]);
-
-  const handleDebugImport2 = useCallback(async () => {
-    log.info(S, 'handleDebugImport2', { projectId });
-    try {
-      const resp = await taskApi.importPlan(projectId!, '数据库优化', '优化查询性能和索引策略', [
-        { ref: 'task-1', title: '分析慢查询日志', description: '收集并分析 TOP 20 慢查询', dependencies: [] },
-        { ref: 'task-2', title: '添加数据库索引', description: '针对高频查询添加复合索引', dependencies: ['task-1'] },
-        { ref: 'task-3', title: '查询性能基准测试', description: '对比优化前后查询性能', dependencies: ['task-2'] },
-      ]);
-      log.info(S, 'handleDebugImport2 response', resp);
-      showToast('已导入 3 个模拟任务（第二个主题）', 'success');
-      refetch();
-    } catch (err: any) {
-      log.error(S, 'handleDebugImport2 error', err);
-      showToast(err.message, 'error');
-    }
-  }, [projectId, showToast, refetch]);
 
   if (loading) {
     return (
@@ -198,7 +163,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
           <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
           </svg>
-          <span className="font-medium text-gray-800">任务主题</span>
+          <span className="font-medium text-gray-800">{project?.name ?? '...'}</span>
           <span className="text-xs text-gray-400 ml-1">{topics.length} 个主题</span>
         </div>
       </div>
@@ -245,8 +210,8 @@ export default function TopicGraphPage({ engineStatus }: Props) {
               <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
               </svg>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">暂无任务</h3>
-              <p className="text-sm text-gray-600 mb-4">通过 AI 助手生成任务计划，或手动创建任务</p>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">暂无主题</h3>
+              <p className="text-sm text-gray-600 mb-4">通过 AI 助手讨论并生成任务计划，或手动创建主题</p>
               <div className="flex items-center gap-3 justify-center">
                 <button
                   onClick={handleCreateTask}
@@ -255,35 +220,14 @@ export default function TopicGraphPage({ engineStatus }: Props) {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
-                  新建任务
+                  讨论主题
                 </button>
-                <button
-                  onClick={handleDebugImport}
-                  className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer border border-gray-200"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-                  </svg>
-                  调试导入
-                </button>
-              </div>
+               </div>
             </div>
           </div>
         )}
 
-        {topics.length > 0 && (
-          <div className="absolute bottom-14 right-4 flex flex-col gap-2">
-            <button
-              onClick={handleDebugImport2}
-              className="inline-flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-gray-200 shadow-sm"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
-              </svg>
-              追加第二个主题
-            </button>
-          </div>
-        )}
+
       </div>
 
       <AIChatWidget ref={chatRef} engineStatus={engineStatus} />

@@ -7,6 +7,7 @@ import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
 import { taskApi } from '@/api/task';
 import { useTasks } from '@/hooks/useTasks';
 import { useTopics } from '@/hooks/useTopics';
+import { useProject } from '@/hooks/useProject';
 import { useTaskExecution } from '@/hooks/useTaskExecution';
 import { useToast } from '@/components/Toast';
 import TaskNode from '@/components/TaskNode';
@@ -65,6 +66,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const { showToast } = useToast();
   const { tasks, loading, error, refetch } = useTasks(projectId);
   const { topics } = useTopics(projectId);
+  const { project } = useProject(projectId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
@@ -215,7 +217,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
             onClick={() => { log.info(S, 'navigate to project', { projectId }); navigate(`/project/${projectId}`); }}
             className="text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
           >
-            任务主题
+            {project?.name ?? '...'}
           </button>
           <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
