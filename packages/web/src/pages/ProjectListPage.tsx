@@ -3,7 +3,6 @@ import type { EngineStatus } from '@/components/Layout';
 import ProjectList from '@/components/ProjectList';
 import ProjectModal from '@/components/ProjectModal';
 import EngineConfigModal from '@/components/EngineConfigModal';
-import AIChatWidget from '@/components/AIChatWidget';
 import { useToast } from '@/components/Toast';
 import { useProjects } from '@/hooks/useProjects';
 import { projectApi } from '@/api/project';
@@ -149,7 +148,6 @@ export default function ProjectListPage({ onOpenEngineConfig, engineStatus, onEn
         onSubmit={handleModalSubmit}
       />
 
-      <AIChatWidget engineStatus={engineStatus} />
     </>
   );
 }

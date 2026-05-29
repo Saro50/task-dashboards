@@ -211,7 +211,7 @@ function hasVisibleParts(msg: ChatMessage): boolean {
 }
 
 export interface AIChatWidgetHandle {
-  openWithMessage: (msg: string) => void;
+  openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
 export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus }, ref) {
@@ -226,15 +226,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [fabPos, setFabPos] = useState(() => ({ x: window.innerWidth - 72, y: window.innerHeight - 72 }));
   const dragging = useRef(false);
   const dragStart = useRef({ mx: 0, my: 0, fx: 0, fy: 0 });
-
-  useImperativeHandle(ref, () => ({
-    openWithMessage(msg: string) {
-      if (engineStatus === 'disconnected') return;
-      setOpen(true);
-      setInput(msg);
-      setTimeout(() => inputRef.current?.focus(), 100);
-    },
-  }), [engineStatus]);
 
   const {
     sessions,
@@ -255,13 +246,28 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     connectSSE,
   } = useChat(directory);
 
+  useImperativeHandle(ref, () => ({
+    async openWithMessage(msg: string, options?: { newSession?: boolean; agent?: string }) {
+      if (engineStatus === 'disconnected') return;
+      setOpen(true);
+      if (options?.agent) {
+        setSelectedAgent(options.agent);
+      }
+      if (options?.newSession) {
+        await createSession('新会话');
+      }
+      setInput(msg);
+      setTimeout(() => inputRef.current?.focus(), 100);
+    },
+  }), [engineStatus, createSession, setSelectedAgent]);
+
   const loadAgents = useCallback(async () => {
     try {
       const res = await fetch('/api/engine/agents');
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data?.data ?? [];
-        setAgents(list.filter((a: any) => a.mode === 'primary' && !a.hidden));
+        setAgents(list.filter((a: any) => a.mode === 'primary' && !a.hidden && !a.native));
       }
     } catch {}
   }, []);
@@ -441,6 +447,19 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
               </svg>
               <span className="font-semibold text-gray-800 text-sm">AI 助手</span>
+              <div className="flex items-center gap-1.5 ml-2">
+                {directory && (
+                  <span
+                    title={directory}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-500 border border-gray-200 max-w-[120px]"
+                  >
+                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                    </svg>
+                    <span className="truncate">{directory.split('/').pop()}</span>
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2">

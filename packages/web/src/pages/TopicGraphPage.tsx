@@ -128,7 +128,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
   const handleCreateTask = useCallback(() => {
     log.info(S, 'handleCreateTask');
-    chatRef.current?.openWithMessage('请帮我创建一个主题，讨论并规划一个功能模块的实现');
+    chatRef.current?.openWithMessage('请帮我创建一个主题，讨论并规划一个功能模块的实现', { newSession: true, agent: 'task-helper' });
   }, []);
 
   if (loading) {
@@ -230,7 +230,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
       </div>
 
-      <AIChatWidget ref={chatRef} engineStatus={engineStatus} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} />
     </div>
   );
 }

@@ -330,7 +330,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} engineStatus={engineStatus} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} />
     </div>
   );
 }

@@ -12,7 +12,7 @@ export function useChat(directory?: string) {
   const [streamingText, setStreamingText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<string>('build');
+  const [selectedAgent, setSelectedAgent] = useState<string>('task-helper');
   const eventSourceRef = useRef<EventSource | null>(null);
   const directoryRef = useRef(directory);
   directoryRef.current = directory;
