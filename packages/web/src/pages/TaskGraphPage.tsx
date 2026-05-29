@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ReactFlow, Background, Controls, MiniMap, type Node, type Edge } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, type Node, type Edge, type MiniMapNodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { EngineStatus } from '@/components/Layout';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
@@ -31,6 +31,26 @@ const miniMapNodeColor = (node: Node) => {
   if (node.type === 'task') return taskStatusColor[(node.data as any).status] || '#94a3b8';
   return '#94a3b8';
 };
+
+function MiniMapNode({ x, y, width, height, color }: MiniMapNodeProps) {
+  const scale = 2.5;
+  const sw = width * scale;
+  const sh = height * scale;
+  return (
+    <rect
+      x={x - (sw - width) / 2}
+      y={y - (sh - height) / 2}
+      width={sw}
+      height={sh}
+      rx={4}
+      ry={4}
+      fill={color}
+      stroke="#fff"
+      strokeWidth={1}
+      opacity={0.9}
+    />
+  );
+}
 
 const nodeTypes = { task: TaskNode };
 const edgeTypes = { task: TaskEdge };
@@ -172,7 +192,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           />
           <MiniMap
             nodeColor={miniMapNodeColor}
-            nodeStrokeWidth={3}
+            nodeComponent={MiniMapNode}
             zoomable
             pannable
             className="!bg-white !border-gray-200 !rounded-lg !shadow-sm"
