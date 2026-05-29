@@ -1,26 +1,28 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary-50: #ede9fe;
-  --color-primary-100: #ddd6fe;
-  --color-primary-200: #c4b5fd;
-  --color-primary-300: #a29bfe;
-  --color-primary-400: #8b7efa;
-  --color-primary-500: #6c5ce7;
-  --color-primary-600: #5a4bd1;
-  --color-primary-700: #4a3cb8;
-  --color-primary-800: #3d319a;
-  --color-primary-900: #332a7e;
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-900: #0c4a6e;
 
-  --color-dark-50: #32324f;
-  --color-dark-100: #2a2a45;
-  --color-dark-200: #22223a;
-  --color-dark-300: #1a1a2e;
-  --color-dark-400: #151525;
-  --color-dark-500: #0f0f1a;
+  --color-dark-50: #f9fafb;
+  --color-dark-100: #f3f4f6;
+  --color-dark-200: #e5e7eb;
+  --color-dark-300: #d1d5db;
+  --color-dark-400: #9ca3af;
+  --color-dark-500: #ffffff;
 }
 
 body {
+  background: #f9fafb;
+  color: #374151;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans SC", sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -32,14 +34,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #1a1a2e;
+  background: #f3f4f6;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3a3a56;
+  background: #d1d5db;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #6c6c84;
+  background: #9ca3af;
 }
 
 @keyframes slideInRight {
