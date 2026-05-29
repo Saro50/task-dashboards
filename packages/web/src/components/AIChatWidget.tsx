@@ -318,18 +318,21 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   }, [handleToggle]);
 
   const handleNewSession = useCallback(async () => {
+    log.info(S, 'handleNewSession');
     await createSession('新会话');
     setShowSessionList(false);
     inputRef.current?.focus();
   }, [createSession]);
 
   const handleSwitchSession = useCallback(async (sessionId: string) => {
+    log.info(S, 'handleSwitchSession', { sessionId });
     await switchSession(sessionId);
     setShowSessionList(false);
   }, [switchSession]);
 
   const handleDeleteSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
+    log.info(S, 'handleDeleteSession', { sessionId });
     await deleteSession(sessionId);
   }, [deleteSession]);
 
@@ -443,7 +446,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             <div className="flex items-center gap-2">
               <div className="relative">
                 <button
-                  onClick={() => { setShowSessionList((prev) => !prev); setShowAgentList(false); }}
+                  onClick={() => { log.info(S, 'toggle session list'); setShowSessionList((prev) => !prev); setShowAgentList(false); }}
                   className="text-xs text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer max-w-[160px]"
                 >
                   <span className="truncate">{currentSession?.title || '选择会话'}</span>
@@ -493,7 +496,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
               <div className="relative">
                 <button
-                  onClick={() => { setShowAgentList((prev) => !prev); setShowSessionList(false); }}
+                  onClick={() => { log.info(S, 'toggle agent list'); setShowAgentList((prev) => !prev); setShowSessionList(false); }}
                   className="text-xs text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
                 >
                   <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -508,7 +511,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                     {agents.map((agent) => (
                       <div
                         key={agent.name}
-                        onClick={() => { setSelectedAgent(agent.name); setShowAgentList(false); }}
+                        onClick={() => { log.info(S, 'select agent', { agent: agent.name }); setSelectedAgent(agent.name); setShowAgentList(false); }}
                         className={`flex flex-col px-3 py-2 text-xs cursor-pointer hover:bg-gray-50 transition-colors ${
                           agent.name === selectedAgent ? 'bg-sky-50 text-sky-700' : 'text-gray-700'
                         }`}
@@ -524,7 +527,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
               </div>
 
               <button
-                onClick={() => setOpen(false)}
+                onClick={() => { log.info(S, 'close chat panel'); setOpen(false); }}
                 className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-800 transition-colors cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

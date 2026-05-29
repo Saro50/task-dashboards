@@ -47,7 +47,6 @@ export function useChat(directory?: string) {
     const es = chatApi.subscribeEvents(
       (payload: SSEEventPayload) => {
         setIsConnected(true);
-        console.log('Received SSE event', payload);
         if (payload.type === 'message.updated') {
           const info = payload.properties?.info;
           if (info?.role === 'assistant' && !info?.finish) {
@@ -151,7 +150,7 @@ export function useChat(directory?: string) {
     try {
       log.info(S, 'loadSessions', { directory });
       const list = await chatApi.listSessions(directory);
-      log.info(S, 'loadSessions result', { count: list?.length });
+      log.info(S, 'loadSessions result', { sessions: list });
       setSessions(list);
       if (list.length > 0 && !currentSessionIdRef.current) {
         const latest = list.reduce((a, b) => (a.time.updated > b.time.updated ? a : b));
@@ -168,7 +167,7 @@ export function useChat(directory?: string) {
   const createSession = useCallback(async (title?: string) => {
     log.info(S, 'createSession', { directory, title });
     const session = await chatApi.createSession(directory, title);
-    log.info(S, 'createSession result', { id: session?.id, title: session?.title });
+    log.info(S, 'createSession result', session);
     setSessions((prev) => [session, ...prev]);
     setCurrentSessionId(session.id);
     setMessages([]);

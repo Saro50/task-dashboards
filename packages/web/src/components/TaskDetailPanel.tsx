@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
 import { taskApi } from '@/api/task';
+import { log } from '@/utils/log';
+
+const S = 'TaskDetailPanel';
 
 const statusOptions: { value: TaskStatus; label: string; color: string }[] = [
   { value: 'PENDING', label: '待办', color: 'bg-gray-400' },
@@ -14,9 +17,11 @@ interface Props {
   allTasks: Task[];
   onClose: () => void;
   onUpdated: () => void;
+  onHoverDep?: (depId: string | null, type: 'dep' | 'dependent') => void;
+  disabled?: boolean;
 }
 
-export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated }: Props) {
+export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, onHoverDep, disabled }: Props) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
   const [status, setStatus] = useState<TaskStatus>(task.status);
@@ -33,11 +38,14 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated }: 
       if (title !== task.title) input.title = title;
       if (description !== task.description) input.description = description;
       if (status !== task.status) input.status = status;
+      log.info(S, 'handleSave', { taskId: task.id, input });
       if (Object.keys(input).length > 0) {
-        await taskApi.update(task.id, input);
+        const resp = await taskApi.update(task.id, input);
+        log.info(S, 'handleSave response', resp);
       }
       onUpdated();
     } catch (err: any) {
+      log.error(S, 'handleSave error', err);
       alert(err.message);
     } finally {
       setSaving(false);
@@ -46,20 +54,55 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated }: 
 
   const handleDelete = useCallback(async () => {
     if (!confirm('确定删除此任务？')) return;
+    log.info(S, 'handleDelete', { taskId: task.id, title: task.title });
     try {
       await taskApi.remove(task.id);
       onUpdated();
       onClose();
     } catch (err: any) {
+      log.error(S, 'handleDelete error', err);
       alert(err.message);
     }
   }, [task.id, onUpdated, onClose]);
 
+  const [addingDepId, setAddingDepId] = useState<string | null>(null);
+
   const handleAddDep = useCallback(async (depId: string) => {
+    if (addingDepId) return;
+    log.info(S, 'handleAddDep', { taskId: task.id, depId });
+    setAddingDepId(depId);
     try {
-      await taskApi.addDependency(task.id, depId);
+      const resp = await taskApi.addDependency(task.id, depId);
+      log.info(S, 'handleAddDep response', resp);
       onUpdated();
     } catch (err: any) {
+      log.error(S, 'handleAddDep error', err);
+      if (!err.message?.includes('409')) {
+        alert(err.message);
+      }
+    } finally {
+      setAddingDepId(null);
+    }
+  }, [task.id, onUpdated, addingDepId]);
+
+  const handleRemoveDep = useCallback(async (depId: string) => {
+    log.info(S, 'handleRemoveDep', { taskId: task.id, depId });
+    try {
+      await taskApi.removeDependency(task.id, depId);
+      onUpdated();
+    } catch (err: any) {
+      log.error(S, 'handleRemoveDep error', err);
+      alert(err.message);
+    }
+  }, [task.id, onUpdated]);
+
+  const handleRemoveDependent = useCallback(async (dependentId: string) => {
+    log.info(S, 'handleRemoveDependent', { dependentId, taskId: task.id });
+    try {
+      await taskApi.removeDependency(dependentId, task.id);
+      onUpdated();
+    } catch (err: any) {
+      log.error(S, 'handleRemoveDependent error', err);
       alert(err.message);
     }
   }, [task.id, onUpdated]);
@@ -118,13 +161,28 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated }: 
             <p className="text-xs text-gray-400">无依赖</p>
           )}
           {deps.map((dep) => (
-            <div key={dep.id} className="flex items-center gap-2 py-1 text-xs text-gray-700">
-              <span className={`w-2 h-2 rounded-full ${
+            <div
+              key={dep.id}
+              className="group flex items-center gap-2 py-1 text-xs text-gray-700 hover:bg-sky-50 rounded px-1 -mx-1 transition-colors"
+              onMouseEnter={() => onHoverDep?.(dep.id, 'dep')}
+              onMouseLeave={() => onHoverDep?.(null, 'dep')}
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${
                 dep.status === 'PENDING' ? 'bg-gray-400' :
                 dep.status === 'IN_PROGRESS' ? 'bg-sky-500' :
                 dep.status === 'COMPLETED' ? 'bg-green-500' : 'bg-red-500'
               }`} />
-              <span className="truncate">{dep.title}</span>
+              <span className="truncate flex-1">{dep.title}</span>
+              {!disabled && (
+                <button
+                  onClick={() => { handleRemoveDep(dep.id); onHoverDep?.(null, 'dep'); }}
+                  className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -133,19 +191,34 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated }: 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-2">被依赖</label>
             {dependents.map((dep) => (
-              <div key={dep.id} className="flex items-center gap-2 py-1 text-xs text-gray-700">
-                <span className={`w-2 h-2 rounded-full ${
+              <div
+                key={dep.id}
+                className="group flex items-center gap-2 py-1 text-xs text-gray-700 hover:bg-sky-50 rounded px-1 -mx-1 transition-colors"
+                onMouseEnter={() => onHoverDep?.(dep.id, 'dependent')}
+                onMouseLeave={() => onHoverDep?.(null, 'dependent')}
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${
                   dep.status === 'PENDING' ? 'bg-gray-400' :
                   dep.status === 'IN_PROGRESS' ? 'bg-sky-500' :
                   dep.status === 'COMPLETED' ? 'bg-green-500' : 'bg-red-500'
                 }`} />
-                <span className="truncate">{dep.title}</span>
+                <span className="truncate flex-1">{dep.title}</span>
+                {!disabled && (
+                  <button
+                    onClick={() => { handleRemoveDependent(dep.id); onHoverDep?.(null, 'dependent'); }}
+                    className="shrink-0 w-4 h-4 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
               </div>
             ))}
           </div>
         )}
 
-        {availableDeps.length > 0 && (
+        {!disabled && availableDeps.length > 0 && (
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-2">添加依赖</label>
             <select

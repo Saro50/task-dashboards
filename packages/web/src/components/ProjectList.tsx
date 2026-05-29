@@ -1,5 +1,6 @@
 import type { Project, ProjectStatus } from '@/types/project';
 import ProjectCard from './ProjectCard';
+import { log } from '@/utils/log';
 
 interface Props {
   projects: Project[];
@@ -26,7 +27,7 @@ export default function ProjectList({ projects, loading, error, onCreate, onEdit
       <div className="text-center py-20">
         <p className="text-red-500 text-sm mb-4">加载失败：{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => { log.info('ProjectList', 'retry clicked'); window.location.reload(); }}
           className="text-sm text-sky-500 hover:text-sky-600 cursor-pointer"
         >
           重试

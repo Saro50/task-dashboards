@@ -1,6 +1,9 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { engineApi } from '@/api/engine';
 import type { OpencodeHealth, OpencodeAgent, OpencodeProvidersResponse } from '@/types/engine';
+import { log } from '@/utils/log';
+
+const S = 'EngineConfigModal';
 
 interface Props {
   open: boolean;
@@ -34,6 +37,7 @@ export default function EngineConfigModal({ open, onClose }: Props) {
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
+    log.info(S, 'handleSave', { baseUrl: baseUrl.trim() });
     if (!baseUrl.trim()) {
       setError('请输入 Opencode Server 地址');
       return;
@@ -57,6 +61,7 @@ export default function EngineConfigModal({ open, onClose }: Props) {
   };
 
   const handleTest = async () => {
+    log.info(S, 'handleTest', { baseUrl: baseUrl.trim() });
     setTesting(true);
     setHealthResult(null);
     setAgents(null);
@@ -76,7 +81,11 @@ export default function EngineConfigModal({ open, onClose }: Props) {
       if (agentList.status === 'fulfilled') setAgents(agentList.value);
       if (providerList.status === 'fulfilled') setProviders(providerList.value);
       if (!anySuccess) {
-        setTestError(health.reason?.message || agentList.reason?.message || providerList.reason?.message || '连接失败');
+        const errMsg = health.reason?.message || agentList.reason?.message || providerList.reason?.message || '连接失败';
+        log.error(S, 'handleTest all failed', { health: health.status, agents: agentList.status, providers: providerList.status, error: errMsg });
+        setTestError(errMsg);
+      } else {
+        log.info(S, 'handleTest success', { health: health.status === 'fulfilled' ? health.value : null, agents: agentList.status === 'fulfilled' ? agentList.value?.length : null, providers: providerList.status === 'fulfilled' ? providerList.value : null });
       }
     } catch (err: any) {
       setTestError(err.message || '测试连接失败');

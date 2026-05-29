@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, type Node, type Edge, type MiniMapNodeProps } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, type Node, type Edge, type MiniMapNodeProps, type Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { EngineStatus } from '@/components/Layout';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
@@ -16,6 +16,9 @@ import TaskStatusBar from '@/components/TaskStatusBar';
 import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
 import { applyDagreLayout } from '@/utils/layout';
+import { log } from '@/utils/log';
+
+const S = 'TaskGraphPage';
 
 interface Props {
   engineStatus: EngineStatus;
@@ -63,6 +66,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const { tasks, loading, error, refetch } = useTasks(projectId);
   const { topics } = useTopics(projectId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
   const { executeChain, cancelExecution, executing, maxConcurrency, setMaxConcurrency } = useTaskExecution({
@@ -87,15 +91,18 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
   const [flowEdges, setFlowEdges] = useEdgesState<Edge>([]);
-  const prevTaskIds = useRef<string>('');
+  const prevTaskKey = useRef<string>('');
 
   useEffect(() => {
-    const taskIds = filteredTasks.map((t) => t.id).sort().join(',');
     const taskMap = new Map(filteredTasks.map((t) => [t.id, t]));
     const filteredTaskIds = new Set(filteredTasks.map((t) => t.id));
+    const taskKey = filteredTasks
+      .map((t) => `${t.id}:${t.status}:${t.dependencies.filter((d) => filteredTaskIds.has(d)).sort().join(',')}`)
+      .sort()
+      .join('|');
 
-    if (taskIds !== prevTaskIds.current) {
-      prevTaskIds.current = taskIds;
+    if (taskKey !== prevTaskKey.current) {
+      prevTaskKey.current = taskKey;
 
       const nodes: Node[] = filteredTasks.map((task) => ({
         id: task.id,
@@ -107,6 +114,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           description: task.description,
           depCount: task.dependencies.filter((depId) => filteredTaskIds.has(depId)).length,
           selected: task.id === selectedTaskId,
+          disabled: executing,
         },
       }));
 
@@ -114,39 +122,62 @@ export default function TaskGraphPage({ engineStatus }: Props) {
       for (const task of filteredTasks) {
         for (const depId of task.dependencies) {
           if (!filteredTaskIds.has(depId)) continue;
-          edges.push({ id: `${depId}-${task.id}`, source: depId, target: task.id, type: 'task' });
+          edges.push({ id: `${depId}-${task.id}`, source: depId, target: task.id, type: 'task', data: { onDeleted: refetch, hovered: false, disabled: false } });
         }
       }
 
       const { nodes: layoutedNodes } = applyDagreLayout(nodes, edges);
       setFlowNodes(layoutedNodes);
       setFlowEdges(edges);
-    } else {
-      setFlowNodes((prev) =>
-        prev.map((node) => {
-          const task = taskMap.get(node.id);
-          if (!task) return node;
-          const prevData = node.data as any;
-          const newSelected = task.id === selectedTaskId;
-          if (prevData.status === task.status && prevData.selected === newSelected) {
-            return node;
-          }
-          return {
-            ...node,
-            data: { ...node.data, status: task.status, selected: newSelected },
-          };
-        })
-      );
     }
   }, [filteredTasks, selectedTaskId, setFlowNodes, setFlowEdges]);
 
+  useEffect(() => {
+    setFlowEdges((prev) =>
+      prev.map((edge) => {
+        const isHovered = edge.id === hoveredEdgeId;
+        const prevHovered = (edge.data as any)?.hovered;
+        const prevDisabled = (edge.data as any)?.disabled;
+        if (isHovered === prevHovered && executing === prevDisabled) return edge;
+        return { ...edge, data: { ...edge.data, hovered: isHovered, disabled: executing } };
+      })
+    );
+  }, [hoveredEdgeId, executing, setFlowEdges]);
+
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    log.info(S, 'onNodeClick', { nodeId: node.id });
     setSelectedTaskId(node.id);
   }, []);
 
   const onPaneClick = useCallback(() => {
     setSelectedTaskId(null);
   }, []);
+
+  const handleHoverDep = useCallback((depId: string | null, type: 'dep' | 'dependent') => {
+    if (!depId || !selectedTaskId) {
+      setHoveredEdgeId(null);
+      return;
+    }
+    const edgeId = type === 'dep' ? `${depId}-${selectedTaskId}` : `${selectedTaskId}-${depId}`;
+    setHoveredEdgeId(edgeId);
+  }, [selectedTaskId]);
+
+  const onConnect = useCallback(async (connection: Connection) => {
+    if (executing) return;
+    if (!connection.source || !connection.target) return;
+    if (connection.source === connection.target) return;
+    log.info(S, 'onConnect', { source: connection.source, target: connection.target });
+    try {
+      const resp = await taskApi.addDependency(connection.target, connection.source);
+      log.info(S, 'onConnect response', resp);
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'onConnect error', err);
+      if (!err.message?.includes('409')) {
+        showToast(err.message, 'error');
+      }
+    }
+  }, [refetch, showToast, executing]);
 
   if (loading) {
     return (
@@ -172,7 +203,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
       <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-1.5 text-sm">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => { log.info(S, 'navigate to /'); navigate('/'); }}
             className="text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
           >
             项目管理
@@ -181,7 +212,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
           </svg>
           <button
-            onClick={() => navigate(`/project/${projectId}`)}
+            onClick={() => { log.info(S, 'navigate to project', { projectId }); navigate(`/project/${projectId}`); }}
             className="text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
           >
             任务主题
@@ -197,7 +228,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
             <span className="text-xs text-gray-500">并发</span>
             <select
               value={maxConcurrency}
-              onChange={(e) => setMaxConcurrency(Number(e.target.value))}
+              onChange={(e) => { const v = Number(e.target.value); log.info(S, 'setMaxConcurrency', { value: v }); setMaxConcurrency(v); }}
               disabled={executing}
               className="text-xs border border-gray-200 rounded-md px-1.5 py-1 bg-white text-gray-700 outline-none focus:border-sky-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
@@ -247,6 +278,9 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           edgeTypes={edgeTypes}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
+          onEdgeMouseEnter={(_: React.MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id)}
+          onEdgeMouseLeave={() => setHoveredEdgeId(null)}
+          onConnect={onConnect}
           onInit={(instance) => {
             setTimeout(() => instance.fitView({ padding: 0.2 }), 50);
           }}
@@ -289,6 +323,8 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           allTasks={filteredTasks}
           onClose={() => setSelectedTaskId(null)}
           onUpdated={refetch}
+          onHoverDep={handleHoverDep}
+          disabled={executing}
         />
       )}
 

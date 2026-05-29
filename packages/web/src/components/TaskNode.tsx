@@ -23,18 +23,20 @@ interface TaskNodeData {
   description: string;
   depCount: number;
   selected?: boolean;
+  disabled?: boolean;
 }
 
 export default memo(function TaskNode({ data, selected }: NodeProps) {
   const d = data as unknown as TaskNodeData;
   const cfg = statusColors[d.status];
+  const connectable = !d.disabled;
 
   return (
     <div
-      className={`${cfg.bg} border ${cfg.border} rounded-lg shadow-sm w-60 overflow-hidden transition-shadow ${selected ? 'shadow-md ring-2 ring-sky-400' : 'hover:shadow-md'}`}
+      className={`${cfg.bg} border ${cfg.border} rounded-lg shadow-sm w-60 overflow-hidden transition-shadow group ${selected ? 'shadow-md ring-2 ring-sky-400' : 'hover:shadow-md'}`}
     >
       <div className={`h-1 ${cfg.bar}`} />
-      <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-gray-400 !border-0" />
+      <Handle type="target" position={Position.Top} isConnectable={connectable} className="!w-2.5 !h-2.5 !bg-gray-400 !border-2 !border-white hover:!bg-sky-500 hover:!w-3.5 hover:!h-3.5 !transition-all !-top-1.5" />
       <div className="px-3 py-2.5">
         <div className="flex items-center justify-between mb-1">
           <h4 className="text-sm font-medium text-gray-800 truncate flex-1 mr-2">{d.title}</h4>
@@ -52,7 +54,7 @@ export default memo(function TaskNode({ data, selected }: NodeProps) {
           </div>
         )}
       </div>
-      <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-gray-400 !border-0" />
+      <Handle type="source" position={Position.Bottom} isConnectable={connectable} className="!w-2.5 !h-2.5 !bg-gray-400 !border-2 !border-white hover:!bg-sky-500 hover:!w-3.5 hover:!h-3.5 !transition-all !-bottom-1.5" />
     </div>
   );
 });

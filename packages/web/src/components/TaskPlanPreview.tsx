@@ -2,6 +2,9 @@ import { useState, useCallback } from 'react';
 import type { TaskPlan, TaskPlanItem } from '@/types/task';
 import { taskApi } from '@/api/task';
 import { useToast } from './Toast';
+import { log } from '@/utils/log';
+
+const S = 'TaskPlanPreview';
 
 interface Props {
   plan: TaskPlan;
@@ -20,12 +23,15 @@ export default function TaskPlanPreview({ plan }: Props) {
       showToast('请先选择项目', 'error');
       return;
     }
+    log.info(S, 'handleImport', { projectId: selectedProject, topic: plan.topic, taskCount: plan.tasks.length });
     setImporting(true);
     try {
       const result = await taskApi.importPlan(selectedProject, plan.topic, plan.summary, plan.tasks);
+      log.info(S, 'handleImport response', result);
       showToast(`成功导入 ${result.imported} 个任务，${result.dependencies} 个依赖关系`, 'success');
       setImported(true);
     } catch (err: any) {
+      log.error(S, 'handleImport error', err);
       showToast(err.message, 'error');
     } finally {
       setImporting(false);
@@ -43,6 +49,7 @@ export default function TaskPlanPreview({ plan }: Props) {
   }, []);
 
   const handleOpenPicker = useCallback(() => {
+    log.info(S, 'handleOpenPicker');
     loadProjects();
     setShowProjectPicker(true);
   }, [loadProjects]);

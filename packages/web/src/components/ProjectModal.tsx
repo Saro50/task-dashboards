@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import type { Project } from '@/types/project';
 import { projectApi, type DirCheckResult } from '@/api/project';
+import { log } from '@/utils/log';
 
 interface Props {
   open: boolean;
@@ -72,6 +73,7 @@ export default function ProjectModal({ open, project, onClose, onSubmit }: Props
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    log.info('ProjectModal', 'submit', { mode: project ? 'edit' : 'create', name: name.trim(), path: path.trim() });
     if (!name.trim()) {
       setError('请输入项目名称');
       return;

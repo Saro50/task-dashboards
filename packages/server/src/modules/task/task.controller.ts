@@ -117,7 +117,7 @@ export async function addDependency(ctx: Context) {
 
 export async function removeDependency(ctx: Context) {
   try {
-    await Service.removeDependency(ctx.params.depId);
+    await Service.removeDependency(ctx.params.taskId, ctx.params.depId);
     ctx.status = 204;
   } catch (err: any) {
     if (err.code === 'P2025') {

@@ -9,6 +9,9 @@ import { useProjects } from '@/hooks/useProjects';
 import { projectApi } from '@/api/project';
 import { engineApi } from '@/api/engine';
 import type { Project, ProjectStatus } from '@/types/project';
+import { log } from '@/utils/log';
+
+const S = 'ProjectListPage';
 
 interface Props {
   onOpenEngineConfig: () => void;
@@ -24,29 +27,35 @@ export default function ProjectListPage({ onOpenEngineConfig, engineStatus, onEn
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   const handleCreate = useCallback(() => {
+    log.info(S, 'handleCreate');
     setEditingProject(null);
     setModalOpen(true);
   }, []);
 
   const handleEdit = useCallback((project: Project) => {
+    log.info(S, 'handleEdit', { projectId: project.id, name: project.name });
     setEditingProject(project);
     setModalOpen(true);
   }, []);
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('确定删除此项目？删除后不可恢复。')) return;
+    log.info(S, 'handleDelete', { projectId: id });
     try {
       await projectApi.remove(id);
       showToast('项目已删除', 'success');
       refetch();
     } catch (err: any) {
+      log.error(S, 'handleDelete error', err);
       showToast(err.message, 'error');
     }
   }, [showToast, refetch]);
 
   const handleStatusChange = useCallback(async (id: string, status: ProjectStatus) => {
+    log.info(S, 'handleStatusChange', { projectId: id, status });
     try {
-      await projectApi.updateStatus(id, status);
+      const resp = await projectApi.updateStatus(id, status);
+      log.info(S, 'handleStatusChange response', resp);
       const statusLabels: Record<ProjectStatus, string> = {
         ACTIVE: '活跃',
         ARCHIVED: '已归档',
@@ -55,33 +64,45 @@ export default function ProjectListPage({ onOpenEngineConfig, engineStatus, onEn
       showToast(`项目状态已更新为「${statusLabels[status]}」`, 'success');
       refetch();
     } catch (err: any) {
+      log.error(S, 'handleStatusChange error', err);
       showToast(err.message, 'error');
     }
   }, [showToast, refetch]);
 
   const handleCardClick = useCallback(async (project: Project) => {
+    log.info(S, 'handleCardClick', { projectId: project.id, name: project.name });
     try {
-      const updated = await projectApi.healthCheck(project.id);
-      if (updated.status === 'ERROR') {
+      const resp = await projectApi.healthCheck(project.id);
+      log.info(S, 'handleCardClick healthCheck response', resp);
+      if (resp.status === 'ERROR') {
         showToast('项目目录不存在，已标记为异常', 'error');
         refetch();
       }
     } catch (err: any) {
+      log.error(S, 'handleCardClick error', err);
       showToast(err.message, 'error');
     }
   }, [showToast, refetch]);
 
   const handleModalSubmit = useCallback(async (data: { name: string; description: string; path: string }) => {
-    if (editingProject) {
-      await projectApi.update(editingProject.id, data);
-      showToast('项目已更新', 'success');
-    } else {
-      await projectApi.create(data);
-      showToast('项目创建成功', 'success');
+    log.info(S, 'handleModalSubmit', { mode: editingProject ? 'edit' : 'create', editingProjectId: editingProject?.id, data });
+    try {
+      if (editingProject) {
+        const resp = await projectApi.update(editingProject.id, data);
+        log.info(S, 'handleModalSubmit update response', resp);
+        showToast('项目已更新', 'success');
+      } else {
+        const resp = await projectApi.create(data);
+        log.info(S, 'handleModalSubmit create response', resp);
+        showToast('项目创建成功', 'success');
+      }
+      setModalOpen(false);
+      setEditingProject(null);
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'handleModalSubmit error', err);
+      showToast(err.message, 'error');
     }
-    setModalOpen(false);
-    setEditingProject(null);
-    refetch();
   }, [editingProject, showToast, refetch]);
 
   return (

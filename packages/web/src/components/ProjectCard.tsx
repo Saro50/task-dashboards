@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router';
 import type { Project, ProjectStatus } from '@/types/project';
+import { log } from '@/utils/log';
 
 const statusConfig: Record<ProjectStatus, { label: string; bg: string; text: string }> = {
   ACTIVE: { label: '活跃', bg: 'bg-sky-50', text: 'text-sky-600' },
@@ -41,7 +42,7 @@ export default function ProjectCard({ project, onEdit, onDelete, onStatusChange,
 
   return (
     <div
-      onClick={() => { onClick(project); navigate(`/project/${project.id}`); }}
+      onClick={() => { log.info('ProjectCard', 'card click', { projectId: project.id, name: project.name }); onClick(project); navigate(`/project/${project.id}`); }}
       className={`bg-white border rounded-xl p-5 transition-all group flex flex-col cursor-pointer shadow-sm ${
         isError
           ? 'border-red-300 hover:border-red-400'
@@ -78,21 +79,21 @@ export default function ProjectCard({ project, onEdit, onDelete, onStatusChange,
           {!isError && (
             <>
               <button
-                onClick={(e) => { e.stopPropagation(); onEdit(project); }}
+                onClick={(e) => { e.stopPropagation(); log.info('ProjectCard', 'edit clicked', { projectId: project.id }); onEdit(project); }}
                 className="text-xs text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
               >
                 编辑
               </button>
               {project.status === 'ACTIVE' ? (
                 <button
-                  onClick={(e) => { e.stopPropagation(); onStatusChange(project.id, 'ARCHIVED'); }}
+                  onClick={(e) => { e.stopPropagation(); log.info('ProjectCard', 'archive clicked', { projectId: project.id }); onStatusChange(project.id, 'ARCHIVED'); }}
                   className="text-xs text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                 >
                   归档
                 </button>
               ) : (
                 <button
-                  onClick={(e) => { e.stopPropagation(); onStatusChange(project.id, 'ACTIVE'); }}
+                  onClick={(e) => { e.stopPropagation(); log.info('ProjectCard', 'restore clicked', { projectId: project.id }); onStatusChange(project.id, 'ACTIVE'); }}
                   className="text-xs text-gray-600 hover:text-sky-600 bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-lg transition-colors cursor-pointer"
                 >
                   恢复
@@ -101,7 +102,7 @@ export default function ProjectCard({ project, onEdit, onDelete, onStatusChange,
             </>
           )}
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(project.id); }}
+            onClick={(e) => { e.stopPropagation(); log.info('ProjectCard', 'delete clicked', { projectId: project.id }); onDelete(project.id); }}
             className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
             title="删除"
           >

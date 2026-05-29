@@ -151,6 +151,10 @@ export async function addDependency(taskId: string, dependsOnId: string) {
   });
 }
 
-export async function removeDependency(id: string) {
-  return prisma.taskDependency.delete({ where: { id } });
+export async function removeDependency(taskId: string, dependsOnId: string) {
+  const dep = await prisma.taskDependency.findFirst({
+    where: { taskId, dependsOnId },
+  });
+  if (!dep) throw { code: 'P2025' };
+  return prisma.taskDependency.delete({ where: { id: dep.id } });
 }

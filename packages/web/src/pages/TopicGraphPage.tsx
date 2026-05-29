@@ -1,9 +1,7 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { ReactFlow, Background, Controls, MiniMap, type Node, type Edge, type MiniMapNodeProps } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
 import type { EngineStatus } from '@/components/Layout';
-import type { Task } from '@/types/task';
 import { taskApi } from '@/api/task';
 import { useTopics } from '@/hooks/useTopics';
 import { useToast } from '@/components/Toast';
@@ -13,6 +11,9 @@ import TaskEdge from '@/components/TaskEdge';
 import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
 import { applyDagreLayout } from '@/utils/layout';
+import { log } from '@/utils/log';
+
+const S = 'TopicGraphPage';
 
 interface Props {
   engineStatus: EngineStatus;
@@ -66,9 +67,10 @@ export default function TopicGraphPage({ engineStatus }: Props) {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const { topics, dependencies, orphanTasks, loading, error, refetch } = useTopics(projectId);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
-  const { nodes: flowNodes, edges: flowEdges } = useMemo(() => {
+  const { nodes: flowNodes, edges: baseEdges } = useMemo(() => {
     const nodes: Node[] = [];
 
     for (const topic of topics) {
@@ -105,47 +107,61 @@ export default function TopicGraphPage({ engineStatus }: Props) {
       source: dep.sourceId,
       target: dep.targetId,
       type: 'task',
+      data: { onDeleted: refetch },
     }));
 
     return applyDagreLayout(nodes, edges);
-  }, [topics, dependencies, orphanTasks]);
+  }, [topics, dependencies, orphanTasks, refetch]);
+
+  const flowEdges = useMemo(
+    () => baseEdges.map((e) => ({ ...e, data: { ...e.data, hovered: e.id === hoveredEdgeId } })),
+    [baseEdges, hoveredEdgeId]
+  );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    log.info(S, 'onNodeClick', { nodeId: node.id, type: node.type });
     if (node.type === 'topic') {
       navigate(`/project/${projectId}/topic/${node.id}`);
     }
   }, [navigate, projectId]);
 
   const handleCreateTask = useCallback(() => {
+    log.info(S, 'handleCreateTask');
     chatRef.current?.openWithMessage('请帮我创建一组任务计划，用于实现一个功能模块');
   }, []);
 
   const handleDebugImport = useCallback(async () => {
+    log.info(S, 'handleDebugImport', { projectId });
     try {
-      await taskApi.importPlan(projectId!, '用户认证模块', '实现完整的用户注册、登录、鉴权功能', [
+      const resp = await taskApi.importPlan(projectId!, '用户认证模块', '实现完整的用户注册、登录、鉴权功能', [
         { ref: 'task-1', title: '设计用户数据模型', description: '定义 User schema，包含邮箱、密码哈希、角色等字段', dependencies: [] },
         { ref: 'task-2', title: '实现注册接口', description: 'POST /api/auth/register，含参数校验和密码加密', dependencies: ['task-1'] },
         { ref: 'task-3', title: '实现登录接口', description: 'POST /api/auth/login，返回 JWT token', dependencies: ['task-1'] },
         { ref: 'task-4', title: '实现 JWT 鉴权中间件', description: '校验 token，注入 user context', dependencies: ['task-3'] },
         { ref: 'task-5', title: '编写集成测试', description: '覆盖注册、登录、鉴权完整流程', dependencies: ['task-2', 'task-3', 'task-4'] },
       ]);
+      log.info(S, 'handleDebugImport response', resp);
       showToast('已导入 5 个模拟任务', 'success');
       refetch();
     } catch (err: any) {
+      log.error(S, 'handleDebugImport error', err);
       showToast(err.message, 'error');
     }
   }, [projectId, showToast, refetch]);
 
   const handleDebugImport2 = useCallback(async () => {
+    log.info(S, 'handleDebugImport2', { projectId });
     try {
-      await taskApi.importPlan(projectId!, '数据库优化', '优化查询性能和索引策略', [
+      const resp = await taskApi.importPlan(projectId!, '数据库优化', '优化查询性能和索引策略', [
         { ref: 'task-1', title: '分析慢查询日志', description: '收集并分析 TOP 20 慢查询', dependencies: [] },
         { ref: 'task-2', title: '添加数据库索引', description: '针对高频查询添加复合索引', dependencies: ['task-1'] },
         { ref: 'task-3', title: '查询性能基准测试', description: '对比优化前后查询性能', dependencies: ['task-2'] },
       ]);
+      log.info(S, 'handleDebugImport2 response', resp);
       showToast('已导入 3 个模拟任务（第二个主题）', 'success');
       refetch();
     } catch (err: any) {
+      log.error(S, 'handleDebugImport2 error', err);
       showToast(err.message, 'error');
     }
   }, [projectId, showToast, refetch]);
@@ -174,7 +190,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
       <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
         <div className="flex items-center gap-1.5 text-sm">
           <button
-            onClick={() => navigate('/')}
+            onClick={() => { log.info(S, 'navigate to /'); navigate('/'); }}
             className="text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
           >
             项目管理
@@ -201,6 +217,8 @@ export default function TopicGraphPage({ engineStatus }: Props) {
           nodeTypes={topicNodeTypes}
           edgeTypes={edgeTypes}
           onNodeClick={onNodeClick}
+          onEdgeMouseEnter={(_: React.MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id)}
+          onEdgeMouseLeave={() => setHoveredEdgeId(null)}
           fitView
           fitViewOptions={{ padding: 0.2 }}
           minZoom={0.3}

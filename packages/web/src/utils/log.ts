@@ -1,10 +1,12 @@
 const BATCH_INTERVAL = 2000;
 const MAX_BATCH = 20;
 const LOG_ENDPOINT = '/api/chat/log';
+const MAX_HISTORY = 500;
 
 type LogLevel = 'info' | 'warn' | 'error';
 
 interface LogEntry {
+  timestamp: number;
   level: LogLevel;
   scope: string;
   message: string;
@@ -12,6 +14,7 @@ interface LogEntry {
 }
 
 let queue: LogEntry[] = [];
+let history: LogEntry[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
 function flush() {
@@ -35,8 +38,12 @@ function schedule() {
 }
 
 function push(level: LogLevel, scope: string, message: string, data?: unknown) {
-  const entry: LogEntry = { level, scope, message, data };
+  const entry: LogEntry = { timestamp: Date.now(), level, scope, message, data };
   queue.push(entry);
+  history.push(entry);
+  if (history.length > MAX_HISTORY) {
+    history = history.slice(-MAX_HISTORY);
+  }
 
   const fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
   fn(`[${scope}]`, message, data ?? '');
@@ -52,6 +59,12 @@ function push(level: LogLevel, scope: string, message: string, data?: unknown) {
   }
 }
 
+function formatEntry(entry: LogEntry): string {
+  const ts = new Date(entry.timestamp).toISOString();
+  const dataStr = entry.data != null ? ' ' + JSON.stringify(entry.data) : '';
+  return `[${ts}] [${entry.level.toUpperCase()}] [${entry.scope}] ${entry.message}${dataStr}`;
+}
+
 export const log = {
   info(scope: string, message: string, data?: unknown) {
     push('info', scope, message, data);
@@ -61,5 +74,11 @@ export const log = {
   },
   error(scope: string, message: string, data?: unknown) {
     push('error', scope, message, data);
+  },
+  getHistory(): LogEntry[] {
+    return history.slice();
+  },
+  getHistoryText(): string {
+    return history.map(formatEntry).join('\n');
   },
 };
