@@ -65,7 +65,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
-  const { executeChain, cancelExecution, executing } = useTaskExecution({
+  const { executeChain, cancelExecution, executing, maxConcurrency, setMaxConcurrency } = useTaskExecution({
     topicId,
     onTaskUpdated: refetch,
   });
@@ -193,6 +193,19 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           <span className="text-xs text-gray-400 ml-1">{filteredTasks.length} 个任务</span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">并发</span>
+            <select
+              value={maxConcurrency}
+              onChange={(e) => setMaxConcurrency(Number(e.target.value))}
+              disabled={executing}
+              className="text-xs border border-gray-200 rounded-md px-1.5 py-1 bg-white text-gray-700 outline-none focus:border-sky-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
           {executing ? (
             <button
               onClick={cancelExecution}

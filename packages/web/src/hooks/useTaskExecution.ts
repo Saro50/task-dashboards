@@ -42,81 +42,92 @@ interface UseTaskExecutionOptions {
 export function useTaskExecution({ topicId, onTaskUpdated }: UseTaskExecutionOptions) {
   const { showToast } = useToast();
   const [executing, setExecuting] = useState(false);
+  const [maxConcurrency, setMaxConcurrency] = useState(2);
   const cancelled = useRef(false);
+  const runningCount = useRef(0);
+  const starting = useRef(false);
 
-  const executeNext = useCallback(
-    async (tasks: Task[]) => {
-      if (cancelled.current) {
-        setExecuting(false);
-        return;
-      }
+  const tryStartMore = useCallback(async () => {
+    if (cancelled.current) {
+      if (runningCount.current === 0) setExecuting(false);
+      return;
+    }
+    if (starting.current) return;
+    if (!topicId) return;
 
-      const next = getNextTasks(tasks);
-      if (next.length === 0) {
+    starting.current = true;
+    try {
+      const { tasks } = await taskApi.listByTopic(topicId);
+      const available = getNextTasks(tasks);
+      const slots = maxConcurrency - runningCount.current;
+      const toStart = available.slice(0, Math.max(0, slots));
+
+      if (toStart.length === 0 && runningCount.current === 0) {
         setExecuting(false);
         const hasPending = tasks.some((t) => t.status === 'PENDING');
         showToast(hasPending ? '存在阻塞任务，无法继续' : '所有任务已执行完毕', 'info');
         return;
       }
 
-      const task = next[0];
+      for (const task of toStart) {
+        if (cancelled.current) break;
 
-      await taskApi.update(task.id, { status: 'IN_PROGRESS' });
-      onTaskUpdated();
-      showToast(`正在执行：${task.title}`, 'success');
-
-      const deps = task.dependencies.map((id) => tasks.find((t) => t.id === id)).filter(Boolean);
-      const prompt = buildPrompt(task, deps);
-      console.log('[useTaskExecution] executeNext', {
-        taskId: task.id,
-        title: task.title,
-        agent: 'build',
-        prompt,
-        dependencyCount: deps.length,
-        remainingPending: tasks.filter((t) => t.status === 'PENDING').length - 1,
-      });
-
-      setTimeout(async () => {
-        if (cancelled.current) {
-          setExecuting(false);
-          return;
-        }
-
-        await taskApi.update(task.id, { status: 'COMPLETED' });
+        runningCount.current++;
+        await taskApi.update(task.id, { status: 'IN_PROGRESS' });
         onTaskUpdated();
-        showToast(`已完成：${task.title}`, 'success');
+        showToast(`正在执行：${task.title}`, 'success');
 
-        if (!topicId) {
-          setExecuting(false);
-          return;
-        }
+        const deps = task.dependencies.map((id) => tasks.find((t) => t.id === id)).filter(Boolean);
+        const prompt = buildPrompt(task, deps);
+        console.log('[useTaskExecution] start', {
+          taskId: task.id,
+          title: task.title,
+          agent: 'build',
+          prompt,
+          runningCount: runningCount.current,
+          remainingPending: tasks.filter((t) => t.status === 'PENDING').length - 1,
+        });
 
-        try {
-          const { tasks: refreshedTasks } = await taskApi.listByTopic(topicId);
-          executeNext(refreshedTasks);
-        } catch {
-          setExecuting(false);
-        }
-      }, 3000);
-    },
-    [topicId, onTaskUpdated, showToast]
-  );
+        const taskId = task.id;
+        const taskTitle = task.title;
+        let randomTim = Math.random() * 1000;
+        setTimeout(async () => {
+          if (cancelled.current) {
+            runningCount.current--;
+            if (runningCount.current === 0) setExecuting(false);
+            return;
+          }
+
+          await taskApi.update(taskId, { status: 'COMPLETED' });
+          runningCount.current--;
+          onTaskUpdated();
+          showToast(`已完成：${taskTitle}`, 'success');
+
+          tryStartMore();
+        }, 3000);
+      }
+    } catch {
+      if (runningCount.current === 0) setExecuting(false);
+    } finally {
+      starting.current = false;
+    }
+  }, [topicId, maxConcurrency, onTaskUpdated, showToast]);
 
   const executeChain = useCallback(
-    async (tasks: Task[]) => {
+    (tasks: Task[]) => {
       if (executing) return;
       cancelled.current = false;
+      runningCount.current = 0;
       setExecuting(true);
-      executeNext(tasks);
+      tryStartMore();
     },
-    [executing, executeNext]
+    [executing, tryStartMore]
   );
 
   const cancelExecution = useCallback(() => {
     cancelled.current = true;
-    setExecuting(false);
-    showToast('已停止执行', 'info');
+    showToast('正在停止执行...', 'info');
   }, [showToast]);
 
-  return { executeChain, cancelExecution, executing };
+  return { executeChain, cancelExecution, executing, maxConcurrency, setMaxConcurrency };
 }
