@@ -318,6 +318,19 @@ export function useChat(directory?: string) {
     setSessionBroken(false);
   }, []);
 
+  const renameSession = useCallback(async (sessionId: string, title: string) => {
+    log.info(S, 'renameSession', { sessionId, title });
+    try {
+      const updated = await chatApi.updateSessionTitle(sessionId, title, directory);
+      log.info(S, 'renameSession result', { id: updated?.id, title: updated?.title });
+      setSessions((prev) =>
+        prev.map((s) => (s.id === sessionId ? { ...s, title: updated?.title || title } : s)),
+      );
+    } catch (err) {
+      log.error(S, 'renameSession error', err);
+    }
+  }, [directory]);
+
   return {
     sessions,
     currentSessionId,
@@ -340,5 +353,6 @@ export function useChat(directory?: string) {
     resetLoading,
     retryInNewSession,
     dismissSessionBroken,
+    renameSession,
   };
 }

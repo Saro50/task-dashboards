@@ -5,6 +5,7 @@ const router = new Router({ prefix: '/api/chat' });
 
 router.get('/sessions', ChatController.listSessions);
 router.post('/sessions', ChatController.createSession);
+router.patch('/sessions/:id', ChatController.updateSession);
 router.get('/sessions/:id/messages', ChatController.getMessages);
 router.post('/sessions/:id/send', ChatController.sendMessage);
 router.post('/sessions/:id/abort', ChatController.abortSession);

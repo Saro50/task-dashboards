@@ -7,3 +7,7 @@ export interface SendMessageBody {
   text: string;
   agent?: string;
 }
+
+export interface UpdateSessionBody {
+  title?: string;
+}

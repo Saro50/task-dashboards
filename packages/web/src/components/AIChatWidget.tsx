@@ -220,6 +220,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const [showAgentList, setShowAgentList] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
   const [agents, setAgents] = useState<Array<{ name: string; description?: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -250,6 +252,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     resetLoading,
     retryInNewSession,
     dismissSessionBroken,
+    renameSession,
   } = useChat(directory);
 
   useImperativeHandle(ref, () => ({
@@ -501,20 +504,59 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                       {sessions.map((session) => (
                         <div
                           key={session.id}
-                          onClick={() => handleSwitchSession(session.id)}
+                          onClick={() => { if (editingSessionId !== session.id) handleSwitchSession(session.id); }}
                           className={`flex items-center justify-between px-3 py-2 text-xs cursor-pointer hover:bg-gray-50 transition-colors ${
                             session.id === currentSessionId ? 'bg-sky-50 text-sky-700' : 'text-gray-700'
                           }`}
                         >
-                          <span className="truncate flex-1">{session.title}</span>
-                          <button
-                            onClick={(e) => handleDeleteSession(e, session.id)}
-                            className="ml-2 p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-red-500 shrink-0 cursor-pointer"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          {editingSessionId === session.id ? (
+                            <input
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                e.stopPropagation();
+                                if (e.key === 'Enter') {
+                                  const t = editingTitle.trim();
+                                  if (t) renameSession(session.id, t);
+                                  setEditingSessionId(null);
+                                } else if (e.key === 'Escape') {
+                                  setEditingSessionId(null);
+                                }
+                              }}
+                              onBlur={() => {
+                                const t = editingTitle.trim();
+                                if (t && t !== session.title) renameSession(session.id, t);
+                                setEditingSessionId(null);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              autoFocus
+                              className="flex-1 px-1 py-0.5 text-xs border border-sky-300 rounded outline-none focus:border-sky-500 bg-white"
+                            />
+                          ) : (
+                            <span className="truncate flex-1">{session.title}</span>
+                          )}
+                          <div className="flex items-center gap-0.5 ml-1 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingSessionId(session.id);
+                                setEditingTitle(session.title);
+                              }}
+                              className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600 cursor-pointer"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={(e) => handleDeleteSession(e, session.id)}
+                              className="p-0.5 rounded hover:bg-gray-200 text-gray-400 hover:text-red-500 cursor-pointer"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>

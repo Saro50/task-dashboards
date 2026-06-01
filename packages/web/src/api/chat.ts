@@ -38,6 +38,14 @@ export const chatApi = {
     });
   },
 
+  updateSessionTitle(sessionId: string, title: string, directory?: string): Promise<ChatSession> {
+    const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+    return apiRequest<ChatSession>(S, `${BASE}/sessions/${sessionId}${query}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
+  },
+
   subscribeEvents(
     onEvent: (payload: SSEEventPayload) => void,
     onError?: (err: unknown) => void,

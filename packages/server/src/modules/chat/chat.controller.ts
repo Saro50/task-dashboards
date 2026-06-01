@@ -1,7 +1,7 @@
 import { Context } from 'koa';
 import * as Service from './chat.service.js';
 import { reqLogger } from '../../logger.js';
-import type { CreateSessionBody, SendMessageBody } from './types.js';
+import type { CreateSessionBody, SendMessageBody, UpdateSessionBody } from './types.js';
 
 const S = 'chat.ctrl';
 
@@ -32,6 +32,28 @@ export async function createSession(ctx: Context) {
     log.error(S, 'createSession error', err.message);
     ctx.status = 502;
     ctx.body = { error: 'Failed to create session', detail: err.message };
+  }
+}
+
+export async function updateSession(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  try {
+    const { id } = ctx.params;
+    const directory = ctx.query.directory as string | undefined;
+    const { title } = ctx.request.body as UpdateSessionBody;
+    log.info(S, 'updateSession', { sessionId: id, directory, title });
+    if (!title || typeof title !== 'string') {
+      ctx.status = 400;
+      ctx.body = { error: 'title is required' };
+      return;
+    }
+    const session = await Service.updateSession(id, title, directory);
+    log.info(S, 'updateSession result', session?.id, session?.title);
+    ctx.body = session;
+  } catch (err: any) {
+    log.error(S, 'updateSession error', err.message);
+    ctx.status = 502;
+    ctx.body = { error: 'Failed to update session', detail: err.message };
   }
 }
 

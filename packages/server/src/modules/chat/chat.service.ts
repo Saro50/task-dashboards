@@ -64,3 +64,11 @@ export async function subscribeEvents(directory?: string) {
     throw err;
   }
 }
+
+export async function updateSession(sessionId: string, title: string, directory?: string) {
+  const baseUrl = await getBaseUrl();
+  logger.info(S, 'updateSession', { baseUrl, sessionId, title, directory });
+  const result = await Opencode.updateSession(baseUrl, sessionId, title, directory);
+  logger.info(S, 'updateSession result', result?.data);
+  return result.data;
+}

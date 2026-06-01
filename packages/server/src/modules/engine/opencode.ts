@@ -117,3 +117,11 @@ export async function subscribeEvents(baseUrl: string, directory?: string): Prom
   logger.info(S, 'subscribeEvents stream obtained');
   return result as { stream: AsyncGenerator<any> };
 }
+
+export async function updateSession(baseUrl: string, sessionId: string, title: string, directory?: string) {
+  logger.info(S, 'updateSession', { baseUrl, sessionId, title, directory });
+  const client = await getClient(baseUrl);
+  const result = await client.session.update({ path: { id: sessionId }, body: { title }, query: { directory } });
+  logger.info(S, 'updateSession result', { id: result?.data?.id, title: result?.data?.title });
+  return result;
+}
