@@ -7,6 +7,8 @@ export interface ImportTaskPlanRequest {
     description: string;
     dependencies: string[];
   }[];
+  chatSessionId?: string;
+  topicId?: string;
 }
 
 export interface ImportTaskPlanResponse {
@@ -19,4 +21,12 @@ export interface ImportTaskPlanResponse {
     status: string;
   }[];
   dependencies: number;
+  planHash?: string;
+}
+
+export interface ImportedPlanItem {
+  planHash: string;
+  topicName: string;
+  projectId: string;
+  topicId: string | null;
 }

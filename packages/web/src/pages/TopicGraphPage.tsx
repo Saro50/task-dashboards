@@ -230,7 +230,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
       </div>
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} />
     </div>
   );
 }

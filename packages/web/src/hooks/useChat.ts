@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { chatApi } from '@/api/chat';
+import { taskApi } from '@/api/task';
 import { log } from '@/utils/log';
 import type { ChatSession, ChatMessage, SSEEventPayload } from '@/types/chat';
 
@@ -26,6 +27,7 @@ export function useChat(directory?: string) {
   const mountedRef = useRef(true);
   const lastSentTextRef = useRef<string | null>(null);
   const [sessionBroken, setSessionBroken] = useState(false);
+  const [importedPlanTopics, setImportedPlanTopics] = useState<Set<string>>(new Set());
 
   const currentSession = sessions.find((s) => s.id === currentSessionId) || null;
 
@@ -57,9 +59,16 @@ export function useChat(directory?: string) {
   const loadMessages = useCallback(async (sessionId: string) => {
     try {
       log.info(S, 'loadMessages', { sessionId, directory: directoryRef.current });
-      const msgs = await chatApi.getMessages(sessionId, directoryRef.current);
-      log.info(S, 'loadMessages result', { count: msgs?.length ,msgs})
+      const [msgs, imported] = await Promise.all([
+        chatApi.getMessages(sessionId, directoryRef.current),
+        taskApi.getImportedPlans(sessionId).catch((err) => {
+          log.warn(S, 'getImportedPlans failed', err);
+          return [] as Array<{ planHash: string; topicName: string }>;
+        }),
+      ]);
+      log.info(S, 'loadMessages result', { count: msgs?.length, importedCount: imported.length });
       setMessages(msgs);
+      setImportedPlanTopics(new Set(imported.map((p) => p.topicName)));
     } catch (err) {
       log.error(S, 'loadMessages error', err);
       setMessages([]);
@@ -331,6 +340,10 @@ export function useChat(directory?: string) {
     }
   }, [directory]);
 
+  const addImportedPlanTopic = useCallback((topicName: string) => {
+    setImportedPlanTopics((prev) => new Set(prev).add(topicName));
+  }, []);
+
   return {
     sessions,
     currentSessionId,
@@ -341,6 +354,7 @@ export function useChat(directory?: string) {
     isConnected,
     loadingTimedOut,
     sessionBroken,
+    importedPlanTopics,
     selectedAgent,
     setSelectedAgent,
     loadSessions,
@@ -354,5 +368,6 @@ export function useChat(directory?: string) {
     retryInNewSession,
     dismissSessionBroken,
     renameSession,
+    addImportedPlanTopic,
   };
 }

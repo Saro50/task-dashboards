@@ -81,6 +81,19 @@ enum TaskStatus {
   BLOCKED
 }
 
+model PlanImport {
+  id            String   @id @default(cuid())
+  chatSessionId String   @db.VarChar(200)
+  planHash      String   @db.VarChar(64)
+  topicName     String   @db.VarChar(200)
+  projectId     String
+  topicId       String?
+  createdAt     DateTime @default(now())
+
+  @@unique([chatSessionId, planHash])
+  @@index([chatSessionId])
+}
+
 model EngineConfig {
   id        String   @id @default("default")
   baseUrl   String   @db.VarChar(500)

@@ -13,11 +13,30 @@ export const taskApi = {
     return apiRequest<{ tasks: Task[] }>(S, `${BASE}/topics/${topicId}/tasks`);
   },
 
-  importPlan(projectId: string, topic: string, summary: string, tasks: TaskPlanItem[]): Promise<ImportTaskPlanResponse> {
+  importPlan(
+    projectId: string,
+    topic: string,
+    summary: string,
+    tasks: TaskPlanItem[],
+    options?: { chatSessionId?: string; topicId?: string },
+  ): Promise<ImportTaskPlanResponse> {
     return apiRequest<ImportTaskPlanResponse>(S, `${BASE}/projects/${projectId}/tasks/import`, {
       method: 'POST',
-      body: JSON.stringify({ topic, summary, tasks }),
+      body: JSON.stringify({
+        topic,
+        summary,
+        tasks,
+        chatSessionId: options?.chatSessionId,
+        topicId: options?.topicId,
+      }),
     });
+  },
+
+  getImportedPlans(sessionId: string): Promise<Array<{ planHash: string; topicName: string; projectId: string; topicId: string | null }>> {
+    return apiRequest<Array<{ planHash: string; topicName: string; projectId: string; topicId: string | null }>>(
+      S,
+      `${BASE}/chat-sessions/${sessionId}/imported-plans`,
+    );
   },
 
   create(projectId: string, input: CreateTaskInput): Promise<Task> {

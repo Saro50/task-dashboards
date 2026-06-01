@@ -12,6 +12,8 @@ const S = 'AIChatWidget';
 interface Props {
   directory?: string;
   engineStatus: EngineStatus;
+  projectId?: string;
+  topicId?: string;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -84,41 +86,56 @@ function Collapsible({ title, icon, defaultOpen = false, children }: {
   );
 }
 
-function PartRenderer({ part }: { part: ChatPart }) {
+function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTopics, onPlanImported }: {
+  part: ChatPart;
+  projectId?: string;
+  topicId?: string;
+  chatSessionId?: string;
+  importedPlanTopics: Set<string>;
+  onPlanImported: (topicName: string) => void;
+}) {
   if (part.type === 'text' && part.text) {
     const text = part.text;
-    const taskPlanRegex = /```task-plan\n([\s\S]*?)```/g;
-    const parts: Array<{ type: 'text' | 'plan'; content: string | TaskPlan }> = [];
+    const taskPlanRegex = /<task-plan>\n?([\s\S]*?)\n?<\/task-plan>/g;
+    const segments: Array<{ type: 'text' | 'plan'; content: string | TaskPlan }> = [];
     let lastIndex = 0;
     let match;
 
     while ((match = taskPlanRegex.exec(text)) !== null) {
       if (match.index > lastIndex) {
-        parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+        segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
       }
       try {
         const plan = JSON.parse(match[1]);
-        parts.push({ type: 'plan', content: plan });
+        segments.push({ type: 'plan', content: plan });
       } catch {
-        parts.push({ type: 'text', content: match[0] });
+        segments.push({ type: 'text', content: match[0] });
       }
       lastIndex = match.index + match[0].length;
     }
     if (lastIndex < text.length) {
-      parts.push({ type: 'text', content: text.slice(lastIndex) });
+      segments.push({ type: 'text', content: text.slice(lastIndex) });
     }
 
-    if (parts.length === 0 || (parts.length === 1 && parts[0].type === 'text')) {
+    if (segments.length === 0 || (segments.length === 1 && segments[0].type === 'text')) {
       return <p className="whitespace-pre-wrap break-words">{text}</p>;
     }
 
     return (
       <>
-        {parts.map((p, i) =>
-          p.type === 'text' ? (
-            <p key={i} className="whitespace-pre-wrap break-words">{p.content as string}</p>
+        {segments.map((seg, i) =>
+          seg.type === 'text' ? (
+            <p key={i} className="whitespace-pre-wrap break-words">{seg.content as string}</p>
           ) : (
-            <TaskPlanPreview key={i} plan={p.content as TaskPlan} />
+            <TaskPlanPreview
+              key={i}
+              plan={seg.content as TaskPlan}
+              projectId={projectId}
+              topicId={topicId}
+              chatSessionId={chatSessionId}
+              imported={importedPlanTopics.has((seg.content as TaskPlan).topic)}
+              onPlanImported={onPlanImported}
+            />
           )
         )}
       </>
@@ -215,7 +232,7 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
@@ -253,6 +270,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     retryInNewSession,
     dismissSessionBroken,
     renameSession,
+    importedPlanTopics,
+    addImportedPlanTopic,
   } = useChat(directory);
 
   useImperativeHandle(ref, () => ({
@@ -642,7 +661,15 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 <div key={msg.info.id} className="flex justify-start">
                   <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-200 text-gray-700 space-y-2">
                     {msg.parts.map((part) => (
-                      <PartRenderer key={part.id} part={part} />
+                      <PartRenderer
+                        key={part.id}
+                        part={part}
+                        projectId={projectId}
+                        topicId={topicId}
+                        chatSessionId={currentSessionId ?? undefined}
+                        importedPlanTopics={importedPlanTopics}
+                        onPlanImported={addImportedPlanTopic}
+                      />
                     ))}
                     <p className="text-[10px] text-gray-400">{formatTime(msg.info.time.created)}</p>
                   </div>

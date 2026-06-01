@@ -45,10 +45,19 @@ export async function importTaskPlan(ctx: Context) {
     }
   }
 
-  const result = await Service.importPlan(ctx.params.projectId, body);
-  log.info('task.ctrl', 'importTaskPlan', { count: result?.tasks?.length });
-  ctx.status = 201;
-  ctx.body = result;
+  try {
+    const result = await Service.importPlan(ctx.params.projectId, body);
+    log.info('task.ctrl', 'importTaskPlan', { count: result?.tasks?.length, planHash: result.planHash });
+    ctx.status = 201;
+    ctx.body = result;
+  } catch (err: any) {
+    if (err.code === 'PLAN_ALREADY_IMPORTED') {
+      ctx.status = 409;
+      ctx.body = { error: 'Plan already imported', existing: err.existing };
+      return;
+    }
+    throw err;
+  }
 }
 
 export async function createTask(ctx: Context) {
@@ -130,4 +139,12 @@ export async function removeDependency(ctx: Context) {
     }
     throw err;
   }
+}
+
+export async function listImportedPlans(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  const { sessionId } = ctx.params;
+  log.info('task.ctrl', 'listImportedPlans', { sessionId });
+  const plans = await Service.getImportedPlans(sessionId);
+  ctx.body = plans;
 }

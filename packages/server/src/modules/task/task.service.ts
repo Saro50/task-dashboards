@@ -1,6 +1,15 @@
+import crypto from 'crypto';
 import { TaskStatus } from '@prisma/client';
 import prisma from '../../prisma.js';
-import type { ImportTaskPlanRequest, ImportTaskPlanResponse } from './types.js';
+import type { ImportTaskPlanRequest, ImportTaskPlanResponse, ImportedPlanItem } from './types.js';
+
+function computePlanHash(plan: { topic: string; tasks: { ref: string; title: string; description: string; dependencies: string[] }[] }): string {
+  const canonical = JSON.stringify({
+    topic: plan.topic,
+    tasks: plan.tasks.map((t) => ({ ref: t.ref, title: t.title, description: t.description, dependencies: [...t.dependencies].sort() })),
+  });
+  return crypto.createHash('sha256').update(canonical).digest('hex');
+}
 
 export async function listByProject(projectId: string) {
   const tasks = await prisma.task.findMany({
@@ -94,23 +103,42 @@ export async function remove(id: string) {
 }
 
 export async function importPlan(projectId: string, plan: ImportTaskPlanRequest): Promise<ImportTaskPlanResponse> {
+  const planHash = computePlanHash(plan);
+
+  if (plan.chatSessionId) {
+    const existing = await prisma.planImport.findUnique({
+      where: { chatSessionId_planHash: { chatSessionId: plan.chatSessionId, planHash } },
+    });
+    if (existing) {
+      const err: any = new Error('Plan already imported');
+      err.code = 'PLAN_ALREADY_IMPORTED';
+      err.existing = { planHash, projectId: existing.projectId, topicId: existing.topicId };
+      throw err;
+    }
+  }
+
   const refToId = new Map<string, string>();
   const taskResults: ImportTaskPlanResponse['tasks'] = [];
 
   const result = await prisma.$transaction(async (tx) => {
-    const topic = await tx.taskTopic.create({
-      data: {
-        projectId,
-        name: plan.topic,
-        summary: plan.summary || '',
-      },
-    });
+    let topicId: string | null = plan.topicId ?? null;
+
+    if (!topicId) {
+      const topic = await tx.taskTopic.create({
+        data: {
+          projectId,
+          name: plan.topic,
+          summary: plan.summary || '',
+        },
+      });
+      topicId = topic.id;
+    }
 
     for (const item of plan.tasks) {
       const task = await tx.task.create({
         data: {
           projectId,
-          topicId: topic.id,
+          topicId,
           title: item.title,
           description: item.description || '',
         },
@@ -139,10 +167,30 @@ export async function importPlan(projectId: string, plan: ImportTaskPlanRequest)
       }
     }
 
-    return { topicId: topic.id, imported: taskResults.length, tasks: taskResults, dependencies: depCount };
+    if (plan.chatSessionId) {
+      await tx.planImport.create({
+        data: {
+          chatSessionId: plan.chatSessionId,
+          planHash,
+          topicName: plan.topic,
+          projectId,
+          topicId,
+        },
+      });
+    }
+
+    return { topicId: topicId!, imported: taskResults.length, tasks: taskResults, dependencies: depCount, planHash };
   });
 
   return result;
+}
+
+export async function getImportedPlans(chatSessionId: string): Promise<ImportedPlanItem[]> {
+  const records = await prisma.planImport.findMany({
+    where: { chatSessionId },
+    select: { planHash: true, topicName: true, projectId: true, topicId: true },
+  });
+  return records.map((r) => ({ planHash: r.planHash, topicName: r.topicName, projectId: r.projectId, topicId: r.topicId }));
 }
 
 export async function addDependency(taskId: string, dependsOnId: string) {
