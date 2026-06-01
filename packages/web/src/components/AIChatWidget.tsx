@@ -14,6 +14,7 @@ interface Props {
   engineStatus: EngineStatus;
   projectId?: string;
   topicId?: string;
+  onPlanImported?: () => void;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -232,7 +233,7 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, onPlanImported }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
@@ -273,6 +274,11 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     importedPlanTopics,
     addImportedPlanTopic,
   } = useChat(directory);
+
+  const handlePlanImported = useCallback((topicName: string) => {
+    addImportedPlanTopic(topicName);
+    onPlanImported?.();
+  }, [addImportedPlanTopic, onPlanImported]);
 
   useImperativeHandle(ref, () => ({
     async openWithMessage(msg: string, options?: { newSession?: boolean; agent?: string }) {
@@ -668,7 +674,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                         topicId={topicId}
                         chatSessionId={currentSessionId ?? undefined}
                         importedPlanTopics={importedPlanTopics}
-                        onPlanImported={addImportedPlanTopic}
+                        onPlanImported={handlePlanImported}
                       />
                     ))}
                     <p className="text-[10px] text-gray-400">{formatTime(msg.info.time.created)}</p>

@@ -1,3 +1,4 @@
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import type { AggregatedStatus } from '@/types/topic';
@@ -22,28 +23,90 @@ interface TopicNodeData {
   taskCount: number;
   completedCount: number;
   aggregatedStatus: AggregatedStatus;
+  onEdit?: (topicId: string) => void;
+  onDelete?: (topicId: string) => void;
+  editing?: boolean;
+  editingName?: string;
+  onEditingNameChange?: (name: string) => void;
+  onEditingConfirm?: () => void;
+  onEditingCancel?: () => void;
 }
 
-export default function TopicNode({ data, selected }: NodeProps) {
+export default function TopicNode({ id, data, selected }: NodeProps) {
   const d = data as unknown as TopicNodeData;
   const cfg = statusConfig[d.aggregatedStatus];
   const progress = d.taskCount > 0 ? Math.round((d.completedCount / d.taskCount) * 100) : 0;
+  const [showActions, setShowActions] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (d.editing) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [d.editing]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      d.onEditingConfirm?.();
+    } else if (e.key === 'Escape') {
+      d.onEditingCancel?.();
+    }
+  }, [d]);
 
   return (
     <div
       className={`bg-white border ${cfg.border} rounded-lg shadow-sm w-72 overflow-hidden transition-shadow ${selected ? 'shadow-md ring-2 ring-sky-400' : 'hover:shadow-md'}`}
+      onMouseEnter={() => setShowActions(true)}
+      onMouseLeave={() => setShowActions(false)}
     >
       <div className={`h-1.5 ${cfg.bar}`} />
       <Handle type="target" position={Position.Top} className="!w-2 !h-2 !bg-gray-400 !border-0" />
       <div className="px-4 py-3">
         <div className="flex items-center justify-between mb-1.5">
-          <h4 className="text-sm font-semibold text-gray-800 truncate flex-1 mr-2">{d.name}</h4>
-          <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${cfg.text} border ${cfg.border}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-            {statusLabels[d.aggregatedStatus]}
-          </span>
+          {d.editing ? (
+            <input
+              ref={inputRef}
+              value={d.editingName ?? d.name}
+              onChange={(e) => d.onEditingNameChange?.(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={() => d.onEditingConfirm?.()}
+              onClick={(e) => e.stopPropagation()}
+              className="text-sm font-semibold text-gray-800 flex-1 mr-2 px-1 py-0 border border-sky-300 rounded outline-none focus:border-sky-500 bg-white"
+            />
+          ) : (
+            <h4 className="text-sm font-semibold text-gray-800 truncate flex-1 mr-2">{d.name}</h4>
+          )}
+          <div className="flex items-center gap-1">
+            <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full ${cfg.text} border ${cfg.border}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+              {statusLabels[d.aggregatedStatus]}
+            </span>
+            {!d.editing && showActions && (
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); d.onEdit?.(id); }}
+                  className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  title="编辑"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); d.onDelete?.(id); }}
+                  className="p-0.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 cursor-pointer"
+                  title="删除"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        {d.summary && (
+        {d.summary && !d.editing && (
           <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed mb-2">{d.summary}</p>
         )}
         <div className="flex items-center gap-2">

@@ -95,6 +95,23 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const [flowEdges, setFlowEdges] = useEdgesState<Edge>([]);
   const prevTaskKey = useRef<string>('');
 
+  const handleDeleteTask = useCallback(async (taskId: string) => {
+    const task = filteredTasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const confirmed = window.confirm(`确定删除任务「${task.title}」？`);
+    if (!confirmed) return;
+    log.info(S, 'handleDeleteTask', { taskId });
+    try {
+      await taskApi.remove(taskId);
+      showToast('任务已删除', 'success');
+      if (selectedTaskId === taskId) setSelectedTaskId(null);
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'handleDeleteTask error', err);
+      showToast(err.message, 'error');
+    }
+  }, [filteredTasks, selectedTaskId, showToast, refetch]);
+
   useEffect(() => {
     const taskMap = new Map(filteredTasks.map((t) => [t.id, t]));
     const filteredTaskIds = new Set(filteredTasks.map((t) => t.id));
@@ -117,6 +134,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           depCount: task.dependencies.filter((depId) => filteredTaskIds.has(depId)).length,
           selected: task.id === selectedTaskId,
           disabled: executing,
+          onDelete: handleDeleteTask,
         },
       }));
 
@@ -132,7 +150,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
       setFlowNodes(layoutedNodes);
       setFlowEdges(edges);
     }
-  }, [filteredTasks, selectedTaskId, setFlowNodes, setFlowEdges]);
+  }, [filteredTasks, selectedTaskId, executing, handleDeleteTask, setFlowNodes, setFlowEdges]);
 
   useEffect(() => {
     setFlowEdges((prev) =>
@@ -181,25 +199,6 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     }
   }, [refetch, showToast, executing]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)]">
-        <div className="w-8 h-8 border-3 border-gray-200 border-t-sky-500 rounded-full animate-spin" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)]">
-        <div className="text-center">
-          <p className="text-red-500 text-sm mb-4">加载失败：{error}</p>
-          <button onClick={() => refetch()} className="text-sm text-sky-500 hover:text-sky-600 cursor-pointer">重试</button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] relative">
       <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
@@ -223,7 +222,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
           </svg>
           <span className="font-medium text-gray-800">{topicName || '任务图谱'}</span>
-          <span className="text-xs text-gray-400 ml-1">{filteredTasks.length} 个任务</span>
+          {!loading && <span className="text-xs text-gray-400 ml-1">{filteredTasks.length} 个任务</span>}
         </div>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
@@ -304,7 +303,22 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           />
         </ReactFlow>
 
-        {filteredTasks.length === 0 && (
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-8 h-8 border-3 border-gray-200 border-t-sky-500 rounded-full animate-spin" />
+          </div>
+        )}
+
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="text-center pointer-events-auto">
+              <p className="text-red-500 text-sm mb-4">加载失败：{error}</p>
+              <button onClick={() => refetch()} className="text-sm text-sky-500 hover:text-sky-600 cursor-pointer">重试</button>
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && filteredTasks.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center pointer-events-auto">
               <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -330,7 +344,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} onPlanImported={refetch} />
     </div>
   );
 }

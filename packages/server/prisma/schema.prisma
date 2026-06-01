@@ -52,7 +52,7 @@ model Task {
   updatedAt   DateTime   @updatedAt
 
   project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  topic       TaskTopic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  topic       TaskTopic?     @relation(fields: [topicId], references: [id], onDelete: Cascade)
   fromDeps    TaskDependency[] @relation("DependsOn")
   toDeps      TaskDependency[] @relation("RequiredBy")
 

@@ -5,6 +5,8 @@ import type { EngineStatus } from '@/components/Layout';
 import { useTopics } from '@/hooks/useTopics';
 import { useProject } from '@/hooks/useProject';
 import { useToast } from '@/components/Toast';
+import { topicApi } from '@/api/topic';
+import { taskApi } from '@/api/task';
 import TopicNode from '@/components/TopicNode';
 import TaskNode from '@/components/TaskNode';
 import TaskEdge from '@/components/TaskEdge';
@@ -69,7 +71,76 @@ export default function TopicGraphPage({ engineStatus }: Props) {
   const { topics, dependencies, orphanTasks, loading, error, refetch } = useTopics(projectId);
   const { project } = useProject(projectId);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const chatRef = useRef<AIChatWidgetHandle>(null);
+
+  const handleEditTopic = useCallback((topicId: string) => {
+    const topic = topics.find((t) => t.id === topicId);
+    if (!topic) return;
+    log.info(S, 'handleEditTopic', { topicId, name: topic.name });
+    setEditingTopicId(topicId);
+    setEditingName(topic.name);
+  }, [topics]);
+
+  const handleEditingNameChange = useCallback((name: string) => {
+    setEditingName(name);
+  }, []);
+
+  const handleEditingConfirm = useCallback(async () => {
+    if (!editingTopicId) return;
+    const trimmed = editingName.trim();
+    if (!trimmed) {
+      setEditingTopicId(null);
+      return;
+    }
+    log.info(S, 'handleEditingConfirm', { editingTopicId, name: trimmed });
+    try {
+      await topicApi.update(editingTopicId, { name: trimmed });
+      showToast('主题已重命名', 'success');
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'handleEditingConfirm error', err);
+      showToast(err.message, 'error');
+    }
+    setEditingTopicId(null);
+  }, [editingTopicId, editingName, showToast, refetch]);
+
+  const handleEditingCancel = useCallback(() => {
+    setEditingTopicId(null);
+  }, []);
+
+  const handleDeleteTopic = useCallback(async (topicId: string) => {
+    const topic = topics.find((t) => t.id === topicId);
+    if (!topic) return;
+    const confirmed = window.confirm(`确定要删除主题「${topic.name}」吗？该主题下的所有任务将被一并删除，此操作不可撤销。`);
+    if (!confirmed) return;
+    log.info(S, 'handleDeleteTopic', { topicId });
+    try {
+      await topicApi.remove(topicId);
+      showToast('主题已删除', 'success');
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'handleDeleteTopic error', err);
+      showToast(err.message, 'error');
+    }
+  }, [topics, showToast, refetch]);
+
+  const handleDeleteTask = useCallback(async (taskId: string) => {
+    const task = orphanTasks.find((t) => t.id === taskId);
+    if (!task) return;
+    const confirmed = window.confirm(`确定删除任务「${task.title}」？`);
+    if (!confirmed) return;
+    log.info(S, 'handleDeleteTask', { taskId });
+    try {
+      await taskApi.remove(taskId);
+      showToast('任务已删除', 'success');
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'handleDeleteTask error', err);
+      showToast(err.message, 'error');
+    }
+  }, [orphanTasks, showToast, refetch]);
 
   const { nodes: flowNodes, edges: baseEdges } = useMemo(() => {
     const nodes: Node[] = [];
@@ -85,6 +156,13 @@ export default function TopicGraphPage({ engineStatus }: Props) {
           taskCount: topic.taskCount,
           completedCount: topic.completedCount,
           aggregatedStatus: topic.aggregatedStatus,
+          onEdit: handleEditTopic,
+          onDelete: handleDeleteTopic,
+          editing: editingTopicId === topic.id,
+          editingName,
+          onEditingNameChange: handleEditingNameChange,
+          onEditingConfirm: handleEditingConfirm,
+          onEditingCancel: handleEditingCancel,
         },
       });
     }
@@ -99,6 +177,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
           status: task.status,
           description: task.description,
           depCount: task.dependencies.length,
+          onDelete: handleDeleteTask,
         },
       });
     }
@@ -112,7 +191,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
     }));
 
     return applyDagreLayout(nodes, edges);
-  }, [topics, dependencies, orphanTasks, refetch]);
+  }, [topics, dependencies, orphanTasks, refetch, editingTopicId, editingName, handleEditTopic, handleDeleteTopic, handleDeleteTask, handleEditingNameChange, handleEditingConfirm, handleEditingCancel]);
 
   const flowEdges = useMemo(
     () => baseEdges.map((e) => ({ ...e, data: { ...e.data, hovered: e.id === hoveredEdgeId } })),
@@ -230,7 +309,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
       </div>
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} onPlanImported={refetch} />
     </div>
   );
 }
