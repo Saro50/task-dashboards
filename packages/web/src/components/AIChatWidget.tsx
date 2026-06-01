@@ -248,8 +248,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [chatPos, setChatPos] = useState<{ x: number; y: number } | null>(null);
   const dragging = useRef(false);
   const dragStart = useRef({ mx: 0, my: 0, fx: 0, fy: 0 });
-  const chatDragging = useRef(false);
-  const chatDragStart = useRef({ mx: 0, my: 0, cx: 0, cy: 0 });
 
   const {
     sessions,
@@ -414,36 +412,33 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [chatSize, setChatSize] = useState({ w: 480, h: 640 });
   const resizingRef = useRef(false);
   const startRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  const chatDraggingRef = useRef(false);
+  const chatDragStartRef = useRef({ mx: 0, my: 0, cx: 0, cy: 0 });
 
-  const initialChatPos = useCallback((): { x: number; y: number } => {
-    return {
-      x: Math.max(8, fabPos.x - chatSize.w),
-      y: Math.max(8, window.innerHeight - fabPos.y - chatSize.h),
-    };
-  }, [fabPos.x, fabPos.y, chatSize.w, chatSize.h]);
-
-  const onTitlePointerDown = useCallback((e: React.PointerEvent) => {
+  const onTitleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, select, input')) return;
     e.preventDefault();
-    chatDragging.current = false;
-    const pos = chatPos ?? initialChatPos();
-    chatDragStart.current = { mx: e.clientX, my: e.clientY, cx: pos.x, cy: pos.y };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [chatPos, initialChatPos]);
-
-  const onTitlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (e.buttons === 0) return;
-    const dx = e.clientX - chatDragStart.current.mx;
-    const dy = e.clientY - chatDragStart.current.my;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) chatDragging.current = true;
-    if (!chatDragging.current) return;
-    const nx = Math.min(Math.max(chatDragStart.current.cx + dx, 0), window.innerWidth - chatSize.w);
-    const ny = Math.min(Math.max(chatDragStart.current.cy + dy, 0), window.innerHeight - chatSize.h);
-    setChatPos({ x: nx, y: ny });
-  }, [chatSize.w, chatSize.h]);
-
-  const onTitlePointerUp = useCallback(() => {
-  }, []);
+    chatDraggingRef.current = false;
+    const pos = chatPos ?? { x: Math.max(8, fabPos.x - chatSize.w), y: Math.max(8, window.innerHeight - fabPos.y - chatSize.h) };
+    if (!chatPos) setChatPos(pos);
+    chatDragStartRef.current = { mx: e.clientX, my: e.clientY, cx: pos.x, cy: pos.y };
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - chatDragStartRef.current.mx;
+      const dy = ev.clientY - chatDragStartRef.current.my;
+      if (!chatDraggingRef.current && Math.abs(dx) < 5 && Math.abs(dy) < 5) return;
+      chatDraggingRef.current = true;
+      const nx = Math.min(Math.max(chatDragStartRef.current.cx + dx, 0), window.innerWidth - chatSize.w);
+      const ny = Math.min(Math.max(chatDragStartRef.current.cy + dy, 0), window.innerHeight - chatSize.h);
+      setChatPos({ x: nx, y: ny });
+    };
+    const onUp = () => {
+      chatDraggingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [chatPos, fabPos.x, fabPos.y, chatSize.w, chatSize.h]);
 
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -506,10 +501,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
           }}
         >
           <div
-            className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0 cursor-grab active:cursor-grabbing select-none touch-none"
-            onPointerDown={onTitlePointerDown}
-            onPointerMove={onTitlePointerMove}
-            onPointerUp={onTitlePointerUp}
+            className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0 cursor-grab active:cursor-grabbing select-none"
+            onMouseDown={onTitleMouseDown}
           >
             <div className="flex items-center gap-2">
               <svg className="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
