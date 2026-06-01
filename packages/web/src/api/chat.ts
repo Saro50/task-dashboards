@@ -1,40 +1,18 @@
 import { log } from '@/utils/log';
+import { apiRequest } from '@/api/lib';
 import type { ChatSession, ChatMessage, SSEEventPayload } from '@/types/chat';
 
 const S = 'chatApi';
 const BASE = '/api/chat';
 
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const method = options?.method || 'GET';
-  log.info(S, `${method} ${url}`);
-  if (options?.body) {
-    log.info(S, 'request body', { body: (options.body as string).slice(0, 200) });
-  }
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  log.info(S, `response ${res.status} ${method} ${url}`);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    log.error(S, `request failed ${res.status} ${url}`, body);
-    throw new Error(body.error || `HTTP ${res.status}`);
-  }
-  if (res.status === 204) {
-    log.info(S, `${method} ${url} completed (204 no content)`);
-    return undefined as T;
-  }
-  return res.json();
-}
-
 export const chatApi = {
   listSessions(directory?: string): Promise<ChatSession[]> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-    return request<ChatSession[]>(`${BASE}/sessions${query}`);
+    return apiRequest<ChatSession[]>(S, `${BASE}/sessions${query}`);
   },
 
   createSession(directory?: string, title?: string): Promise<ChatSession> {
-    return request<ChatSession>(`${BASE}/sessions`, {
+    return apiRequest<ChatSession>(S, `${BASE}/sessions`, {
       method: 'POST',
       body: JSON.stringify({ directory, title }),
     });
@@ -42,12 +20,12 @@ export const chatApi = {
 
   getMessages(sessionId: string, directory?: string): Promise<ChatMessage[]> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-    return request<ChatMessage[]>(`${BASE}/sessions/${sessionId}/messages${query}`);
+    return apiRequest<ChatMessage[]>(S, `${BASE}/sessions/${sessionId}/messages${query}`);
   },
 
   sendMessage(sessionId: string, text: string, directory?: string, agent?: string): Promise<void> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-    return request<void>(`${BASE}/sessions/${sessionId}/send${query}`, {
+    return apiRequest<void>(S, `${BASE}/sessions/${sessionId}/send${query}`, {
       method: 'POST',
       body: JSON.stringify({ text, agent }),
     });
@@ -55,7 +33,7 @@ export const chatApi = {
 
   abortSession(sessionId: string, directory?: string): Promise<void> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
-    return request<void>(`${BASE}/sessions/${sessionId}/abort${query}`, {
+    return apiRequest<void>(S, `${BASE}/sessions/${sessionId}/abort${query}`, {
       method: 'POST',
     });
   },

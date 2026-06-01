@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { TaskPlan, TaskPlanItem } from '@/types/task';
 import { taskApi } from '@/api/task';
+import { unwrap } from '@/api/lib';
 import { useToast } from './Toast';
 import { log } from '@/utils/log';
 
@@ -42,8 +43,10 @@ export default function TaskPlanPreview({ plan }: Props) {
     try {
       const res = await fetch('/api/projects');
       if (res.ok) {
-        const data = await res.json();
-        setProjects(data);
+        const raw = await res.json();
+        const { data, requestId } = unwrap<any[]>(raw, res.headers.get('X-Request-Id') || undefined);
+        log.info(S, 'loadProjects', { requestId, count: Array.isArray(data) ? data.length : 0 });
+        setProjects(Array.isArray(data) ? data : []);
       }
     } catch {}
   }, []);

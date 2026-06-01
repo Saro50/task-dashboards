@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardR
 import type { EngineStatus } from './Layout';
 import { useChat } from '@/hooks/useChat';
 import { log } from '@/utils/log';
+import { unwrap } from '@/api/lib';
 import type { ChatMessage, ChatPart } from '@/types/chat';
 import type { TaskPlan } from '@/types/task';
 import TaskPlanPreview from './TaskPlanPreview';
@@ -235,6 +236,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     streamingText,
     isLoading,
     isConnected,
+    loadingTimedOut,
+    sessionBroken,
     selectedAgent,
     setSelectedAgent,
     loadSessions,
@@ -244,6 +247,9 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     abortGeneration,
     deleteSession,
     connectSSE,
+    resetLoading,
+    retryInNewSession,
+    dismissSessionBroken,
   } = useChat(directory);
 
   useImperativeHandle(ref, () => ({
@@ -265,8 +271,10 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     try {
       const res = await fetch('/api/engine/agents');
       if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data?.data ?? [];
+        const raw = await res.json();
+        const { data, requestId } = unwrap<any[]>(raw, res.headers.get('X-Request-Id') || undefined);
+        const list = Array.isArray(data) ? data : [];
+        log.info(S, 'loadAgents', { requestId, count: list.length });
         setAgents(list.filter((a: any) => a.mode === 'primary' && !a.hidden && !a.native));
       }
     } catch {}
@@ -283,6 +291,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   useEffect(() => {
     log.info(S, 'open changed', { open, engineStatus, directory });
     if (open) {
+      resetLoading();
       loadSessions();
       loadAgents();
       connectSSE();
@@ -608,12 +617,51 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
               </div>
             )}
 
-            {isLoading && !streamingText && (
+            {isLoading && !streamingText && !loadingTimedOut && (
               <div className="flex justify-start">
                 <div className="rounded-2xl rounded-bl-md px-4 py-3 bg-gray-50 border border-gray-200 flex items-center gap-1.5">
                   <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                   <span className="w-2 h-2 bg-sky-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+              </div>
+            )}
+
+            {loadingTimedOut && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm leading-relaxed bg-red-50 border border-red-200 text-red-600">
+                  <p>响应超时，AI 助手未能回复。请检查引擎状态或稍后重试。</p>
+                  <button
+                    type="button"
+                    onClick={resetLoading}
+                    className="mt-1.5 text-xs text-red-500 underline hover:text-red-700 cursor-pointer"
+                  >
+                    关闭提示
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {sessionBroken && (
+              <div className="flex justify-start">
+                <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm leading-relaxed bg-amber-50 border border-amber-200 text-amber-700">
+                  <p>当前会话模型配置异常，AI 无法回复。</p>
+                  <div className="flex gap-2 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={retryInNewSession}
+                      className="text-xs bg-amber-500 text-white px-2.5 py-1 rounded hover:bg-amber-600 cursor-pointer"
+                    >
+                      新建会话并重试
+                    </button>
+                    <button
+                      type="button"
+                      onClick={dismissSessionBroken}
+                      className="text-xs text-amber-500 underline hover:text-amber-700 cursor-pointer"
+                    >
+                      关闭
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

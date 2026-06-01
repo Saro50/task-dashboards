@@ -1,40 +1,29 @@
+import { apiRequest } from '@/api/lib';
 import type { TopicsResponse, TaskTopic } from '@/types/topic';
 
 const BASE = '/api';
-
-async function request<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(body.error || `HTTP ${res.status}`);
-  }
-  if (res.status === 204) return undefined as T;
-  return res.json();
-}
+const S = 'topicApi';
 
 export const topicApi = {
   list(projectId: string): Promise<TopicsResponse> {
-    return request<TopicsResponse>(`${BASE}/projects/${projectId}/topics`);
+    return apiRequest<TopicsResponse>(S, `${BASE}/projects/${projectId}/topics`);
   },
 
   create(projectId: string, name: string, summary?: string): Promise<TaskTopic> {
-    return request<TaskTopic>(`${BASE}/projects/${projectId}/topics`, {
+    return apiRequest<TaskTopic>(S, `${BASE}/projects/${projectId}/topics`, {
       method: 'POST',
       body: JSON.stringify({ name, summary }),
     });
   },
 
   update(topicId: string, data: { name?: string; summary?: string }): Promise<TaskTopic> {
-    return request<TaskTopic>(`${BASE}/topics/${topicId}`, {
+    return apiRequest<TaskTopic>(S, `${BASE}/topics/${topicId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
 
   remove(topicId: string): Promise<void> {
-    return request<void>(`${BASE}/topics/${topicId}`, { method: 'DELETE' });
+    return apiRequest<void>(S, `${BASE}/topics/${topicId}`, { method: 'DELETE' });
   },
 };

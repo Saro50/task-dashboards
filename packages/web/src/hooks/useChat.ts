@@ -4,6 +4,8 @@ import { log } from '@/utils/log';
 import type { ChatSession, ChatMessage, SSEEventPayload } from '@/types/chat';
 
 const S = 'useChat';
+const LOADING_TIMEOUT_MS = 60_000;
+const SSE_RECONNECT_DELAY_MS = 3_000;
 
 export function useChat(directory?: string) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -13,13 +15,44 @@ export function useChat(directory?: string) {
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string>('task-helper');
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const directoryRef = useRef(directory);
   directoryRef.current = directory;
   const currentSessionIdRef = useRef(currentSessionId);
   currentSessionIdRef.current = currentSessionId;
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sseReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+  const lastSentTextRef = useRef<string | null>(null);
+  const [sessionBroken, setSessionBroken] = useState(false);
 
   const currentSession = sessions.find((s) => s.id === currentSessionId) || null;
+
+  const clearLoadingTimer = useCallback(() => {
+    if (loadingTimerRef.current) {
+      clearTimeout(loadingTimerRef.current);
+      loadingTimerRef.current = null;
+    }
+  }, []);
+
+  const startLoadingTimer = useCallback(() => {
+    clearLoadingTimer();
+    loadingTimerRef.current = setTimeout(() => {
+      if (mountedRef.current) {
+        log.warn(S, 'loading timeout, resetting isLoading');
+        setIsLoading(false);
+        setLoadingTimedOut(true);
+      }
+    }, LOADING_TIMEOUT_MS);
+  }, [clearLoadingTimer]);
+
+  const resetLoading = useCallback(() => {
+    setIsLoading(false);
+    setStreamingText('');
+    setLoadingTimedOut(false);
+    clearLoadingTimer();
+  }, [clearLoadingTimer]);
 
   const loadMessages = useCallback(async (sessionId: string) => {
     try {
@@ -37,16 +70,21 @@ export function useChat(directory?: string) {
     if (eventSourceRef.current) {
       log.info(S, 'connectSSE closing previous EventSource');
       eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    if (sseReconnectTimerRef.current) {
+      clearTimeout(sseReconnectTimerRef.current);
+      sseReconnectTimerRef.current = null;
     }
 
     log.info(S, 'connectSSE starting', { directory: directoryRef.current });
     let deltaCount = 0;
-
     let assistantMsgId: string | null = null;
 
     const es = chatApi.subscribeEvents(
       (payload: SSEEventPayload) => {
         setIsConnected(true);
+        setLoadingTimedOut(false);
         if (payload.type === 'message.updated') {
           const info = payload.properties?.info;
           if (info?.role === 'assistant' && !info?.finish) {
@@ -57,6 +95,7 @@ export function useChat(directory?: string) {
             log.info(S, 'SSE assistant finished', { finish: info.finish, deltasReceived: deltaCount });
             setIsLoading(false);
             setStreamingText('');
+            clearLoadingTimer();
             assistantMsgId = null;
             const sid = currentSessionIdRef.current;
             if (sid) {
@@ -74,6 +113,7 @@ export function useChat(directory?: string) {
             }
             if (deltaCount === 1) {
               log.info(S, 'SSE first delta', { delta: delta?.slice(0, 30) });
+              clearLoadingTimer();
             }
           }
         }
@@ -91,6 +131,7 @@ export function useChat(directory?: string) {
           const status = payload.properties?.status;
           if (status?.type === 'idle') {
             setIsLoading(false);
+            clearLoadingTimer();
           } else if (status?.type === 'busy') {
             setIsLoading(true);
           }
@@ -100,10 +141,15 @@ export function useChat(directory?: string) {
           log.info(S, 'SSE session.idle', { deltasReceived: deltaCount });
           setIsLoading(false);
           setStreamingText('');
+          clearLoadingTimer();
           assistantMsgId = null;
           const sid = currentSessionIdRef.current;
           if (sid) {
             loadMessages(sid);
+          }
+          if (deltaCount === 0 && lastSentTextRef.current) {
+            log.warn(S, 'session.idle with 0 deltas, session may be broken');
+            setSessionBroken(true);
           }
         }
 
@@ -127,21 +173,37 @@ export function useChat(directory?: string) {
         }
       },
       () => {
-        log.warn(S, 'SSE error / disconnected');
+        log.warn(S, 'SSE error, scheduling reconnect');
         setIsConnected(false);
+        if (mountedRef.current) {
+          sseReconnectTimerRef.current = setTimeout(() => {
+            if (mountedRef.current) {
+              log.info(S, 'SSE reconnecting...');
+              connectSSE();
+            }
+          }, SSE_RECONNECT_DELAY_MS);
+        }
       },
       directoryRef.current,
     );
 
     eventSourceRef.current = es;
     setIsConnected(true);
-  }, [loadMessages]);
+  }, [loadMessages, clearLoadingTimer]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
+      }
+      if (sseReconnectTimerRef.current) {
+        clearTimeout(sseReconnectTimerRef.current);
+      }
+      if (loadingTimerRef.current) {
+        clearTimeout(loadingTimerRef.current);
       }
     };
   }, []);
@@ -191,6 +253,7 @@ export function useChat(directory?: string) {
       return;
     }
 
+    lastSentTextRef.current = text;
     setMessages((prev) => [
       ...prev,
       {
@@ -199,7 +262,9 @@ export function useChat(directory?: string) {
       },
     ]);
     setStreamingText('');
+    setLoadingTimedOut(false);
     setIsLoading(true);
+    startLoadingTimer();
 
     try {
       await chatApi.sendMessage(currentSessionId, text, directory, selectedAgent);
@@ -207,8 +272,9 @@ export function useChat(directory?: string) {
     } catch (err) {
       log.error(S, 'sendMessage error', err);
       setIsLoading(false);
+      clearLoadingTimer();
     }
-  }, [currentSessionId, directory, selectedAgent]);
+  }, [currentSessionId, directory, selectedAgent, startLoadingTimer, clearLoadingTimer]);
 
   const abortGeneration = useCallback(async () => {
     if (!currentSessionId) return;
@@ -237,6 +303,21 @@ export function useChat(directory?: string) {
     }
   }, [currentSessionId, sessions, switchSession]);
 
+  const retryInNewSession = useCallback(async () => {
+    const text = lastSentTextRef.current;
+    if (!text) return;
+    log.info(S, 'retryInNewSession', { text: text.slice(0, 80) });
+    setSessionBroken(false);
+    const session = await createSession('新会话');
+    await switchSession(session.id);
+    lastSentTextRef.current = text;
+    await sendMessage(text);
+  }, [createSession, switchSession, sendMessage]);
+
+  const dismissSessionBroken = useCallback(() => {
+    setSessionBroken(false);
+  }, []);
+
   return {
     sessions,
     currentSessionId,
@@ -245,6 +326,8 @@ export function useChat(directory?: string) {
     streamingText,
     isLoading,
     isConnected,
+    loadingTimedOut,
+    sessionBroken,
     selectedAgent,
     setSelectedAgent,
     loadSessions,
@@ -254,5 +337,8 @@ export function useChat(directory?: string) {
     abortGeneration,
     deleteSession,
     connectSSE,
+    resetLoading,
+    retryInNewSession,
+    dismissSessionBroken,
   };
 }
