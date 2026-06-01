@@ -409,7 +409,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   }
 
-  const [chatSize, setChatSize] = useState({ w: 480, h: 640 });
+  const [chatSize, setChatSize] = useState({ w: 660, h: 640 });
   const resizingRef = useRef(false);
   const startRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
   const chatDraggingRef = useRef(false);
