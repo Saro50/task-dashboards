@@ -469,35 +469,29 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
   return (
     <>
-      <button
-        onPointerDown={onFabPointerDown}
-        onPointerMove={onFabPointerMove}
-        onPointerUp={onFabPointerUp}
-        title={engineDisabled ? '请先配置引擎' : open ? '关闭聊天' : '打开 AI 助手'}
-        className="fixed z-[100] w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-colors duration-200 cursor-pointer touch-none select-none"
-        style={{
-          left: fabPos.x,
-          top: fabPos.y,
-        }}
-      >
-        <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg ${
-          open
-            ? 'bg-gray-800 hover:bg-gray-700'
-            : engineDisabled
+      {!open && (
+        <button
+          onPointerDown={onFabPointerDown}
+          onPointerMove={onFabPointerMove}
+          onPointerUp={onFabPointerUp}
+          title={engineDisabled ? '请先配置引擎' : '打开 AI 助手'}
+          className="fixed z-[100] w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-colors duration-200 cursor-pointer touch-none select-none"
+          style={{
+            left: fabPos.x,
+            top: fabPos.y,
+          }}
+        >
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg ${
+            engineDisabled
               ? 'bg-gray-400 cursor-not-allowed opacity-60'
               : 'bg-sky-500 hover:bg-sky-600 shadow-sky-500/25'
-        }`}>
-          {open ? (
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          ) : (
+          }`}>
             <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
             </svg>
-          )}
-        </div>
-      </button>
+          </div>
+        </button>
+      )}
 
       {open && (
         <div
@@ -662,9 +656,10 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
               <button
                 onClick={() => { log.info(S, 'close chat panel'); setOpen(false); }}
                 className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-800 transition-colors cursor-pointer"
+                title="收起"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 12h14" />
                 </svg>
               </button>
             </div>
