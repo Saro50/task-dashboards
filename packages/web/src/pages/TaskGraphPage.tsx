@@ -133,8 +133,6 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [showMerge, setShowMerge] = useState(false);
-  // 跟踪已弹过合并对话框的 execution ID，防止轮询返回同一 COMPLETED 执行时反复弹出
-  const dismissedExecId = useRef<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
   // 重构说明：新增 projectId 参数传递给 useTaskExecution。
@@ -155,17 +153,19 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     onTaskUpdated: refetch,
   });
 
-  // 页面加载时恢复未完成的执行状态，防止刷新后丢失执行进度
+  // 页面加载时恢复执行状态
+  const restoredRef = useRef(false);
   useEffect(() => {
     restoreExecution();
+    restoredRef.current = true;
   }, [restoreExecution]);
 
-  // 执行完成时自动弹出合并对话框（同一 execution 只弹一次）
+  // 首次恢复到 COMPLETED 状态时弹出合并对话框提示用户
   useEffect(() => {
-    if (execution?.status === 'COMPLETED' && dismissedExecId.current !== execution.id) {
+    if (restoredRef.current && execution?.status === 'COMPLETED' && !showMerge) {
       setShowMerge(true);
     }
-  }, [execution?.status, execution?.id]);
+  }, [execution?.status]);
 
   const topicName = useMemo(
     () => topics.find((t) => t.id === topicId)?.name ?? '',
@@ -292,9 +292,8 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
   const handleMerge = useCallback(async (branch: string) => {
     await mergeExecution(branch);
-    dismissedExecId.current = execution?.id ?? null;
     setShowMerge(false);
-  }, [mergeExecution, execution?.id]);
+  }, [mergeExecution]);
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] relative">
@@ -345,7 +344,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
               ))}
             </select>
           </div>
-          {execution?.worktreeBranch && (
+          {execution?.worktreeBranch && execution.status !== 'MERGED' && (
             <div className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-xs text-gray-600">
               <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 4.5h10.5a2.25 2.25 0 012.25 2.25v10.5a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25V6.75a2.25 2.25 0 012.25-2.25z" />
@@ -449,6 +448,31 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
       <TaskStatusBar tasks={filteredTasks} />
 
+      {execution?.status === 'COMPLETED' && (
+        <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 border-t border-green-200 shrink-0">
+          <div className="flex items-center gap-2 text-xs">
+            <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-green-700 font-medium">
+              任务链执行完毕 ({execution.completedTasks}/{execution.totalTasks})
+            </span>
+            {execution.worktreeBranch && (
+              <span className="text-green-600 font-mono">· {execution.worktreeBranch}</span>
+            )}
+          </div>
+          <button
+            onClick={() => setShowMerge(true)}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            合并到分支
+          </button>
+        </div>
+      )}
+
       {selectedTask && (
         <TaskDetailPanel
           task={selectedTask}
@@ -467,7 +491,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         <MergeDialog
           execution={execution}
           onMerge={handleMerge}
-          onClose={() => { dismissedExecId.current = execution.id; setShowMerge(false); }}
+          onClose={() => setShowMerge(false)}
         />
       )}
     </div>

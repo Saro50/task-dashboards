@@ -84,7 +84,6 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated }: UseTaskE
       }
       log.info(S, 'executeChain start', { topicId, projectId, maxConcurrency });
       setExecuting(true);
-      setExecution(null);
 
       executionApi.start(topicId, projectId, maxConcurrency)
         .then((exec) => {
