@@ -448,28 +448,44 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
       <TaskStatusBar tasks={filteredTasks} />
 
-      {execution?.status === 'COMPLETED' && (
-        <div className="flex items-center justify-between px-4 py-2.5 bg-green-50 border-t border-green-200 shrink-0">
+      {(execution?.status === 'COMPLETED' || execution?.status === 'MERGED') && (
+        <div className={`flex items-center justify-between px-4 py-2.5 border-t shrink-0 ${
+          execution.status === 'MERGED'
+            ? 'bg-gray-50 border-gray-200'
+            : 'bg-green-50 border-green-200'
+        }`}>
           <div className="flex items-center gap-2 text-xs">
-            <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className="text-green-700 font-medium">
-              任务链执行完毕 ({execution.completedTasks}/{execution.totalTasks})
+            {execution.status === 'MERGED' ? (
+              <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+            <span className={`font-medium ${execution.status === 'MERGED' ? 'text-gray-600' : 'text-green-700'}`}>
+              {execution.status === 'MERGED'
+                ? `已合并到 ${execution.targetBranch ?? '分支'}`
+                : `任务链执行完毕 (${execution.completedTasks}/${execution.totalTasks})`}
             </span>
             {execution.worktreeBranch && (
-              <span className="text-green-600 font-mono">· {execution.worktreeBranch}</span>
+              <span className={`font-mono ${execution.status === 'MERGED' ? 'text-gray-400' : 'text-green-600'}`}>
+                · {execution.worktreeBranch}
+              </span>
             )}
           </div>
-          <button
-            onClick={() => setShowMerge(true)}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            合并到分支
-          </button>
+          {execution.status === 'COMPLETED' && (
+            <button
+              onClick={() => setShowMerge(true)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              合并到分支
+            </button>
+          )}
         </div>
       )}
 
