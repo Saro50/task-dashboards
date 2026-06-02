@@ -60,6 +60,69 @@ function MiniMapNode({ x, y, width, height, color }: MiniMapNodeProps) {
 const nodeTypes = { task: TaskNode };
 const edgeTypes = { task: TaskEdge };
 
+/**
+ * 合并对话框组件。
+ *
+ * 为什么需要这个组件：任务链执行完成后（COMPLETED 状态），所有代码变更都在 worktree
+ * 隔离环境中，尚未合回主分支。这个对话框让用户选择目标分支（如 main），
+ * 确认后调用后端 merge API 将执行标记为 MERGED。
+ * 这是执行流程的最后一环：执行 → 完成 → 合并。
+ */
+function MergeDialog({ execution, onMerge, onClose }: {
+  execution: { id: string; completedTasks: number; totalTasks: number; worktreeName: string | null };
+  onMerge: (branch: string) => void;
+  onClose: () => void;
+}) {
+  const [branch, setBranch] = useState('main');
+  const [merging, setMerging] = useState(false);
+
+  const handleMerge = async () => {
+    setMerging(true);
+    await onMerge(branch);
+    setMerging(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-xl shadow-2xl w-96 p-6">
+        <h3 className="text-lg font-semibold text-gray-800 mb-2">合并到分支</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          任务链已执行完毕（{execution.completedTasks}/{execution.totalTasks}），将 worktree 的变更合并到指定分支。
+        </p>
+        {execution.worktreeName && (
+          <p className="text-xs text-gray-400 mb-4">Worktree: {execution.worktreeName}</p>
+        )}
+        <div className="mb-4">
+          <label className="block text-xs font-medium text-gray-600 mb-1">目标分支</label>
+          <input
+            type="text"
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+            placeholder="main"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 outline-none"
+          />
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onClose}
+            disabled={merging}
+            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 cursor-pointer disabled:opacity-50"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleMerge}
+            disabled={merging || !branch.trim()}
+            className="px-4 py-2 text-sm bg-sky-500 hover:bg-sky-600 text-white rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {merging ? '合并中...' : '合并'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TaskGraphPage({ engineStatus }: Props) {
   const { projectId, topicId } = useParams<{ projectId: string; topicId: string }>();
   const navigate = useNavigate();
@@ -69,12 +132,40 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const { project } = useProject(projectId);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [showMerge, setShowMerge] = useState(false);
+  // 跟踪已弹过合并对话框的 execution ID，防止轮询返回同一 COMPLETED 执行时反复弹出
+  const dismissedExecId = useRef<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
-  const { executeChain, cancelExecution, executing, maxConcurrency, setMaxConcurrency } = useTaskExecution({
+  // 重构说明：新增 projectId 参数传递给 useTaskExecution。
+  // 之前 hook 是纯前端模拟，不需要 projectId；现在后端需要 projectId 来查找
+  // 项目的本地路径，以便创建 worktree 和 AI 会话。
+  const {
+    executeChain,
+    cancelExecution,
+    mergeExecution,
+    restoreExecution,
+    executing,
+    execution,
+    maxConcurrency,
+    setMaxConcurrency,
+  } = useTaskExecution({
     topicId,
+    projectId,
     onTaskUpdated: refetch,
   });
+
+  // 页面加载时恢复未完成的执行状态，防止刷新后丢失执行进度
+  useEffect(() => {
+    restoreExecution();
+  }, [restoreExecution]);
+
+  // 执行完成时自动弹出合并对话框（同一 execution 只弹一次）
+  useEffect(() => {
+    if (execution?.status === 'COMPLETED' && dismissedExecId.current !== execution.id) {
+      setShowMerge(true);
+    }
+  }, [execution?.status, execution?.id]);
 
   const topicName = useMemo(
     () => topics.find((t) => t.id === topicId)?.name ?? '',
@@ -199,6 +290,12 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     }
   }, [refetch, showToast, executing]);
 
+  const handleMerge = useCallback(async (branch: string) => {
+    await mergeExecution(branch);
+    dismissedExecId.current = execution?.id ?? null;
+    setShowMerge(false);
+  }, [mergeExecution, execution?.id]);
+
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] relative">
       <div className="flex items-center justify-between px-4 py-2 bg-white border-b border-gray-200 shrink-0">
@@ -225,6 +322,19 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           {!loading && <span className="text-xs text-gray-400 ml-1">{filteredTasks.length} 个任务</span>}
         </div>
         <div className="flex items-center gap-2">
+          {/* 执行进度指示器：显示 worktree 创建状态或任务完成进度 */}
+          {execution && (executing || execution.status === 'CREATING_WORKTREE') && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              {execution.status === 'CREATING_WORKTREE' ? (
+                <span className="text-amber-600">创建 worktree...</span>
+              ) : (
+                <>
+                  <span className="text-sky-600">{execution.completedTasks}/{execution.totalTasks}</span>
+                  {execution.worktreeName && <span className="text-gray-400">({execution.worktreeName})</span>}
+                </>
+              )}
+            </div>
+          )}
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-gray-500">并发</span>
             <select
@@ -345,6 +455,15 @@ export default function TaskGraphPage({ engineStatus }: Props) {
       )}
 
       <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} onPlanImported={refetch} />
+
+      {/* 执行完成时弹出合并对话框，让用户选择目标分支完成 worktree 合并 */}
+      {showMerge && execution && execution.status === 'COMPLETED' && (
+        <MergeDialog
+          execution={execution}
+          onMerge={handleMerge}
+          onClose={() => { dismissedExecId.current = execution.id; setShowMerge(false); }}
+        />
+      )}
     </div>
   );
 }

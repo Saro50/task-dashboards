@@ -19,6 +19,7 @@ model Project {
 
   tasks       Task[]
   topics      TaskTopic[]
+  executions  TaskExecution[]
 }
 
 enum ProjectStatus {
@@ -37,6 +38,7 @@ model TaskTopic {
 
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tasks       Task[]
+  executions  TaskExecution[]
 
   @@index([projectId])
 }
@@ -99,4 +101,49 @@ model EngineConfig {
   baseUrl   String   @db.VarChar(500)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// 任务链执行记录。
+/// 每条记录对应一次任务链执行：创建 worktree 隔离环境 → 在其中创建 AI 会话 →
+/// 按 DAG 拓扑顺序逐批执行任务。执行状态通过 status 字段流转：
+///   CREATING_WORKTREE → RUNNING → COMPLETED / FAILED / STOPPED → MERGED
+/// 前端通过轮询该表获取执行进度（completedTasks / totalTasks），
+/// 完成后弹出合并对话框让用户选择目标分支。
+model TaskExecution {
+  id               String              @id @default(cuid())
+  topicId          String
+  projectId        String
+  status           ExecutionStatus     @default(CREATING_WORKTREE)
+  worktreeId       String?
+  worktreeName     String?
+  worktreeDirectory String?
+  sessionId        String?
+  targetBranch     String?
+  maxConcurrency   Int                 @default(2)
+  completedTasks   Int                 @default(0)
+  totalTasks       Int                 @default(0)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  topic            TaskTopic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  project          Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([topicId])
+  @@index([status])
+}
+
+/// 任务链执行状态枚举。
+/// CREATING_WORKTREE: 正在为本次执行创建 git worktree 隔离环境
+/// RUNNING: worktree 已就绪，AI 会话正在按 DAG 顺序执行任务
+/// COMPLETED: 所有任务执行完毕，等待用户确认合并
+/// MERGED: 用户已选择目标分支完成合并
+/// STOPPED: 用户手动中止执行，IN_PROGRESS 的任务被重置为 PENDING
+/// FAILED: 执行过程中出现不可恢复的错误
+enum ExecutionStatus {
+  CREATING_WORKTREE
+  RUNNING
+  COMPLETED
+  MERGED
+  STOPPED
+  FAILED
 }
