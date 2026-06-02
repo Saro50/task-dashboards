@@ -34,7 +34,15 @@ function envFloat(key: string, fallback: number): number {
   return Number.isNaN(n) ? fallback : n;
 }
 
-const CONF = {
+export interface MockConfig {
+  wtDelay?: number;
+  sessionDelay?: number;
+  taskDelay?: number;
+  failureRate?: number;
+  failAfter?: number;
+}
+
+const DEFAULT_CONF: Required<MockConfig> = {
   wtDelay: envInt('MOCK_WT_DELAY', 500),
   sessionDelay: envInt('MOCK_SESSION_DELAY', 300),
   taskDelay: envInt('MOCK_TASK_DELAY', 2000),
@@ -87,13 +95,19 @@ function delay(ms: number): Promise<void> {
 }
 
 export class MockEngine {
+  private conf: Required<MockConfig>;
+
+  constructor(config?: MockConfig) {
+    this.conf = { ...DEFAULT_CONF, ...config };
+  }
+
   async createWorktree(
     _baseUrl: string,
     directory: string,
     name?: string,
   ): Promise<WorktreeInfo> {
     logger.info(S, 'mock createWorktree', { directory, name });
-    await delay(CONF.wtDelay);
+    await delay(this.conf.wtDelay);
 
     const wtName = name || `mock-wt-${Date.now()}`;
     const branch = `opencode/${wtName}`;
@@ -129,7 +143,7 @@ export class MockEngine {
     options: { workspaceID?: string; title?: string; agent?: string },
   ): Promise<SessionInfo> {
     logger.info(S, 'mock createSessionInWorkspace', { directory, title: options.title });
-    await delay(CONF.sessionDelay);
+    await delay(this.conf.sessionDelay);
 
     const id = cuid();
     const session: MockSession = {
@@ -180,7 +194,7 @@ export class MockEngine {
     logger.info(S, 'mock waitForSessionIdle — waiting', {
       sessionId,
       promptCount,
-      delay: CONF.taskDelay,
+      delay: this.conf.taskDelay,
     });
 
     let abortCb: (() => void) | null = null;
@@ -188,7 +202,7 @@ export class MockEngine {
       const timer = setTimeout(() => {
         if (abortCb) session.abortCallbacks.delete(abortCb);
         resolve();
-      }, CONF.taskDelay);
+      }, this.conf.taskDelay);
 
       abortCb = () => {
         clearTimeout(timer);
@@ -257,10 +271,10 @@ export class MockEngine {
   }
 
   private shouldFail(session: MockSession): boolean {
-    if (CONF.failAfter > 0 && session.successCount >= CONF.failAfter) {
+    if (this.conf.failAfter > 0 && session.successCount >= this.conf.failAfter) {
       return true;
     }
-    if (CONF.failureRate > 0 && Math.random() < CONF.failureRate) {
+    if (this.conf.failureRate > 0 && Math.random() < this.conf.failureRate) {
       return true;
     }
     return false;

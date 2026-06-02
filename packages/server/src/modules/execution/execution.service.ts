@@ -85,6 +85,16 @@ export async function start(topicId: string, projectId: string, maxConcurrency: 
   const pendingTasks = tasks.filter((t) => t.status === 'PENDING');
   if (pendingTasks.length === 0) throw new Error('No pending tasks to execute');
 
+  // 查找可复用的 STOPPED worktree：用户中断后修改任务再继续，应沿用同一分支推进
+  const stopped = await prisma.taskExecution.findFirst({
+    where: {
+      topicId,
+      status: 'STOPPED',
+      worktreeDirectory: { not: null },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
   const execution = await prisma.taskExecution.create({
     data: {
       topicId,
@@ -93,11 +103,21 @@ export async function start(topicId: string, projectId: string, maxConcurrency: 
       maxConcurrency,
       totalTasks: pendingTasks.length,
       completedTasks: 0,
+      ...(stopped ? {
+        worktreeName: stopped.worktreeName,
+        worktreeBranch: stopped.worktreeBranch,
+        worktreeDirectory: stopped.worktreeDirectory,
+      } : {}),
     },
   });
 
-  // 异步启动执行流程，不阻塞 API 响应。前端通过轮询获取进度。
-  runExecution(execution.id, project.path, topic.name, maxConcurrency).catch((err) => {
+  const reuseWorktree = stopped ? {
+    directory: stopped.worktreeDirectory!,
+    branch: stopped.worktreeBranch,
+    name: stopped.worktreeName,
+  } : undefined;
+
+  runExecution(execution.id, project.path, topic.name, maxConcurrency, reuseWorktree).catch((err) => {
     logger.error(S, 'runExecution fatal error', err);
   });
 
@@ -105,27 +125,46 @@ export async function start(topicId: string, projectId: string, maxConcurrency: 
 }
 
 // 创建 worktree 隔离环境 → 创建 AI 会话 → 开始执行任务
-async function runExecution(executionId: string, projectPath: string, topicName: string, maxConcurrency: number) {
+async function runExecution(
+  executionId: string,
+  projectPath: string,
+  topicName: string,
+  maxConcurrency: number,
+  existingWorktree?: { directory: string; branch: string | null; name: string | null },
+) {
   try {
     const baseUrl = await EngineService.getBaseUrl();
 
-    const worktreeName = `exec-${topicName.slice(0, 16)}-${Date.now()}`;
-    logger.info(S, 'creating worktree', { executionId, projectPath, worktreeName });
-    const worktree = await OpencodeV2.createWorktree(baseUrl, projectPath, worktreeName);
-    logger.info(S, 'worktree created', { executionId, worktree });
+    let worktreeDir: string;
+    let wtName: string | null;
+    let wtBranch: string | null;
+
+    if (existingWorktree) {
+      logger.info(S, 'reusing existing worktree', { executionId, directory: existingWorktree.directory });
+      worktreeDir = existingWorktree.directory;
+      wtName = existingWorktree.name;
+      wtBranch = existingWorktree.branch;
+    } else {
+      const worktreeName = `exec-${topicName.slice(0, 16)}-${Date.now()}`;
+      logger.info(S, 'creating worktree', { executionId, projectPath, worktreeName });
+      const worktree = await OpencodeV2.createWorktree(baseUrl, projectPath, worktreeName);
+      logger.info(S, 'worktree created', { executionId, worktree });
+      worktreeDir = worktree.directory;
+      wtName = worktree.name;
+      wtBranch = worktree.branch ?? null;
+    }
 
     await prisma.taskExecution.update({
       where: { id: executionId },
       data: {
         status: 'RUNNING' as ExecutionStatus,
-        worktreeName: worktree.name,
-        worktreeDirectory: worktree.directory,
+        worktreeName: wtName,
+        worktreeBranch: wtBranch,
+        worktreeDirectory: worktreeDir,
       },
     });
 
-    // 使用 worktree 目录创建 session，确保 AI 在隔离环境中操作，
-    // 而非在主分支目录中直接修改文件。
-    const session = await OpencodeV2.createSessionInWorkspace(baseUrl, worktree.directory, {
+    const session = await OpencodeV2.createSessionInWorkspace(baseUrl, worktreeDir, {
       title: `执行任务链：${topicName}`,
       agent: 'build',
     });
@@ -136,7 +175,7 @@ async function runExecution(executionId: string, projectPath: string, topicName:
       data: { sessionId: session.id },
     });
 
-    await executeTasks(executionId, baseUrl, worktree.directory, session.id, maxConcurrency);
+    await executeTasks(executionId, baseUrl, worktreeDir, session.id, maxConcurrency);
   } catch (err: any) {
     logger.error(S, 'runExecution error', { executionId, error: err.message });
     await prisma.taskExecution.update({

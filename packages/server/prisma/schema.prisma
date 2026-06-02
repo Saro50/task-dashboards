@@ -116,6 +116,7 @@ model TaskExecution {
   status           ExecutionStatus     @default(CREATING_WORKTREE)
   worktreeId       String?
   worktreeName     String?
+  worktreeBranch   String?
   worktreeDirectory String?
   sessionId        String?
   targetBranch     String?

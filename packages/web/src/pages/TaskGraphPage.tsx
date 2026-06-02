@@ -323,15 +323,12 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         </div>
         <div className="flex items-center gap-2">
           {/* 执行进度指示器：显示 worktree 创建状态或任务完成进度 */}
-          {execution && (executing || execution.status === 'CREATING_WORKTREE') && (
+          {execution && executing && (
             <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              {execution.status === 'CREATING_WORKTREE' ? (
+              {execution.status === 'CREATING_WORKTREE' && !execution.worktreeBranch ? (
                 <span className="text-amber-600">创建 worktree...</span>
               ) : (
-                <>
-                  <span className="text-sky-600">{execution.completedTasks}/{execution.totalTasks}</span>
-                  {execution.worktreeName && <span className="text-gray-400">({execution.worktreeName})</span>}
-                </>
+                <span className="text-sky-600">{execution.completedTasks}/{execution.totalTasks}</span>
               )}
             </div>
           )}
@@ -348,6 +345,15 @@ export default function TaskGraphPage({ engineStatus }: Props) {
               ))}
             </select>
           </div>
+          {execution?.worktreeBranch && (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-xs text-gray-600">
+              <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 4.5h10.5a2.25 2.25 0 012.25 2.25v10.5a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25V6.75a2.25 2.25 0 012.25-2.25z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6" />
+              </svg>
+              <span className="font-mono truncate max-w-48">{execution.worktreeBranch}</span>
+            </div>
+          )}
           {executing ? (
             <button
               onClick={cancelExecution}

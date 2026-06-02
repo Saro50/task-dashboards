@@ -11,7 +11,9 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:engine": "vitest run src/__tests__/engine-mock.test.ts src/__tests__/execution.controller.test.ts src/__tests__/execution.service.test.ts",
+    "test:engine:watch": "vitest src/__tests__/engine-mock.test.ts src/__tests__/execution.controller.test.ts src/__tests__/execution.service.test.ts"
   },
   "dependencies": {
     "@koa/cors": "^5.0.0",

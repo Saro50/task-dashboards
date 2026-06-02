@@ -20,6 +20,7 @@ export interface TaskExecution {
   status: ExecutionStatus;
   worktreeId: string | null;
   worktreeName: string | null;
+  worktreeBranch: string | null;
   worktreeDirectory: string | null;
   sessionId: string | null;
   targetBranch: string | null;
