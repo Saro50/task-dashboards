@@ -101,7 +101,7 @@ export async function start(topicId: string, projectId: string, maxConcurrency: 
       projectId,
       status: 'CREATING_WORKTREE' as ExecutionStatus,
       maxConcurrency,
-      totalTasks: pendingTasks.length,
+      totalTasks: tasks.length,
       completedTasks: 0,
       ...(stopped ? {
         worktreeName: stopped.worktreeName,
@@ -225,6 +225,7 @@ async function executeTasks(
       data: {
         status: finalStatus,
         completedTasks: completedCount,
+        totalTasks: allTasks.length,
       },
     });
     logger.info(S, 'execution finished', { executionId, status: finalStatus, completedCount });
@@ -314,7 +315,7 @@ async function executeTasks(
   // 只在仍是 RUNNING 时更新进度（stop 可能已经将其改为 STOPPED）
   await prisma.taskExecution.updateMany({
     where: { id: executionId, status: 'RUNNING' },
-    data: { completedTasks: completedCount },
+      data: { completedTasks: completedCount, totalTasks: allNow.length },
   });
   logger.info(S, 'batch completed', { executionId, tasks: toStart.map((t) => t.id), completedCount });
 
