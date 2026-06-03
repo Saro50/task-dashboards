@@ -71,6 +71,8 @@ const mockGit = {
   checkout: vi.fn().mockResolvedValue(undefined),
   merge: vi.fn().mockResolvedValue(undefined),
   commit: vi.fn().mockResolvedValue(undefined),
+  status: vi.fn().mockResolvedValue({ isClean: () => true, staged: [] }),
+  raw: vi.fn().mockResolvedValue(undefined),
 };
 
 vi.mock('simple-git', () => ({
@@ -203,6 +205,8 @@ describe('execution.service', () => {
     mockGit.checkout.mockResolvedValue(undefined);
     mockGit.merge.mockResolvedValue(undefined);
     mockGit.commit.mockResolvedValue(undefined);
+    mockGit.status.mockResolvedValue({ isClean: () => true, staged: [] });
+    mockGit.raw.mockResolvedValue(undefined);
     execCounter = 0;
     taskCounter = 0;
     setupExecutionStubs();
@@ -397,13 +401,20 @@ describe('execution.service', () => {
       mocks.prisma.taskExecution.findUnique.mockResolvedValue(latestExecution);
       mocks.prisma.taskTopic.findUnique.mockResolvedValue(makeTopic());
 
+      // 1st status call: worktree is dirty → triggers add + commit
+      // 2nd status call: after squash merge, has staged changes → triggers final commit
+      mockGit.status
+        .mockResolvedValueOnce({ isClean: () => false, staged: [] })
+        .mockResolvedValueOnce({ isClean: () => false, staged: ['file.ts'] });
+
       const result = await Service.merge(latestExecution.id, 'main');
 
       expect(result!.status).toBe('MERGED');
       expect(result!.targetBranch).toBe('main');
       expect(mockGit.checkout).toHaveBeenCalledWith('main');
       expect(mockGit.merge).toHaveBeenCalledWith(['--squash', 'opencode/test-branch']);
-      expect(mockGit.commit).toHaveBeenCalled();
+      expect(mockGit.raw).toHaveBeenCalledWith(['add', '-A']);
+      expect(mockGit.commit).toHaveBeenCalledTimes(2);
     });
 
     it('S5.2: merge running execution throws', async () => {

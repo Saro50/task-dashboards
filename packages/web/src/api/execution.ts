@@ -50,4 +50,8 @@ export const executionApi = {
   getDiff(executionId: string): Promise<{ diffs: FileDiff[] }> {
     return apiRequest<{ diffs: FileDiff[] }>(S, `${BASE}/executions/${executionId}/diff`);
   },
+
+  getBranches(executionId: string): Promise<{ branches: string[]; current: string }> {
+    return apiRequest<{ branches: string[]; current: string }>(S, `${BASE}/executions/${executionId}/branches`);
+  },
 };

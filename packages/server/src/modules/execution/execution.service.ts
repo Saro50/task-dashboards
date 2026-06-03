@@ -385,6 +385,22 @@ export async function stop(executionId: string) {
   return prisma.taskExecution.findUnique({ where: { id: executionId } });
 }
 
+export async function getBranches(executionId: string) {
+  const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
+  if (!execution) throw new Error('Execution not found');
+
+  const project = await prisma.project.findUnique({ where: { id: execution.projectId } });
+  if (!project?.path) throw new Error('Project not found or no path configured');
+
+  const git = simpleGit(project.path);
+  const result = await git.branch();
+  const current = result.current;
+
+  const branches = result.all.filter((b) => !b.startsWith('opencode/'));
+
+  return { branches, current };
+}
+
 export async function getDiff(executionId: string) {
   const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!execution) throw new Error('Execution not found');
@@ -398,31 +414,47 @@ export async function merge(executionId: string, targetBranch: string) {
   const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!execution) throw new Error('Execution not found');
   if (execution.status !== 'COMPLETED') throw new Error('Execution must be COMPLETED to merge');
+  if (!execution.worktreeBranch) throw new Error('No worktree branch for this execution');
+  if (!execution.worktreeDirectory) throw new Error('No worktree directory for this execution');
 
   const project = await prisma.project.findUnique({ where: { id: execution.projectId } });
   if (!project?.path) throw new Error('Project not found or no path configured');
 
   const baseUrl = await EngineService.getBaseUrl();
-  const git = simpleGit(project.path);
 
+  // 先在 worktree 目录中 commit 所有变更到 worktree 分支
+  // opencode 不会自动 commit，AI 修改的文件只在工作区，需要手动 stage + commit
+  const worktreeGit = simpleGit(execution.worktreeDirectory);
+  const status = await worktreeGit.status();
+  if (!status.isClean()) {
+    await worktreeGit.raw(['add', '-A']);
+    await worktreeGit.commit('chore: task chain worktree changes');
+    logger.info(S, 'committed worktree changes', { executionId, branch: execution.worktreeBranch });
+  }
+
+  const git = simpleGit(project.path);
   await git.checkout(targetBranch);
 
   try {
-    await git.merge(['--squash', execution.worktreeBranch!]);
+    await git.merge(['--squash', execution.worktreeBranch]);
   } catch (err: any) {
     await git.merge(['--abort']).catch(() => {});
     throw new Error(`合并冲突: ${err.message}`);
   }
 
-  const topic = await prisma.taskTopic.findUnique({ where: { id: execution.topicId } });
-  await git.commit(`feat: ${topic?.name ?? '任务链'} 执行完成`);
+  // 检查 squash merge 后是否有实际变更
+  const mergeStatus = await git.status();
+  if (mergeStatus.staged.length > 0 || !mergeStatus.isClean()) {
+    const topic = await prisma.taskTopic.findUnique({ where: { id: execution.topicId } });
+    await git.commit(`feat: ${topic?.name ?? '任务链'} 执行完成`);
+  } else {
+    logger.info(S, 'no changes to commit after squash merge', { executionId });
+  }
 
-  if (execution.worktreeDirectory) {
-    try {
-      await OpencodeV2.removeWorktree(baseUrl, project.path, execution.worktreeDirectory);
-    } catch (err: any) {
-      logger.warn(S, 'worktree removal error after merge', { executionId, error: err.message });
-    }
+  try {
+    await OpencodeV2.removeWorktree(baseUrl, project.path, execution.worktreeDirectory);
+  } catch (err: any) {
+    logger.warn(S, 'worktree removal error after merge', { executionId, error: err.message });
   }
 
   await prisma.taskExecution.update({

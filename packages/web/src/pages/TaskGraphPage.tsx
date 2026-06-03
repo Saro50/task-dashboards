@@ -5,6 +5,7 @@ import '@xyflow/react/dist/style.css';
 import type { EngineStatus } from '@/components/Layout';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
 import { taskApi } from '@/api/task';
+import { executionApi } from '@/api/execution';
 import { useTasks } from '@/hooks/useTasks';
 import { useTopics } from '@/hooks/useTopics';
 import { useProject } from '@/hooks/useProject';
@@ -75,8 +76,31 @@ function MergeDialog({ execution, onMerge, onClose }: {
   onMerge: (branch: string) => void;
   onClose: () => void;
 }) {
-  const [branch, setBranch] = useState('main');
+  const [branches, setBranches] = useState<string[]>([]);
+  const [current, setCurrent] = useState('main');
+  const [branch, setBranch] = useState('');
   const [merging, setMerging] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    executionApi.getBranches(execution.id).then((res) => {
+      if (!cancelled) {
+        setBranches(res.branches);
+        setCurrent(res.current);
+        setBranch(res.current || res.branches[0] || 'main');
+        setLoading(false);
+      }
+    }).catch((err) => {
+      if (!cancelled) {
+        log.error('MergeDialog', 'getBranches failed', err);
+        setError(err.message ?? '获取分支失败');
+        setLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [execution.id]);
 
   const handleMerge = async () => {
     setMerging(true);
@@ -96,13 +120,25 @@ function MergeDialog({ execution, onMerge, onClose }: {
         )}
         <div className="mb-4">
           <label className="block text-xs font-medium text-gray-600 mb-1">目标分支</label>
-          <input
-            type="text"
-            value={branch}
-            onChange={(e) => setBranch(e.target.value)}
-            placeholder="main"
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 outline-none"
-          />
+          {loading ? (
+            <div className="w-full px-3 py-2 text-sm text-gray-400 border border-gray-200 rounded-lg">加载分支...</div>
+          ) : error ? (
+            <div className="w-full px-3 py-2 text-sm text-red-500 border border-red-200 rounded-lg">{error}</div>
+          ) : branches.length === 0 ? (
+            <div className="w-full px-3 py-2 text-sm text-gray-400 border border-gray-200 rounded-lg">未找到可用分支</div>
+          ) : (
+            <select
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 outline-none bg-white cursor-pointer"
+            >
+              {branches.map((b) => (
+                <option key={b} value={b}>
+                  {b}{b === current ? ' (当前)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="flex gap-2 justify-end">
           <button
@@ -114,7 +150,7 @@ function MergeDialog({ execution, onMerge, onClose }: {
           </button>
           <button
             onClick={handleMerge}
-            disabled={merging || !branch.trim()}
+            disabled={merging || loading || !!error || !branch}
             className="px-4 py-2 text-sm bg-sky-500 hover:bg-sky-600 text-white rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {merging ? '合并中...' : '合并'}

@@ -128,3 +128,18 @@ export async function diff(ctx: Context) {
   const diffs = await Service.getDiff(executionId);
   ctx.body = { diffs };
 }
+
+export async function branches(ctx: Context) {
+  const { executionId } = ctx.params;
+  try {
+    const result = await Service.getBranches(executionId);
+    ctx.body = result;
+  } catch (err: any) {
+    if (err.message?.includes('not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}
