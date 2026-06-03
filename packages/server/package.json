@@ -22,7 +22,8 @@
     "dotenv": "^16.5.0",
     "koa": "^2.16.1",
     "koa-bodyparser": "^4.4.1",
-    "koa-router": "^13.0.1"
+    "koa-router": "^13.0.1",
+    "simple-git": "^3.36.0"
   },
   "devDependencies": {
     "@types/koa": "^2.15.0",

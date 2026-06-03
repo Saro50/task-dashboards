@@ -27,6 +27,7 @@ import * as EngineService from '../engine/engine.service.js';
 import * as OpencodeV2 from '../engine/opencode-v2.js';
 import * as TaskService from '../task/task.service.js';
 import { logger } from '../../logger.js';
+import simpleGit from 'simple-git';
 
 const S = 'execution.service';
 
@@ -40,12 +41,25 @@ interface TaskWithDeps {
 
 // 构建发送给 AI 的任务提示词，包含任务描述和已完成的前置依赖信息，
 // 让 AI 了解上下文，避免重复已完成的工作。
-function buildPrompt(task: TaskWithDeps, deps: TaskWithDeps[]): string {
-  const lines: string[] = [
-    '请执行以下任务：',
-    '',
-    `## 任务：${task.title}`,
-  ];
+function buildPrompt(task: TaskWithDeps, deps: TaskWithDeps[], allTasks: TaskWithDeps[]): string {
+  const lines: string[] = [];
+
+  const statusIcon = (s: string) => {
+    if (s === 'COMPLETED') return '✅';
+    if (s === 'IN_PROGRESS') return '🔄';
+    if (s === 'BLOCKED') return '❌';
+    return '⏳';
+  };
+
+  lines.push('当前任务链执行状态：');
+  for (const t of allTasks) {
+    const icon = statusIcon(t.status);
+    const suffix = t.id === task.id ? '  ← 当前' : '';
+    lines.push(`- ${icon} ${t.title} (${t.status})${suffix}`);
+  }
+  lines.push('');
+
+  lines.push(`## 任务：${task.title}`);
   if (task.description) lines.push(task.description);
   const validDeps = deps.filter((d) => d.status === 'COMPLETED');
   if (validDeps.length > 0) {
@@ -85,36 +99,46 @@ export async function start(topicId: string, projectId: string, maxConcurrency: 
   const pendingTasks = tasks.filter((t) => t.status === 'PENDING');
   if (pendingTasks.length === 0) throw new Error('No pending tasks to execute');
 
-  // 查找可复用的 STOPPED worktree：用户中断后修改任务再继续，应沿用同一分支推进
-  const stopped = await prisma.taskExecution.findFirst({
+  // 查找可复用的 execution：STOPPED 或 FAILED 且有 worktree
+  const reusable = await prisma.taskExecution.findFirst({
     where: {
       topicId,
-      status: 'STOPPED',
+      status: { in: ['STOPPED', 'FAILED'] },
       worktreeDirectory: { not: null },
     },
     orderBy: { createdAt: 'desc' },
   });
 
-  const execution = await prisma.taskExecution.create({
-    data: {
-      topicId,
-      projectId,
-      status: 'CREATING_WORKTREE' as ExecutionStatus,
-      maxConcurrency,
-      totalTasks: tasks.length,
-      completedTasks: 0,
-      ...(stopped ? {
-        worktreeName: stopped.worktreeName,
-        worktreeBranch: stopped.worktreeBranch,
-        worktreeDirectory: stopped.worktreeDirectory,
-      } : {}),
-    },
-  });
+  let execution;
+  if (reusable) {
+    execution = await prisma.taskExecution.update({
+      where: { id: reusable.id },
+      data: {
+        status: 'CREATING_WORKTREE' as ExecutionStatus,
+        maxConcurrency,
+        totalTasks: tasks.length,
+        completedTasks: tasks.filter((t) => t.status === 'COMPLETED').length,
+        sessionId: null,
+      },
+    });
+    logger.info(S, 'reusing execution record', { executionId: execution.id, previousStatus: reusable.status });
+  } else {
+    execution = await prisma.taskExecution.create({
+      data: {
+        topicId,
+        projectId,
+        status: 'CREATING_WORKTREE' as ExecutionStatus,
+        maxConcurrency,
+        totalTasks: tasks.length,
+        completedTasks: 0,
+      },
+    });
+  }
 
-  const reuseWorktree = stopped ? {
-    directory: stopped.worktreeDirectory!,
-    branch: stopped.worktreeBranch,
-    name: stopped.worktreeName,
+  const reuseWorktree = reusable ? {
+    directory: reusable.worktreeDirectory!,
+    branch: reusable.worktreeBranch,
+    name: reusable.worktreeName,
   } : undefined;
 
   runExecution(execution.id, project.path, topic.name, maxConcurrency, reuseWorktree).catch((err) => {
@@ -250,7 +274,7 @@ async function executeTasks(
 
     await TaskService.update(task.id, { status: 'IN_PROGRESS' });
     const deps = task.dependencies.map((id) => allTasks.find((t) => t.id === id)).filter(Boolean) as TaskWithDeps[];
-    const prompt = buildPrompt(task, deps);
+    const prompt = buildPrompt(task, deps, allTasks);
 
     logger.info(S, 'sending task prompt', { executionId, taskId: task.id, title: task.title });
 
@@ -337,7 +361,6 @@ export async function stop(executionId: string) {
   if (execution.sessionId) {
     try {
       const baseUrl = await EngineService.getBaseUrl();
-      // 优先使用 worktree 目录（session 绑定在 worktree 中），回退到项目路径
       const directory = execution.worktreeDirectory;
       if (directory) {
         await OpencodeV2.abortSession(baseUrl, execution.sessionId, directory);
@@ -352,7 +375,6 @@ export async function stop(executionId: string) {
     data: { status: 'STOPPED' as ExecutionStatus },
   });
 
-  // 重置 IN_PROGRESS 任务为 PENDING，允许用户重新执行
   const tasks = await TaskService.listByTopic(execution.topicId);
   for (const task of tasks) {
     if (task.status === 'IN_PROGRESS') {
@@ -363,19 +385,49 @@ export async function stop(executionId: string) {
   return prisma.taskExecution.findUnique({ where: { id: executionId } });
 }
 
-// 合并操作：记录用户选择的目标分支，将执行状态标记为 MERGED。
-// 注意：当前仅做状态标记，实际的 git merge 操作需要后续集成 git API 实现。
+export async function getDiff(executionId: string) {
+  const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
+  if (!execution) throw new Error('Execution not found');
+  if (!execution.worktreeDirectory) throw new Error('No worktree for this execution');
+
+  const baseUrl = await EngineService.getBaseUrl();
+  return OpencodeV2.getDiff(baseUrl, execution.worktreeDirectory, 'branch');
+}
+
 export async function merge(executionId: string, targetBranch: string) {
   const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!execution) throw new Error('Execution not found');
   if (execution.status !== 'COMPLETED') throw new Error('Execution must be COMPLETED to merge');
 
+  const project = await prisma.project.findUnique({ where: { id: execution.projectId } });
+  if (!project?.path) throw new Error('Project not found or no path configured');
+
+  const baseUrl = await EngineService.getBaseUrl();
+  const git = simpleGit(project.path);
+
+  await git.checkout(targetBranch);
+
+  try {
+    await git.merge(['--squash', execution.worktreeBranch!]);
+  } catch (err: any) {
+    await git.merge(['--abort']).catch(() => {});
+    throw new Error(`合并冲突: ${err.message}`);
+  }
+
+  const topic = await prisma.taskTopic.findUnique({ where: { id: execution.topicId } });
+  await git.commit(`feat: ${topic?.name ?? '任务链'} 执行完成`);
+
+  if (execution.worktreeDirectory) {
+    try {
+      await OpencodeV2.removeWorktree(baseUrl, project.path, execution.worktreeDirectory);
+    } catch (err: any) {
+      logger.warn(S, 'worktree removal error after merge', { executionId, error: err.message });
+    }
+  }
+
   await prisma.taskExecution.update({
     where: { id: executionId },
-    data: {
-      status: 'MERGED' as ExecutionStatus,
-      targetBranch,
-    },
+    data: { status: 'MERGED' as ExecutionStatus, targetBranch },
   });
 
   return prisma.taskExecution.findUnique({ where: { id: executionId } });

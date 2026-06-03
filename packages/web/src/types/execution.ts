@@ -30,3 +30,11 @@ export interface TaskExecution {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface FileDiff {
+  file: string;
+  patch?: string;
+  additions: number;
+  deletions: number;
+  status?: 'added' | 'deleted' | 'modified';
+}

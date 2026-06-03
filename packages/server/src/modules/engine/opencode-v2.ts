@@ -55,6 +55,9 @@ interface EngineAdapter {
   waitForSessionIdle(baseUrl: string, sessionId: string, directory: string): Promise<void>;
   waitForAssistantMessages(baseUrl: string, sessionId: string, directory: string, targetCount: number, timeoutMs?: number): Promise<void>;
   getSessionMessages(baseUrl: string, sessionId: string, directory: string): Promise<any[]>;
+  getVcsInfo(baseUrl: string, directory: string): Promise<{ branch?: string; defaultBranch?: string }>;
+  getDiff(baseUrl: string, directory: string, mode: 'git' | 'branch'): Promise<any[]>;
+  getDiffRaw(baseUrl: string, directory: string): Promise<string>;
 }
 
 function transformV1Message(msg: any): any {
@@ -205,6 +208,27 @@ const realEngine: EngineAdapter = {
     const raw = (result.data as any[]) ?? [];
     return raw.map((msg: any) => transformV1Message(msg));
   },
+
+  async getVcsInfo(baseUrl, directory) {
+    const client = await getClient(baseUrl);
+    const result = await client.vcs.get({ directory });
+    return {
+      branch: result.data?.branch,
+      defaultBranch: result.data?.default_branch,
+    };
+  },
+
+  async getDiff(baseUrl, directory, mode) {
+    const client = await getClient(baseUrl);
+    const result = await client.vcs.diff({ directory, mode });
+    return (result.data as any[]) ?? [];
+  },
+
+  async getDiffRaw(baseUrl, directory) {
+    const client = await getClient(baseUrl);
+    const result = await client.vcs.diff2.raw({ directory });
+    return (result.data as string) ?? '';
+  },
 };
 
 const engine: EngineAdapter = isMockEnabled() ? mockEngine : realEngine;
@@ -219,3 +243,6 @@ export const abortSession = engine.abortSession.bind(engine);
 export const waitForSessionIdle = engine.waitForSessionIdle.bind(engine);
 export const waitForAssistantMessages = engine.waitForAssistantMessages.bind(engine);
 export const getSessionMessages = engine.getSessionMessages.bind(engine);
+export const getVcsInfo = engine.getVcsInfo.bind(engine);
+export const getDiff = engine.getDiff.bind(engine);
+export const getDiffRaw = engine.getDiffRaw.bind(engine);

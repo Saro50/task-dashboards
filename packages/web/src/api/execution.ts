@@ -9,7 +9,7 @@
  * - list: 列出主题下所有执行历史
  */
 import { apiRequest } from '@/api/lib';
-import type { TaskExecution } from '@/types/execution';
+import type { TaskExecution, FileDiff } from '@/types/execution';
 
 const BASE = '/api';
 const S = 'executionApi';
@@ -45,5 +45,9 @@ export const executionApi = {
 
   getMessages(executionId: string): Promise<{ messages: any[] }> {
     return apiRequest<{ messages: any[] }>(S, `${BASE}/executions/${executionId}/messages`);
+  },
+
+  getDiff(executionId: string): Promise<{ diffs: FileDiff[] }> {
+    return apiRequest<{ diffs: FileDiff[] }>(S, `${BASE}/executions/${executionId}/diff`);
   },
 };

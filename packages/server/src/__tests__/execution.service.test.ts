@@ -67,6 +67,16 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+const mockGit = {
+  checkout: vi.fn().mockResolvedValue(undefined),
+  merge: vi.fn().mockResolvedValue(undefined),
+  commit: vi.fn().mockResolvedValue(undefined),
+};
+
+vi.mock('simple-git', () => ({
+  default: () => mockGit,
+}));
+
 import * as Service from '../modules/execution/execution.service.js';
 
 const TOPIC_ID = 'topic-1';
@@ -167,6 +177,8 @@ describe('execution.service', () => {
     mocks.prisma.taskExecution.update.mockImplementation(({ where, data }: any) => {
       if (latestExecution && where.id === latestExecution.id) {
         Object.assign(latestExecution, data);
+      } else if (where.id) {
+        latestExecution = makeExecution({ id: where.id, ...data });
       }
       return Promise.resolve(latestExecution);
     });
@@ -188,6 +200,9 @@ describe('execution.service', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGit.checkout.mockResolvedValue(undefined);
+    mockGit.merge.mockResolvedValue(undefined);
+    mockGit.commit.mockResolvedValue(undefined);
     execCounter = 0;
     taskCounter = 0;
     setupExecutionStubs();
@@ -341,7 +356,7 @@ describe('execution.service', () => {
       });
 
       mocks.prisma.taskExecution.findFirst.mockImplementation(({ where }: any) => {
-        if (where.status === 'STOPPED') return Promise.resolve(stoppedExec);
+        if (where.status?.in?.includes('STOPPED')) return Promise.resolve(stoppedExec);
         return Promise.resolve(null);
       });
 
@@ -374,13 +389,21 @@ describe('execution.service', () => {
 
   describe('S5: merge', () => {
     it('S5.1: merge completed execution', async () => {
-      latestExecution = makeExecution({ status: 'COMPLETED' });
+      latestExecution = makeExecution({
+        status: 'COMPLETED',
+        worktreeBranch: 'opencode/test-branch',
+        worktreeDirectory: '/tmp/mock-worktree/test',
+      });
       mocks.prisma.taskExecution.findUnique.mockResolvedValue(latestExecution);
+      mocks.prisma.taskTopic.findUnique.mockResolvedValue(makeTopic());
 
       const result = await Service.merge(latestExecution.id, 'main');
 
       expect(result!.status).toBe('MERGED');
       expect(result!.targetBranch).toBe('main');
+      expect(mockGit.checkout).toHaveBeenCalledWith('main');
+      expect(mockGit.merge).toHaveBeenCalledWith(['--squash', 'opencode/test-branch']);
+      expect(mockGit.commit).toHaveBeenCalled();
     });
 
     it('S5.2: merge running execution throws', async () => {

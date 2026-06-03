@@ -290,6 +290,28 @@ export class MockEngine {
     session.abortCallbacks.clear();
   }
 
+  async getVcsInfo(
+    _baseUrl: string,
+    _directory: string,
+  ): Promise<{ branch?: string; defaultBranch?: string }> {
+    return { branch: 'mock-branch', defaultBranch: 'main' };
+  }
+
+  async getDiff(
+    _baseUrl: string,
+    _directory: string,
+    _mode: 'git' | 'branch',
+  ): Promise<any[]> {
+    return [];
+  }
+
+  async getDiffRaw(
+    _baseUrl: string,
+    _directory: string,
+  ): Promise<string> {
+    return '';
+  }
+
   private generateResponses(session: MockSession): void {
     for (const text of session.pendingPrompts) {
       session.messages.push({

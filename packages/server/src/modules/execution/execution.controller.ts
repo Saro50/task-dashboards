@@ -96,6 +96,11 @@ export async function merge(ctx: Context) {
       ctx.body = { error: err.message };
       return;
     }
+    if (err.message?.includes('合并冲突')) {
+      ctx.status = 409;
+      ctx.body = { error: err.message };
+      return;
+    }
     throw err;
   }
 }
@@ -116,4 +121,10 @@ export async function messages(ctx: Context) {
   const { executionId } = ctx.params;
   const msgs = await Service.getSessionMessages(executionId);
   ctx.body = { messages: msgs };
+}
+
+export async function diff(ctx: Context) {
+  const { executionId } = ctx.params;
+  const diffs = await Service.getDiff(executionId);
+  ctx.body = { diffs };
 }

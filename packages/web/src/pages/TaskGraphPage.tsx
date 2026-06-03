@@ -16,6 +16,7 @@ import TaskDetailPanel from '@/components/TaskDetailPanel';
 import TaskStatusBar from '@/components/TaskStatusBar';
 import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
+import DiffPreview from '@/components/DiffPreview';
 import { applyDagreLayout } from '@/utils/layout';
 import { buildTaskPageContext } from '@/utils/pageContext';
 import { log } from '@/utils/log';
@@ -134,6 +135,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [showMerge, setShowMerge] = useState(false);
+  const [showDiffPreview, setShowDiffPreview] = useState(false);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
   const topicName = useMemo(
@@ -181,8 +183,8 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
   // 首次恢复到 COMPLETED 状态时弹出合并对话框提示用户
   useEffect(() => {
-    if (restoredRef.current && execution?.status === 'COMPLETED' && !showMerge) {
-      setShowMerge(true);
+    if (restoredRef.current && execution?.status === 'COMPLETED' && !showDiffPreview && !showMerge) {
+      setShowDiffPreview(true);
     }
   }, [execution?.status]);
 
@@ -487,7 +489,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           </div>
           {execution.status === 'COMPLETED' && (
             <button
-              onClick={() => setShowMerge(true)}
+              onClick={() => setShowDiffPreview(true)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -513,7 +515,19 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
       <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} onPlanImported={refetch} />
 
-      {/* 执行完成时弹出合并对话框，让用户选择目标分支完成 worktree 合并 */}
+      {showDiffPreview && execution && execution.status === 'COMPLETED' && (
+        <DiffPreview
+          executionId={execution.id}
+          completedTasks={execution.completedTasks}
+          totalTasks={execution.totalTasks}
+          onConfirm={() => {
+            setShowDiffPreview(false);
+            setShowMerge(true);
+          }}
+          onClose={() => setShowDiffPreview(false)}
+        />
+      )}
+
       {showMerge && execution && execution.status === 'COMPLETED' && (
         <MergeDialog
           execution={execution}
