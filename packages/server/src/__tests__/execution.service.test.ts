@@ -304,7 +304,10 @@ describe('execution.service', () => {
       const exec = await Service.start(TOPIC_ID, PROJECT_ID);
 
       await waitFor(() => latestExecution?.status === 'RUNNING');
-      await new Promise((r) => setTimeout(r, 5));
+      await waitFor(() => {
+        const statuses = Object.values(taskUpdates);
+        return statuses.some((s) => s === 'IN_PROGRESS');
+      });
 
       const stopped = await Service.stop(exec.id);
       expect(stopped!.status).toBe('STOPPED');

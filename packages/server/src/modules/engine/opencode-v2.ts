@@ -126,9 +126,16 @@ const realEngine: EngineAdapter = {
     let pollCount = 0;
 
     while (Date.now() - start < timeoutMs) {
-      const result = await client.session.messages({ sessionID: sessionId, directory });
-      const messages = (result.data as any[]) ?? [];
-      const count = messages.filter((m: any) => m.role === 'assistant').length;
+      let count = 0;
+      try {
+        const result = await client.session.messages({ sessionID: sessionId, directory });
+        const messages = (result.data as any[]) ?? [];
+        count = messages.filter((m: any) => m.role === 'assistant').length;
+      } catch (err: any) {
+        logger.warn(S, 'waitForAssistantMessages — poll error, retrying', { sessionId, error: err.message });
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+        continue;
+      }
       pollCount++;
 
       if (count >= targetCount) {
