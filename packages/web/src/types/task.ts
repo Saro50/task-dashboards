@@ -6,6 +6,7 @@ export interface Task {
   title: string;
   description: string;
   status: TaskStatus;
+  blockedReason: string | null;
   topicId: string | null;
   createdAt: string;
   updatedAt: string;

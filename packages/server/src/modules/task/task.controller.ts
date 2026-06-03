@@ -73,14 +73,14 @@ export async function createTask(ctx: Context) {
 }
 
 export async function updateTask(ctx: Context) {
-  const { title, description, status, topicId } = ctx.request.body as any;
+  const { title, description, status, topicId, blockedReason } = ctx.request.body as any;
   if (status && !['PENDING', 'IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(status)) {
     ctx.status = 400;
     ctx.body = { error: 'status must be PENDING, IN_PROGRESS, COMPLETED or BLOCKED' };
     return;
   }
   try {
-    const task = await Service.update(ctx.params.taskId, { title, description, status, topicId });
+    const task = await Service.update(ctx.params.taskId, { title, description, status, blockedReason, topicId });
     ctx.body = task;
   } catch (err: any) {
     if (err.code === 'P2025') {

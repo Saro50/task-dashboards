@@ -258,7 +258,7 @@ async function executeTasks(
       await OpencodeV2.sendPrompt(baseUrl, sessionId, prompt, directory);
     } catch (err: any) {
       logger.error(S, 'task prompt send error', { executionId, taskId: task.id, error: err.message });
-      await TaskService.update(task.id, { status: 'BLOCKED' });
+      await TaskService.update(task.id, { status: 'BLOCKED', blockedReason: `发送任务失败: ${err.message}` });
       executeTasks(executionId, baseUrl, directory, sessionId, maxConcurrency).catch((e) =>
         logger.error(S, 'executeTasks recursion error', e)
       );
@@ -278,7 +278,7 @@ async function executeTasks(
       try {
         const check = await prisma.taskExecution.findUnique({ where: { id: executionId } });
         if (!check || check.status === 'STOPPED' || check.status === 'FAILED') return;
-        await TaskService.update(task.id, { status: 'BLOCKED' });
+        await TaskService.update(task.id, { status: 'BLOCKED', blockedReason: `AI 处理超时或失败: ${err.message}` });
       } catch {}
     }
     executeTasks(executionId, baseUrl, directory, sessionId, maxConcurrency).catch((e) =>
@@ -308,7 +308,8 @@ async function executeTasks(
   const confirmedCount = Math.min(assistantCount, toStart.length);
   for (let i = 0; i < toStart.length; i++) {
     const task = toStart[i];
-    await TaskService.update(task.id, { status: i < confirmedCount ? 'COMPLETED' : 'BLOCKED' });
+    const blockedReason = i >= confirmedCount ? `AI 未生成足够回复 (${assistantCount}/${toStart.length})` : null;
+    await TaskService.update(task.id, { status: i < confirmedCount ? 'COMPLETED' : 'BLOCKED', blockedReason });
   }
 
   const allNow = await TaskService.listByTopic(execution.topicId);

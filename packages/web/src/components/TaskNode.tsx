@@ -21,6 +21,7 @@ interface TaskNodeData {
   title: string;
   status: TaskStatus;
   description: string;
+  blockedReason?: string | null;
   depCount: number;
   selected?: boolean;
   disabled?: boolean;
@@ -64,6 +65,9 @@ export default memo(function TaskNode({ id, data, selected }: NodeProps) {
         </div>
         {d.description && (
           <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{d.description}</p>
+        )}
+        {d.status === 'BLOCKED' && d.blockedReason && (
+          <p className="mt-1 text-[10px] text-red-500 line-clamp-1 leading-relaxed">{d.blockedReason}</p>
         )}
         {d.depCount > 0 && (
           <div className="mt-1.5 text-[10px] text-gray-400">

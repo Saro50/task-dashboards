@@ -142,6 +142,18 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
           />
         </div>
 
+        {task.status === 'BLOCKED' && task.blockedReason && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-center gap-1.5 mb-1">
+              <svg className="w-3.5 h-3.5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <span className="text-xs font-medium text-red-700">阻塞原因</span>
+            </div>
+            <p className="text-xs text-red-600 leading-relaxed">{task.blockedReason}</p>
+          </div>
+        )}
+
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">状态</label>
           <select

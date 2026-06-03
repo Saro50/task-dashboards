@@ -215,7 +215,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     const taskMap = new Map(filteredTasks.map((t) => [t.id, t]));
     const filteredTaskIds = new Set(filteredTasks.map((t) => t.id));
     const taskKey = filteredTasks
-      .map((t) => `${t.id}:${t.status}:${t.dependencies.filter((d) => filteredTaskIds.has(d)).sort().join(',')}`)
+      .map((t) => `${t.id}:${t.status}:${t.blockedReason ?? ''}:${t.dependencies.filter((d) => filteredTaskIds.has(d)).sort().join(',')}`)
       .sort()
       .join('|');
 
@@ -230,6 +230,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           title: task.title,
           status: task.status,
           description: task.description,
+          blockedReason: task.blockedReason,
           depCount: task.dependencies.filter((depId) => filteredTaskIds.has(depId)).length,
           selected: task.id === selectedTaskId,
           disabled: executing,

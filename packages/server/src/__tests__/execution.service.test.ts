@@ -136,7 +136,7 @@ function waitFor(predicate: () => boolean, timeout = 15000): Promise<void> {
 
 describe('execution.service', () => {
   let latestExecution: any;
-  let taskUpdates: Record<string, string> = {};
+  let taskUpdates: Record<string, any> = {};
 
   function setupExecutionStubs() {
     latestExecution = null;
@@ -179,7 +179,7 @@ describe('execution.service', () => {
     });
 
     mocks.taskService.update.mockImplementation((id: string, data: any) => {
-      taskUpdates[id] = data.status;
+      taskUpdates[id] = data;
       return Promise.resolve({ id });
     });
 
@@ -223,7 +223,7 @@ describe('execution.service', () => {
     it('S2.1: single task completes', async () => {
       const tasks = [makeTask({ title: 'A' })];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       const exec = await Service.start(TOPIC_ID, PROJECT_ID);
@@ -232,7 +232,7 @@ describe('execution.service', () => {
 
       expect(latestExecution.completedTasks).toBe(1);
       expect(latestExecution.totalTasks).toBe(1);
-      expect(taskUpdates[tasks[0].id]).toBe('COMPLETED');
+      expect(taskUpdates[tasks[0].id]?.status).toBe('COMPLETED');
     }, 20000);
 
     it('S2.2: 3 tasks linear dependency completes sequentially', async () => {
@@ -241,16 +241,16 @@ describe('execution.service', () => {
       const tC = makeTask({ title: 'C', dependencies: [tB.id] });
       const tasks = [tA, tB, tC];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       await Service.start(TOPIC_ID, PROJECT_ID, 2);
 
       await waitFor(() => latestExecution?.status === 'COMPLETED', 30000);
 
-      expect(taskUpdates[tA.id]).toBe('COMPLETED');
-      expect(taskUpdates[tB.id]).toBe('COMPLETED');
-      expect(taskUpdates[tC.id]).toBe('COMPLETED');
+      expect(taskUpdates[tA.id]?.status).toBe('COMPLETED');
+      expect(taskUpdates[tB.id]?.status).toBe('COMPLETED');
+      expect(taskUpdates[tC.id]?.status).toBe('COMPLETED');
       expect(latestExecution.completedTasks).toBe(3);
     }, 30000);
 
@@ -262,7 +262,7 @@ describe('execution.service', () => {
       const tE = makeTask({ title: 'E', dependencies: [tD.id] });
       const tasks = [tA, tB, tC, tD, tE];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       await Service.start(TOPIC_ID, PROJECT_ID, 2);
@@ -270,7 +270,7 @@ describe('execution.service', () => {
       await waitFor(() => latestExecution?.status === 'COMPLETED', 60000);
 
       for (const t of tasks) {
-        expect(taskUpdates[t.id]).toBe('COMPLETED');
+        expect(taskUpdates[t.id]?.status).toBe('COMPLETED');
       }
       expect(latestExecution.completedTasks).toBe(5);
     }, 60000);
@@ -281,7 +281,7 @@ describe('execution.service', () => {
       const tC = makeTask({ title: 'C', dependencies: [tB.id] });
       const tasks = [tA, tB, tC];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       await Service.start(TOPIC_ID, PROJECT_ID, 1);
@@ -298,15 +298,15 @@ describe('execution.service', () => {
       const tB = makeTask({ title: 'B', dependencies: [tA.id] });
       const tasks = [tA, tB];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       const exec = await Service.start(TOPIC_ID, PROJECT_ID);
 
       await waitFor(() => latestExecution?.status === 'RUNNING');
       await waitFor(() => {
-        const statuses = Object.values(taskUpdates);
-        return statuses.some((s) => s === 'IN_PROGRESS');
+        const updates = Object.values(taskUpdates) as any[];
+        return updates.some((d) => d?.status === 'IN_PROGRESS');
       });
 
       const stopped = await Service.stop(exec.id);
@@ -330,7 +330,7 @@ describe('execution.service', () => {
       const tB = makeTask({ title: 'B' });
       const tasks = [tA, tB];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       const stoppedExec = makeExecution({
@@ -358,7 +358,7 @@ describe('execution.service', () => {
       const tA = makeTask({ title: 'A' });
       const tasks = [tA];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       mocks.prisma.taskExecution.findFirst.mockResolvedValue(null);
@@ -403,7 +403,7 @@ describe('execution.service', () => {
       const tC = makeTask({ title: 'C' });
       const tasks = [tA, tB, tC];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       getSessionMessagesMock.mockResolvedValue([
@@ -417,11 +417,15 @@ describe('execution.service', () => {
         latestExecution?.status === 'FAILED'
       , 20000);
 
-      const statuses = tasks.map((t) => taskUpdates[t.id] || 'PENDING');
+      const statuses = tasks.map((t) => taskUpdates[t.id]?.status || 'PENDING');
       const completed = statuses.filter((s) => s === 'COMPLETED').length;
       const blocked = statuses.filter((s) => s === 'BLOCKED').length;
       expect(completed).toBe(1);
       expect(blocked).toBe(2);
+
+      const blockedTask = tasks.find((t) => taskUpdates[t.id]?.status === 'BLOCKED');
+      expect(blockedTask).toBeTruthy();
+      expect(taskUpdates[blockedTask!.id]?.blockedReason).toBeTruthy();
     }, 20000);
 
     it('S6.2: dependency chain breaks when upstream BLOCKED', async () => {
@@ -430,7 +434,7 @@ describe('execution.service', () => {
       const tC = makeTask({ title: 'C', dependencies: [tB.id] });
       const tasks = [tA, tB, tC];
       mocks.taskService.listByTopic.mockImplementation(async () => {
-        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id] || t.status }));
+        return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       getSessionMessagesMock.mockResolvedValue([]);
@@ -442,7 +446,8 @@ describe('execution.service', () => {
         latestExecution?.status === 'FAILED'
       , 20000);
 
-      expect(taskUpdates[tA.id]).toBe('BLOCKED');
+      expect(taskUpdates[tA.id]?.status).toBe('BLOCKED');
+      expect(taskUpdates[tA.id]?.blockedReason).toBeTruthy();
     }, 20000);
   });
 

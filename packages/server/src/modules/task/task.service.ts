@@ -25,6 +25,7 @@ export async function listByProject(projectId: string) {
     title: t.title,
     description: t.description,
     status: t.status,
+    blockedReason: t.blockedReason,
     topicId: t.topicId,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
@@ -46,6 +47,7 @@ export async function listByTopic(topicId: string) {
     title: t.title,
     description: t.description,
     status: t.status,
+    blockedReason: t.blockedReason,
     topicId: t.topicId,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
@@ -67,6 +69,7 @@ export async function getById(id: string) {
     title: task.title,
     description: task.description,
     status: task.status,
+    blockedReason: task.blockedReason,
     topicId: task.topicId,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
@@ -85,11 +88,15 @@ export async function create(projectId: string, data: { title: string; descripti
   });
 }
 
-export async function update(id: string, data: { title?: string; description?: string; status?: string; topicId?: string | null }) {
+export async function update(id: string, data: { title?: string; description?: string; status?: string; blockedReason?: string | null; topicId?: string | null }) {
   const updateData: Record<string, any> = {};
   if (data.title !== undefined) updateData.title = data.title;
   if (data.description !== undefined) updateData.description = data.description;
-  if (data.status !== undefined) updateData.status = data.status as TaskStatus;
+  if (data.status !== undefined) {
+    updateData.status = data.status as TaskStatus;
+    if (data.status !== 'BLOCKED') updateData.blockedReason = null;
+  }
+  if (data.blockedReason !== undefined) updateData.blockedReason = data.blockedReason;
   if (data.topicId !== undefined) updateData.topicId = data.topicId;
 
   return prisma.task.update({
