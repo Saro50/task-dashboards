@@ -235,6 +235,14 @@ async function executeTasks(
   // 有运行中的任务但无可启动的 → 等待当前任务完成后再试
   if (toStart.length === 0) return;
 
+  // 记录发送前的 assistant 消息数量
+  let baseline = 0;
+  try {
+    const preMessages = await OpencodeV2.getSessionMessages(baseUrl, sessionId, directory);
+    baseline = preMessages.filter((m: any) => m.role === 'assistant').length;
+  } catch {}
+  logger.info(S, 'baseline assistant count', { executionId, baseline });
+
   // 第一阶段：逐个发送 prompt 到 AI 会话
   for (const task of toStart) {
     const refreshed = await prisma.taskExecution.findUnique({ where: { id: executionId } });
@@ -258,16 +266,14 @@ async function executeTasks(
     }
   }
 
-  // 第二阶段：等待 AI 会话处理完本批所有任务
-  // 等待 1 秒让 agent loop 拾取消息后再调用 wait，防止 session 本来就 idle 导致 wait 立即返回
-  await new Promise((r) => setTimeout(r, 1000));
-  logger.info(S, 'waiting for session idle', { executionId, batch: toStart.map((t) => t.id) });
+  // 第二阶段：等待 assistant 消息增长到 baseline + batchSize
+  const targetCount = baseline + toStart.length;
+  logger.info(S, 'waiting for assistant messages', { executionId, target: targetCount, batch: toStart.length });
 
   try {
-    await OpencodeV2.waitForSessionIdle(baseUrl, sessionId, directory);
+    await OpencodeV2.waitForAssistantMessages(baseUrl, sessionId, directory, targetCount);
   } catch (err: any) {
-    logger.error(S, 'waitForSessionIdle error', { executionId, error: err.message });
-    // AI 处理失败，将本批任务标记为 BLOCKED，尝试继续下一批
+    logger.error(S, 'waitForAssistantMessages error', { executionId, error: err.message });
     for (const task of toStart) {
       try {
         const check = await prisma.taskExecution.findUnique({ where: { id: executionId } });
@@ -282,22 +288,18 @@ async function executeTasks(
   }
 
   // 第三阶段：验证 AI 响应并标记任务完成
-  // 原子检查：只有 execution 仍为 RUNNING 时才标记任务完成。
-  // 防止 stop() 在 waitForSessionIdle 返回后、标记完成前将状态设为 STOPPED 导致竞态。
+  // waitForAssistantMessages 已保证数量，但仍做一次 getSessionMessages 确认，用于区分 COMPLETED / BLOCKED
   const check = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!check || check.status !== 'RUNNING') {
     logger.info(S, 'execution no longer RUNNING, skip marking tasks', { executionId, status: check?.status });
     return;
   }
 
-  // 逐任务验证：检查 session messages 确认每个 prompt 都得到了 AI 响应。
-  // 简化策略：统计 assistant 消息数量是否 >= 本批任务数。
-  // 如果 AI 跳过了某些任务，对应任务标记为 BLOCKED 而非 COMPLETED。
   let assistantCount = 0;
   try {
     const messages = await OpencodeV2.getSessionMessages(baseUrl, sessionId, directory);
     assistantCount = messages.filter((m: any) => m.role === 'assistant').length;
-    logger.info(S, 'session messages check', { executionId, totalMessages: messages.length, assistantCount, batchSize: toStart.length });
+    logger.info(S, 'session messages check', { executionId, assistantCount, batchSize: toStart.length });
   } catch (err: any) {
     logger.warn(S, 'getSessionMessages error, assuming all completed', { error: err.message });
     assistantCount = toStart.length;
@@ -306,7 +308,6 @@ async function executeTasks(
   const confirmedCount = Math.min(assistantCount, toStart.length);
   for (let i = 0; i < toStart.length; i++) {
     const task = toStart[i];
-    // 如果 assistant 回复数量不足，后面的任务标记为 BLOCKED
     await TaskService.update(task.id, { status: i < confirmedCount ? 'COMPLETED' : 'BLOCKED' });
   }
 

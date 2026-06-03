@@ -216,6 +216,49 @@ export class MockEngine {
     this.generateResponses(session);
   }
 
+  async waitForAssistantMessages(
+    _baseUrl: string,
+    sessionId: string,
+    _directory: string,
+    _targetCount: number,
+    _timeoutMs?: number,
+  ): Promise<void> {
+    const session = sessions.get(sessionId);
+    if (!session) throw new Error(`Mock session not found: ${sessionId}`);
+    if (session.aborted) throw new Error('Session already aborted');
+
+    const promptCount = session.pendingPrompts.length;
+    if (promptCount === 0) {
+      logger.info(S, 'mock waitForAssistantMessages — no pending prompts, resolve immediately');
+      return;
+    }
+
+    logger.info(S, 'mock waitForAssistantMessages — waiting', {
+      sessionId,
+      promptCount,
+      targetCount: _targetCount,
+      delay: this.conf.taskDelay,
+    });
+
+    let abortCb: (() => void) | null = null;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (abortCb) session.abortCallbacks.delete(abortCb);
+        resolve();
+      }, this.conf.taskDelay);
+
+      abortCb = () => {
+        clearTimeout(timer);
+        reject(new Error('Session aborted by user'));
+      };
+      session.abortCallbacks.add(abortCb);
+    });
+
+    if (session.aborted) throw new Error('Session aborted');
+
+    this.generateResponses(session);
+  }
+
   async getSessionMessages(
     _baseUrl: string,
     sessionId: string,

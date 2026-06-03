@@ -53,6 +53,7 @@ interface EngineAdapter {
   getSessionStatus(baseUrl: string, directory: string): Promise<any>;
   abortSession(baseUrl: string, sessionId: string, directory: string): Promise<void>;
   waitForSessionIdle(baseUrl: string, sessionId: string, directory: string): Promise<void>;
+  waitForAssistantMessages(baseUrl: string, sessionId: string, directory: string, targetCount: number, timeoutMs?: number): Promise<void>;
   getSessionMessages(baseUrl: string, sessionId: string, directory: string): Promise<any[]>;
 }
 
@@ -112,10 +113,35 @@ const realEngine: EngineAdapter = {
   },
 
   async waitForSessionIdle(baseUrl, sessionId, directory) {
-    logger.info(S, 'waitForSessionIdle start', { baseUrl, sessionId, directory });
     const client = await getClient(baseUrl);
+    logger.info(S, 'waitForSessionIdle — calling v2.session.wait', { sessionId });
     await client.v2.session.wait({ sessionID: sessionId, directory });
     logger.info(S, 'waitForSessionIdle done', { sessionId });
+  },
+
+  async waitForAssistantMessages(baseUrl, sessionId, directory, targetCount, timeoutMs = 1800000) {
+    const POLL_INTERVAL = 3000;
+    const client = await getClient(baseUrl);
+    const start = Date.now();
+    let pollCount = 0;
+
+    while (Date.now() - start < timeoutMs) {
+      const result = await client.session.messages({ sessionID: sessionId, directory });
+      const messages = (result.data as any[]) ?? [];
+      const count = messages.filter((m: any) => m.role === 'assistant').length;
+      pollCount++;
+
+      if (count >= targetCount) {
+        logger.info(S, 'waitForAssistantMessages — target reached', { sessionId, count, targetCount, elapsedMs: Date.now() - start });
+        return;
+      }
+
+      if (pollCount <= 3 || pollCount % 10 === 0) {
+        logger.info(S, 'waitForAssistantMessages — polling', { sessionId, count, targetCount, pollCount, elapsedMs: Date.now() - start });
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+    }
+    throw new Error(`Timed out waiting for ${targetCount} assistant messages after ${timeoutMs}ms`);
   },
 
   async getSessionMessages(baseUrl, sessionId, directory) {
@@ -135,4 +161,5 @@ export const sendPrompt = engine.sendPrompt.bind(engine);
 export const getSessionStatus = engine.getSessionStatus.bind(engine);
 export const abortSession = engine.abortSession.bind(engine);
 export const waitForSessionIdle = engine.waitForSessionIdle.bind(engine);
+export const waitForAssistantMessages = engine.waitForAssistantMessages.bind(engine);
 export const getSessionMessages = engine.getSessionMessages.bind(engine);
