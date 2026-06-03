@@ -78,14 +78,14 @@ export async function sendMessage(ctx: Context) {
   try {
     const { id } = ctx.params;
     const directory = ctx.query.directory as string | undefined;
-    const { text, agent } = ctx.request.body as SendMessageBody;
-    log.info(S, 'sendMessage', { sessionId: id, directory, text: text?.slice(0, 80), agent });
+    const { text, agent, context } = ctx.request.body as SendMessageBody;
+    log.info(S, 'sendMessage', { sessionId: id, directory, text: text?.slice(0, 80), agent, hasContext: !!context });
     if (!text || typeof text !== 'string') {
       ctx.status = 400;
       ctx.body = { error: 'text is required' };
       return;
     }
-    await Service.sendMessage(id, text, directory, agent);
+    await Service.sendMessage(id, text, directory, agent, context);
     log.info(S, 'sendMessage promptAsync accepted');
     ctx.status = 204;
   } catch (err: any) {

@@ -82,12 +82,13 @@ export async function sendPromptAsync(
   text: string,
   directory?: string,
   agent?: string,
+  system?: string,
 ) {
-  logger.info(S, 'sendPromptAsync', { baseUrl, sessionId, directory, agent, text: text.slice(0, 80) });
+  logger.info(S, 'sendPromptAsync', { baseUrl, sessionId, directory, agent, system: system?.slice(0, 40), text: text.slice(0, 80) });
   const client = await getClient(baseUrl);
   const result = await client.session.promptAsync({
     path: { id: sessionId },
-    body: { parts: [{ type: 'text' as const, text }], ...(agent ? { agent } : {}) },
+    body: { parts: [{ type: 'text' as const, text }], ...(agent ? { agent } : {}), ...(system ? { system } : {}) },
     query: { directory },
   });
   logger.info(S, 'sendPromptAsync completed');

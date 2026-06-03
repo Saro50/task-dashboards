@@ -14,6 +14,7 @@ interface Props {
   engineStatus: EngineStatus;
   projectId?: string;
   topicId?: string;
+  pageContext?: string;
   onPlanImported?: () => void;
 }
 
@@ -233,7 +234,7 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, onPlanImported }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, onPlanImported }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
@@ -392,9 +393,9 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       await switchSession(session.id);
     }
     setInput('');
-    await sendMessage(text);
+    await sendMessage(text, pageContext);
     log.info(S, 'sendMessage returned');
-  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage]);
+  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, pageContext]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -750,7 +751,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                   <div className="flex gap-2 mt-1.5">
                     <button
                       type="button"
-                      onClick={retryInNewSession}
+                      onClick={() => retryInNewSession(pageContext)}
                       className="text-xs bg-amber-500 text-white px-2.5 py-1 rounded hover:bg-amber-600 cursor-pointer"
                     >
                       新建会话并重试

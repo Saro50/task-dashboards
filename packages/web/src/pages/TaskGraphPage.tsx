@@ -17,6 +17,7 @@ import TaskStatusBar from '@/components/TaskStatusBar';
 import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
 import { applyDagreLayout } from '@/utils/layout';
+import { buildTaskPageContext } from '@/utils/pageContext';
 import { log } from '@/utils/log';
 
 const S = 'TaskGraphPage';
@@ -135,9 +136,26 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const [showMerge, setShowMerge] = useState(false);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
-  // 重构说明：新增 projectId 参数传递给 useTaskExecution。
-  // 之前 hook 是纯前端模拟，不需要 projectId；现在后端需要 projectId 来查找
-  // 项目的本地路径，以便创建 worktree 和 AI 会话。
+  const topicName = useMemo(
+    () => topics.find((t) => t.id === topicId)?.name ?? '',
+    [topics, topicId]
+  );
+
+  const filteredTasks = useMemo(
+    () => tasks.filter((t) => t.topicId === topicId),
+    [tasks, topicId]
+  );
+
+  const currentTopic = useMemo(
+    () => topics.find((t) => t.id === topicId),
+    [topics, topicId]
+  );
+
+  const pageContext = useMemo(
+    () => buildTaskPageContext(project, currentTopic ?? null, filteredTasks),
+    [project, currentTopic, filteredTasks]
+  );
+
   const {
     executeChain,
     cancelExecution,
@@ -166,16 +184,6 @@ export default function TaskGraphPage({ engineStatus }: Props) {
       setShowMerge(true);
     }
   }, [execution?.status]);
-
-  const topicName = useMemo(
-    () => topics.find((t) => t.id === topicId)?.name ?? '',
-    [topics, topicId]
-  );
-
-  const filteredTasks = useMemo(
-    () => tasks.filter((t) => t.topicId === topicId),
-    [tasks, topicId]
-  );
 
   const selectedTask = useMemo(
     () => filteredTasks.find((t) => t.id === selectedTaskId) ?? null,
@@ -500,7 +508,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} onPlanImported={refetch} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} onPlanImported={refetch} />
 
       {/* 执行完成时弹出合并对话框，让用户选择目标分支完成 worktree 合并 */}
       {showMerge && execution && execution.status === 'COMPLETED' && (

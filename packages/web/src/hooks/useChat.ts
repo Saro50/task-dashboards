@@ -255,8 +255,8 @@ export function useChat(directory?: string) {
     await loadMessages(sessionId);
   }, [loadMessages]);
 
-  const sendMessage = useCallback(async (text: string) => {
-    log.info(S, 'sendMessage', { text: text.slice(0, 80), currentSessionId, directory });
+  const sendMessage = useCallback(async (text: string, context?: string) => {
+    log.info(S, 'sendMessage', { text: text.slice(0, 80), currentSessionId, directory, hasContext: !!context });
     if (!currentSessionId) {
       log.warn(S, 'sendMessage skipped: no currentSessionId');
       return;
@@ -276,7 +276,7 @@ export function useChat(directory?: string) {
     startLoadingTimer();
 
     try {
-      await chatApi.sendMessage(currentSessionId, text, directory, selectedAgent);
+      await chatApi.sendMessage(currentSessionId, text, directory, selectedAgent, context);
       log.info(S, 'sendMessage API call completed');
     } catch (err) {
       log.error(S, 'sendMessage error', err);
@@ -312,7 +312,7 @@ export function useChat(directory?: string) {
     }
   }, [currentSessionId, sessions, switchSession]);
 
-  const retryInNewSession = useCallback(async () => {
+  const retryInNewSession = useCallback(async (context?: string) => {
     const text = lastSentTextRef.current;
     if (!text) return;
     log.info(S, 'retryInNewSession', { text: text.slice(0, 80) });
@@ -320,7 +320,7 @@ export function useChat(directory?: string) {
     const session = await createSession('新会话');
     await switchSession(session.id);
     lastSentTextRef.current = text;
-    await sendMessage(text);
+    await sendMessage(text, context);
   }, [createSession, switchSession, sendMessage]);
 
   const dismissSessionBroken = useCallback(() => {

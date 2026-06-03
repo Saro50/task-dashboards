@@ -23,11 +23,11 @@ export const chatApi = {
     return apiRequest<ChatMessage[]>(S, `${BASE}/sessions/${sessionId}/messages${query}`);
   },
 
-  sendMessage(sessionId: string, text: string, directory?: string, agent?: string): Promise<void> {
+  sendMessage(sessionId: string, text: string, directory?: string, agent?: string, context?: string): Promise<void> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
     return apiRequest<void>(S, `${BASE}/sessions/${sessionId}/send${query}`, {
       method: 'POST',
-      body: JSON.stringify({ text, agent }),
+      body: JSON.stringify({ text, agent, context }),
     });
   },
 

@@ -6,6 +6,7 @@ export interface CreateSessionBody {
 export interface SendMessageBody {
   text: string;
   agent?: string;
+  context?: string;
 }
 
 export interface UpdateSessionBody {

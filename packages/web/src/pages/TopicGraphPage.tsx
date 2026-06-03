@@ -13,6 +13,7 @@ import TaskEdge from '@/components/TaskEdge';
 import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
 import { applyDagreLayout } from '@/utils/layout';
+import { buildTopicPageContext } from '@/utils/pageContext';
 import { log } from '@/utils/log';
 
 const S = 'TopicGraphPage';
@@ -74,6 +75,11 @@ export default function TopicGraphPage({ engineStatus }: Props) {
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const chatRef = useRef<AIChatWidgetHandle>(null);
+
+  const pageContext = useMemo(
+    () => buildTopicPageContext(project, topics),
+    [project, topics]
+  );
 
   const handleEditTopic = useCallback((topicId: string) => {
     const topic = topics.find((t) => t.id === topicId);
@@ -309,7 +315,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
       </div>
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} onPlanImported={refetch} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} onPlanImported={refetch} />
     </div>
   );
 }
