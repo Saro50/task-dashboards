@@ -42,4 +42,8 @@ export const executionApi = {
   list(topicId: string): Promise<{ data: TaskExecution[] }> {
     return apiRequest<{ data: TaskExecution[] }>(S, `${BASE}/topics/${topicId}/executions`);
   },
+
+  getMessages(executionId: string): Promise<{ messages: any[] }> {
+    return apiRequest<{ messages: any[] }>(S, `${BASE}/executions/${executionId}/messages`);
+  },
 };

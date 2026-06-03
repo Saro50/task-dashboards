@@ -31,7 +31,7 @@ const mocks = vi.hoisted(() => {
 
 const { getSessionMessagesMock } = vi.hoisted(() => ({
   getSessionMessagesMock: vi.fn().mockResolvedValue(
-    Array.from({ length: 20 }, () => ({ role: 'assistant', parts: [{ type: 'text', text: 'done' }] })),
+    Array.from({ length: 20 }, () => ({ type: 'assistant', content: [{ type: 'text', text: 'done' }] })),
   ),
 }));
 
@@ -407,7 +407,7 @@ describe('execution.service', () => {
       });
 
       getSessionMessagesMock.mockResolvedValue([
-        { role: 'assistant', parts: [{ type: 'text', text: 'done' }] },
+        { type: 'assistant', content: [{ type: 'text', text: 'done' }] },
       ]);
 
       await Service.start(TOPIC_ID, PROJECT_ID, 3);

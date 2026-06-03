@@ -20,5 +20,6 @@ const executionRouter = new Router({ prefix: '/api/executions/:executionId' });
 
 executionRouter.post('/stop', Controller.stop);
 executionRouter.post('/merge', Controller.merge);
+executionRouter.get('/messages', Controller.messages);
 
 export default [router, executionRouter];

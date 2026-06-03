@@ -43,10 +43,10 @@ describe('engine-mock', () => {
 
       const messages = await engine.getSessionMessages(BASE_URL, session.id, DIRECTORY);
       expect(messages).toHaveLength(4);
-      expect(messages[0].role).toBe('user');
-      expect(messages[1].role).toBe('assistant');
-      expect(messages[2].role).toBe('user');
-      expect(messages[3].role).toBe('assistant');
+      expect(messages[0].type).toBe('user');
+      expect(messages[1].type).toBe('assistant');
+      expect(messages[2].type).toBe('user');
+      expect(messages[3].type).toBe('assistant');
     });
 
     it('should return empty messages for unknown session', async () => {
@@ -90,7 +90,7 @@ describe('engine-mock', () => {
       await eng.waitForSessionIdle(BASE_URL, session.id, DIRECTORY);
 
       const messages = await eng.getSessionMessages(BASE_URL, session.id, DIRECTORY);
-      const assistantMsgs = messages.filter((m: any) => m.role === 'assistant');
+      const assistantMsgs = messages.filter((m: any) => m.type === 'assistant');
       expect(assistantMsgs).toHaveLength(2);
     });
   });
@@ -111,8 +111,8 @@ describe('engine-mock', () => {
       const msgsA = await eng.getSessionMessages(BASE_URL, sessionA.id, DIRECTORY);
       const msgsB = await eng.getSessionMessages(BASE_URL, sessionB.id, DIRECTORY);
 
-      expect(msgsA.filter((m: any) => m.role === 'assistant')).toHaveLength(1);
-      expect(msgsB.filter((m: any) => m.role === 'assistant')).toHaveLength(1);
+      expect(msgsA.filter((m: any) => m.type === 'assistant')).toHaveLength(1);
+      expect(msgsB.filter((m: any) => m.type === 'assistant')).toHaveLength(1);
     });
   });
 
@@ -138,7 +138,7 @@ describe('engine-mock', () => {
       await eng.waitForSessionIdle(BASE_URL, session.id, DIRECTORY);
 
       const msgs = await eng.getSessionMessages(BASE_URL, session.id, DIRECTORY);
-      expect(msgs.some((m: any) => m.role === 'assistant')).toBe(true);
+      expect(msgs.some((m: any) => m.type === 'assistant')).toBe(true);
     });
   });
 

@@ -29,6 +29,7 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated }: UseTaskE
   const { showToast } = useToast();
   const [executing, setExecuting] = useState(false);
   const [execution, setExecution] = useState<TaskExecution | null>(null);
+  const [sessionMessages, setSessionMessages] = useState<any[]>([]);
   const [maxConcurrency, setMaxConcurrency] = useState(2);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -52,17 +53,30 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated }: UseTaskE
         setExecution(latest);
         onTaskUpdated();
 
+        if (latest.status === 'RUNNING' && latest.id) {
+          executionApi.getMessages(latest.id).then((res) => {
+            setSessionMessages(res.messages);
+          }).catch(() => {});
+        }
+
         if (latest.status === 'COMPLETED') {
           stopPolling();
           setExecuting(false);
+          if (latest.id) {
+            executionApi.getMessages(latest.id).then((res) => {
+              setSessionMessages(res.messages);
+            }).catch(() => {});
+          }
           showToast('所有任务已执行完毕', 'success');
         } else if (latest.status === 'FAILED') {
           stopPolling();
           setExecuting(false);
+          setSessionMessages([]);
           showToast('执行失败', 'error');
         } else if (latest.status === 'STOPPED') {
           stopPolling();
           setExecuting(false);
+          setSessionMessages([]);
         }
       } catch (err: any) {
         log.error(S, 'polling error', err);
@@ -160,6 +174,7 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated }: UseTaskE
     restoreExecution,
     executing,
     execution,
+    sessionMessages,
     maxConcurrency,
     setMaxConcurrency,
   };

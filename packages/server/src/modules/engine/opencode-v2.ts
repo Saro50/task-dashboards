@@ -57,6 +57,54 @@ interface EngineAdapter {
   getSessionMessages(baseUrl: string, sessionId: string, directory: string): Promise<any[]>;
 }
 
+function transformV1Message(msg: any): any {
+  const info = msg.info ?? {};
+  const parts = msg.parts ?? [];
+
+  if (info.role === 'user') {
+    const textPart = parts.find((p: any) => p.type === 'text');
+    return {
+      type: 'user',
+      id: info.id,
+      text: textPart?.text ?? '',
+      time: info.time ?? { created: Date.now() },
+    };
+  }
+
+  if (info.role === 'assistant') {
+    const content = parts.map((p: any) => {
+      if (p.type === 'text') return { type: 'text', text: p.text ?? '' };
+      if (p.type === 'reasoning') return { type: 'reasoning', id: p.id, text: p.text ?? '' };
+      if (p.type === 'tool') {
+        const st = p.state ?? {};
+        return {
+          type: 'tool',
+          id: p.id,
+          name: p.name ?? p.tool ?? '',
+          state: st.status
+            ? st
+            : { status: 'completed', input: {}, content: [] },
+          time: p.time ?? { created: Date.now() },
+        };
+      }
+      return null;
+    }).filter(Boolean);
+
+    return {
+      type: 'assistant',
+      id: info.id,
+      agent: info.agent ?? '',
+      model: info.model ?? { id: '', providerID: '', variant: '' },
+      content,
+      finish: info.finish ?? 'stop',
+      time: info.time ?? { created: Date.now() },
+      error: info.error ? { message: info.error.message ?? String(info.error) } : undefined,
+    };
+  }
+
+  return null;
+}
+
 const realEngine: EngineAdapter = {
   async createWorktree(baseUrl, directory, name?) {
     logger.info(S, 'createWorktree', { baseUrl, directory, name });
@@ -130,7 +178,7 @@ const realEngine: EngineAdapter = {
       try {
         const result = await client.session.messages({ sessionID: sessionId, directory });
         const messages = (result.data as any[]) ?? [];
-        count = messages.filter((m: any) => m.role === 'assistant').length;
+        count = messages.filter((m: any) => m.info?.role === 'assistant').length;
       } catch (err: any) {
         logger.warn(S, 'waitForAssistantMessages — poll error, retrying', { sessionId, error: err.message });
         await new Promise((r) => setTimeout(r, POLL_INTERVAL));
@@ -154,7 +202,8 @@ const realEngine: EngineAdapter = {
   async getSessionMessages(baseUrl, sessionId, directory) {
     const client = await getClient(baseUrl);
     const result = await client.session.messages({ sessionID: sessionId, directory });
-    return (result.data as any[]) ?? [];
+    const raw = (result.data as any[]) ?? [];
+    return raw.map((msg: any) => transformV1Message(msg));
   },
 };
 

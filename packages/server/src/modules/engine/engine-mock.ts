@@ -77,7 +77,7 @@ interface MockSession {
   directory: string;
   aborted: boolean;
   pendingPrompts: string[];
-  messages: { role: string; parts: { type: string; text: string }[] }[];
+  messages: any[];
   abortCallbacks: Set<() => void>;
   successCount: number;
 }
@@ -293,15 +293,22 @@ export class MockEngine {
   private generateResponses(session: MockSession): void {
     for (const text of session.pendingPrompts) {
       session.messages.push({
-        role: 'user',
-        parts: [{ type: 'text', text }],
+        type: 'user',
+        id: cuid(),
+        text,
+        time: { created: Date.now() },
       });
 
       const shouldFail = this.shouldFail(session);
       if (!shouldFail) {
         session.messages.push({
-          role: 'assistant',
-          parts: [{ type: 'text', text: `[Mock AI] 任务已完成。` }],
+          type: 'assistant',
+          id: cuid(),
+          agent: 'build',
+          model: { id: 'mock-model', providerID: 'mock', variant: 'mock' },
+          content: [{ type: 'text', text: `[Mock AI] 任务已完成。` }],
+          finish: 'stop',
+          time: { created: Date.now(), completed: Date.now() },
         });
         session.successCount++;
       } else {

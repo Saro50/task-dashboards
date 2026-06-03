@@ -111,3 +111,9 @@ export async function list(ctx: Context) {
   const executions = await Service.getByTopic(topicId);
   ctx.body = { data: executions };
 }
+
+export async function messages(ctx: Context) {
+  const { executionId } = ctx.params;
+  const msgs = await Service.getSessionMessages(executionId);
+  ctx.body = { messages: msgs };
+}

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
 import { taskApi } from '@/api/task';
 import { log } from '@/utils/log';
+import { ExecutionMessageRenderer } from '@/components/session-message';
 
 const S = 'TaskDetailPanel';
 
@@ -19,9 +20,10 @@ interface Props {
   onUpdated: () => void;
   onHoverDep?: (depId: string | null, type: 'dep' | 'dependent') => void;
   disabled?: boolean;
+  sessionMessages?: any[];
 }
 
-export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, onHoverDep, disabled }: Props) {
+export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, onHoverDep, disabled, sessionMessages = [] }: Props) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description);
   const [status, setStatus] = useState<TaskStatus>(task.status);
@@ -151,6 +153,13 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
               <span className="text-xs font-medium text-red-700">阻塞原因</span>
             </div>
             <p className="text-xs text-red-600 leading-relaxed">{task.blockedReason}</p>
+          </div>
+        )}
+
+        {task.status === 'IN_PROGRESS' && sessionMessages.length > 0 && (
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1.5">Agent 响应</label>
+            <ExecutionMessageRenderer messages={sessionMessages} />
           </div>
         )}
 

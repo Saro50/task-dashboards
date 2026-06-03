@@ -239,7 +239,7 @@ async function executeTasks(
   let baseline = 0;
   try {
     const preMessages = await OpencodeV2.getSessionMessages(baseUrl, sessionId, directory);
-    baseline = preMessages.filter((m: any) => m.role === 'assistant').length;
+    baseline = preMessages.filter((m: any) => m.type === 'assistant').length;
   } catch {}
   logger.info(S, 'baseline assistant count', { executionId, baseline });
 
@@ -298,7 +298,7 @@ async function executeTasks(
   let assistantCount = 0;
   try {
     const messages = await OpencodeV2.getSessionMessages(baseUrl, sessionId, directory);
-    assistantCount = messages.filter((m: any) => m.role === 'assistant').length;
+    assistantCount = messages.filter((m: any) => m.type === 'assistant').length;
     logger.info(S, 'session messages check', { executionId, assistantCount, batchSize: toStart.length });
   } catch (err: any) {
     logger.warn(S, 'getSessionMessages error, assuming all completed', { error: err.message });
@@ -393,4 +393,12 @@ export async function getByTopic(topicId: string) {
     where: { topicId },
     orderBy: { createdAt: 'desc' },
   });
+}
+
+export async function getSessionMessages(executionId: string) {
+  const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
+  if (!execution) throw new Error('Execution not found');
+  if (!execution.sessionId || !execution.worktreeDirectory) return [];
+  const baseUrl = await EngineService.getBaseUrl();
+  return OpencodeV2.getSessionMessages(baseUrl, execution.sessionId, execution.worktreeDirectory);
 }

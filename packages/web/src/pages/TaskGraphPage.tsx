@@ -163,6 +163,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     restoreExecution,
     executing,
     execution,
+    sessionMessages,
     maxConcurrency,
     setMaxConcurrency,
   } = useTaskExecution({
@@ -506,6 +507,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           onUpdated={refetch}
           onHoverDep={handleHoverDep}
           disabled={executing}
+          sessionMessages={sessionMessages}
         />
       )}
 
