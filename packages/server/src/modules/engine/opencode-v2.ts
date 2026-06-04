@@ -101,7 +101,7 @@ function transformV1Message(msg: any): any {
       content,
       finish: info.finish ?? 'stop',
       time: info.time ?? { created: Date.now() },
-      error: info.error ? { message: info.error.message ?? String(info.error) } : undefined,
+      error: info.error ? { message: typeof info.error.message === 'string' ? info.error.message : JSON.stringify(info.error) } : undefined,
     };
   }
 
@@ -206,7 +206,7 @@ const realEngine: EngineAdapter = {
     const client = await getClient(baseUrl);
     const result = await client.session.messages({ sessionID: sessionId, directory });
     const raw = (result.data as any[]) ?? [];
-    return raw.map((msg: any) => transformV1Message(msg));
+    return raw.map((msg: any) => transformV1Message(msg)).filter(Boolean);
   },
 
   async getVcsInfo(baseUrl, directory) {

@@ -34,8 +34,9 @@ export function useActiveExecutions(projectId: string | undefined) {
       for (const exec of withMessages) {
         executionApi.getMessages(exec.id).then((res) => {
           const msgs = (res as any).messages ?? res;
-          log.info(S, 'messages fetched', { executionId: exec.id, count: Array.isArray(msgs) ? msgs.length : 0 });
-          setExecutionMessages((prev) => ({ ...prev, [exec.id]: msgs }));
+          const arr = Array.isArray(msgs) ? msgs : [];
+          log.info(S, 'messages fetched', { executionId: exec.id, count: arr.length, sample: arr[0]?.type });
+          setExecutionMessages((prev) => ({ ...prev, [exec.id]: arr }));
         }).catch((err) => {
           log.error(S, 'getMessages failed', { executionId: exec.id, error: err.message });
         });
@@ -68,5 +69,15 @@ export function useActiveExecutions(projectId: string | undefined) {
     refresh();
   }, [refresh]);
 
-  return { executions, executionMessages, hasRunning, stopExecution };
+  const startExecution = useCallback(async (topicId: string) => {
+    if (!projectId) return;
+    try {
+      await executionApi.start(topicId, projectId);
+    } catch (err: any) {
+      log.error(S, 'startExecution error', err);
+    }
+    refresh();
+  }, [projectId, refresh]);
+
+  return { executions, executionMessages, hasRunning, stopExecution, startExecution };
 }

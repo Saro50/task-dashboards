@@ -6,7 +6,7 @@
  * 暂停的执行也会展示在面板中。
  */
 import { useState, useCallback } from 'react';
-import { useLocation } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useActiveExecutions } from '@/hooks/useActiveExecutions';
 import type { SessionMessage, SessionMessageAssistant, AssistantTool } from '@/types/session-message';
 
@@ -21,7 +21,7 @@ const statusLabel: Record<string, { text: string; color: string }> = {
 
 function getLastAssistantMsg(messages: SessionMessage[]): SessionMessageAssistant | null {
   for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].type === 'assistant') return messages[i] as SessionMessageAssistant;
+    if (messages[i]?.type === 'assistant') return messages[i] as SessionMessageAssistant;
   }
   return null;
 }
@@ -50,9 +50,10 @@ const toolStatusIcon: Record<string, string> = {
 
 export default function ExecutionPanel() {
   const location = useLocation();
+  const navigate = useNavigate();
   const match = location.pathname.match(/\/project\/([^/]+)/);
   const projectId = match?.[1];
-  const { executions, executionMessages, hasRunning, stopExecution } = useActiveExecutions(projectId);
+  const { executions, executionMessages, hasRunning, stopExecution, startExecution } = useActiveExecutions(projectId);
   const [expanded, setExpanded] = useState(false);
 
   const running = executions.filter(
@@ -63,6 +64,13 @@ export default function ExecutionPanel() {
   );
 
   const toggle = useCallback(() => setExpanded((v) => !v), []);
+
+  const handleNavigate = useCallback((topicId: string) => {
+    if (projectId) {
+      navigate(`/project/${projectId}/topic/${topicId}`);
+      setExpanded(false);
+    }
+  }, [projectId, navigate]);
 
   if (!hasRunning && executions.length === 0) return null;
 
@@ -108,6 +116,8 @@ export default function ExecutionPanel() {
                       branch={exec.worktreeBranch}
                       messages={executionMessages[exec.id] ?? []}
                       onStop={() => stopExecution(exec.id)}
+                      onExecute={() => startExecution(exec.topicId)}
+                      onClick={() => handleNavigate(exec.topicId)}
                     />
                   ))}
                 </div>
@@ -117,6 +127,8 @@ export default function ExecutionPanel() {
                   <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">最近</h4>
                   {recent.slice(0, 5).map((exec) => {
                     const msgs = executionMessages[exec.id] ?? [];
+                    const nav = () => handleNavigate(exec.topicId);
+                    const execThis = () => startExecution(exec.topicId);
                     return msgs.length > 0 ? (
                       <RunningCard
                         key={exec.id}
@@ -125,6 +137,8 @@ export default function ExecutionPanel() {
                         progress={`${exec.completedTasks}/${exec.totalTasks}`}
                         branch={exec.worktreeBranch}
                         messages={msgs}
+                        onExecute={execThis}
+                        onClick={nav}
                       />
                     ) : (
                       <RecentCard
@@ -132,6 +146,8 @@ export default function ExecutionPanel() {
                         name={exec.topic?.name ?? '未知任务链'}
                         status={exec.status}
                         progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                        onExecute={execThis}
+                        onClick={nav}
                       />
                     );
                   })}
@@ -145,21 +161,22 @@ export default function ExecutionPanel() {
   );
 }
 
-function RunningCard({ name, status, progress, branch, messages, onStop }: {
+function RunningCard({ name, status, progress, branch, messages, onStop, onExecute, onClick }: {
   name: string;
   status: string;
   progress: string;
   branch: string | null;
   messages: SessionMessage[];
   onStop?: () => void;
+  onExecute?: () => void;
+  onClick?: () => void;
 }) {
   const sl = statusLabel[status] ?? statusLabel.STOPPED;
   const lastMsg = getLastAssistantMsg(messages);
   const summary = extractSummary(lastMsg);
   const isRunning = status === 'RUNNING' || status === 'CREATING_WORKTREE';
-
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2">
+    <div onClick={onClick} className={`rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors ${onClick ? 'cursor-pointer hover:bg-gray-100' : ''}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {isRunning ? (
@@ -176,12 +193,31 @@ function RunningCard({ name, status, progress, branch, messages, onStop }: {
           )}
           <span className="text-xs font-medium text-gray-800 truncate">{name}</span>
         </div>
-        {onStop && (
+        {onStop && isRunning && (
           <button
-            onClick={onStop}
+            onClick={(e) => { e.stopPropagation(); onStop(); }}
             className="shrink-0 text-[10px] text-red-500 hover:text-red-600 px-1.5 py-0.5 rounded border border-red-200 bg-white hover:bg-red-50 transition-colors cursor-pointer"
           >
             停止
+          </button>
+        )}
+        {onExecute && (status === 'STOPPED' || status === 'FAILED') && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onExecute(); }}
+            className="shrink-0 text-[10px] text-sky-600 hover:text-sky-700 px-1.5 py-0.5 rounded border border-sky-200 bg-white hover:bg-sky-50 transition-colors cursor-pointer inline-flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+            执行
+          </button>
+        )}
+        {onClick && status === 'COMPLETED' && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            className="shrink-0 text-[10px] text-sky-600 hover:text-sky-700 px-1.5 py-0.5 rounded border border-sky-200 bg-white hover:bg-sky-50 transition-colors cursor-pointer"
+          >
+            查看
           </button>
         )}
       </div>
@@ -195,48 +231,52 @@ function RunningCard({ name, status, progress, branch, messages, onStop }: {
           </>
         )}
       </div>
-      <div className="mt-1.5 pl-5 max-h-[4rem] overflow-hidden">
-        {summary ? (
-          summary.tool ? (
-            <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${toolStatusIcon[summary.tool.status] ?? 'bg-gray-400'}`} />
-              <span className="text-[10px] text-gray-500 truncate">
-                {summary.tool.name}
-                <span className="ml-1 text-gray-400">
-                  {summary.tool.status === 'running' ? '运行中' :
-                   summary.tool.status === 'completed' ? '完成' :
-                   summary.tool.status === 'error' ? '错误' : '等待中'}
+      {(summary || isRunning) && (
+        <div className="mt-1.5 pl-5 max-h-[4rem] overflow-hidden">
+          {summary ? (
+            summary.tool ? (
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${toolStatusIcon[summary.tool.status] ?? 'bg-gray-400'}`} />
+                <span className="text-[10px] text-gray-500 truncate">
+                  {summary.tool.name}
+                  <span className="ml-1 text-gray-400">
+                    {summary.tool.status === 'running' ? '运行中' :
+                     summary.tool.status === 'completed' ? '完成' :
+                     summary.tool.status === 'error' ? '错误' : '等待中'}
+                  </span>
                 </span>
-              </span>
-            </div>
+              </div>
+            ) : (
+              <p className="text-[10px] text-gray-500 leading-relaxed" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {summary.text}
+              </p>
+            )
           ) : (
-            <p className="text-[10px] text-gray-500 leading-relaxed" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              {summary.text}
-            </p>
-          )
-        ) : (
-          <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-            <svg className="w-3 h-3 animate-pulse" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            等待 AI 响应...
-          </div>
-        )}
-      </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+              <svg className="w-3 h-3 animate-pulse" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              等待 AI 响应...
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function RecentCard({ name, status, progress }: {
+function RecentCard({ name, status, progress, onClick, onExecute }: {
   name: string;
   status: string;
   progress: string;
+  onClick?: () => void;
+  onExecute?: () => void;
 }) {
   const sl = statusLabel[status] ?? statusLabel.STOPPED;
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2">
+    <div onClick={onClick} className={`rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors ${onClick ? 'cursor-pointer hover:bg-gray-100' : ''}`}>
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full shrink-0 ${
           status === 'COMPLETED' ? 'bg-green-500' :
@@ -246,6 +286,25 @@ function RecentCard({ name, status, progress }: {
         <span className="text-xs font-medium text-gray-800 truncate">{name}</span>
         <span className={`text-[10px] font-medium ${sl.color} ml-auto shrink-0`}>{sl.text}</span>
         <span className="text-[10px] text-gray-400 shrink-0">{progress}</span>
+        {onExecute && (status === 'STOPPED' || status === 'FAILED') && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onExecute(); }}
+            className="shrink-0 text-[10px] text-sky-600 hover:text-sky-700 px-1.5 py-0.5 rounded border border-sky-200 bg-white hover:bg-sky-50 transition-colors cursor-pointer inline-flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+            执行
+          </button>
+        )}
+        {onClick && status === 'COMPLETED' && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClick(); }}
+            className="shrink-0 text-[10px] text-sky-600 hover:text-sky-700 px-1.5 py-0.5 rounded border border-sky-200 bg-white hover:bg-sky-50 transition-colors cursor-pointer"
+          >
+            查看
+          </button>
+        )}
       </div>
     </div>
   );
