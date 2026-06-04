@@ -1,40 +1,45 @@
 /**
  * 全局活跃执行 hook — 供 ExecutionPanel 使用。
  *
- * 设计说明：
- *   之前的 ExecutionContext 维护了一个全局 pool，通过 restoreForProject(projectId)
- *   按 projectId 查询活跃执行。但该方案有两个问题：
- *   1. 查询维度是 projectId 而非 topicId，需要额外的 topicId 匹配才能定位到具体执行
- *   2. 状态过滤仅包含 CREATING_WORKTREE / RUNNING / COMPLETED，导致已停止或失败的执行不可见
- *
- *   本 hook 简化了设计：接收 projectId，直接调用 getActiveByProject API 获取该项目的
- *   活跃执行列表，以固定间隔轮询刷新。不再维护复杂的 pool/ref 机制。
- *
- *   每个任务图谱页面（TaskGraphPage）使用 useTaskExecution hook 管理
- *   单个 topic 的执行生命周期（启动/停止/合并/恢复），与本 hook 互不干扰。
+ * 获取项目下的执行列表，并为 RUNNING 状态的执行拉取 session messages。
+ * 每个任务图谱页面（TaskGraphPage）使用 useTaskExecution hook 管理
+ * 单个 topic 的执行生命周期，与本 hook 互不干扰。
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { TaskExecution } from '@/types/execution';
+import type { SessionMessage } from '@/types/session-message';
 import { executionApi } from '@/api/execution';
 import { log } from '@/utils/log';
 
 const S = 'useActiveExecutions';
-
 const POLL_INTERVAL = 5000;
 
 export function useActiveExecutions(projectId: string | undefined) {
   const [executions, setExecutions] = useState<TaskExecution[]>([]);
+  const [executionMessages, setExecutionMessages] = useState<Record<string, SessionMessage[]>>({});
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const refresh = useCallback(async () => {
     if (!projectId) return;
     try {
-      const res = await executionApi.getActive(projectId);
-      const active = res.data || [];
+      const active = await executionApi.getActive(projectId);
       if (active.length === 0) {
         log.warn(S, 'no active executions found for project', { projectId });
       }
       setExecutions(active);
+
+      const withMessages = active.filter(
+        (e) => e.status === 'RUNNING' || e.status === 'STOPPED',
+      );
+      for (const exec of withMessages) {
+        executionApi.getMessages(exec.id).then((res) => {
+          const msgs = (res as any).messages ?? res;
+          log.info(S, 'messages fetched', { executionId: exec.id, count: Array.isArray(msgs) ? msgs.length : 0 });
+          setExecutionMessages((prev) => ({ ...prev, [exec.id]: msgs }));
+        }).catch((err) => {
+          log.error(S, 'getMessages failed', { executionId: exec.id, error: err.message });
+        });
+      }
     } catch (err: any) {
       log.error(S, 'refresh error', err);
     }
@@ -55,11 +60,13 @@ export function useActiveExecutions(projectId: string | undefined) {
   const stopExecution = useCallback(async (executionId: string) => {
     try {
       await executionApi.stop(executionId);
-      refresh();
     } catch (err: any) {
-      log.error(S, 'stopExecution error', err);
+      if (!err.message?.includes('not running')) {
+        log.error(S, 'stopExecution error', err);
+      }
     }
+    refresh();
   }, [refresh]);
 
-  return { executions, hasRunning, stopExecution };
+  return { executions, executionMessages, hasRunning, stopExecution };
 }

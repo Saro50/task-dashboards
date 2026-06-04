@@ -29,6 +29,7 @@ export interface TaskExecution {
   totalTasks: number;
   createdAt: string;
   updatedAt: string;
+  topic?: { id: string; name: string };
 }
 
 export interface FileDiff {

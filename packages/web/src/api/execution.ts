@@ -39,8 +39,8 @@ export const executionApi = {
     return apiRequest<TaskExecution | null>(S, `${BASE}/topics/${topicId}/executions/latest`);
   },
 
-  list(topicId: string): Promise<{ data: TaskExecution[] }> {
-    return apiRequest<{ data: TaskExecution[] }>(S, `${BASE}/topics/${topicId}/executions`);
+  list(topicId: string): Promise<TaskExecution[]> {
+    return apiRequest<TaskExecution[]>(S, `${BASE}/topics/${topicId}/executions`);
   },
 
   getMessages(executionId: string): Promise<{ messages: any[] }> {
@@ -55,7 +55,7 @@ export const executionApi = {
     return apiRequest<{ branches: string[]; current: string }>(S, `${BASE}/executions/${executionId}/branches`);
   },
 
-  getActive(projectId: string): Promise<{ data: TaskExecution[] }> {
-    return apiRequest<{ data: TaskExecution[] }>(S, `${BASE}/projects/${projectId}/executions/active`);
+  getActive(projectId: string): Promise<TaskExecution[]> {
+    return apiRequest<TaskExecution[]>(S, `${BASE}/projects/${projectId}/executions/active`);
   },
 };

@@ -500,15 +500,16 @@ export async function getByTopic(topicId: string) {
 }
 
 /**
- * 获取项目下的活跃执行（供 ExecutionPanel 全局面板使用）。
+ * 获取项目下的执行列表（供 ExecutionPanel 全局面板使用）。
  *
- * 注意：仅返回 CREATING_WORKTREE / RUNNING / COMPLETED 状态的执行。
- * STOPPED / FAILED / MERGED 状态的执行不会返回。
+ * 返回 CREATING_WORKTREE / RUNNING / COMPLETED / STOPPED 状态的执行。
+ * FAILED / MERGED 状态不返回（失败和已合并的执行不展示在面板中）。
  * 按 topicId 精确查询应使用 getStatus(topicId)。
  */
 export async function getActiveByProject(projectId: string) {
   return prisma.taskExecution.findMany({
-    where: { projectId, status: { in: ['CREATING_WORKTREE', 'RUNNING', 'COMPLETED'] } },
+    where: { projectId, status: { in: ['CREATING_WORKTREE', 'RUNNING', 'COMPLETED', 'STOPPED'] } },
+    include: { topic: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
   });
 }

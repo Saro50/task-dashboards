@@ -1,12 +1,10 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import type { EngineStatus } from '@/components/Layout';
 import ProjectList from '@/components/ProjectList';
 import ProjectModal from '@/components/ProjectModal';
-import EngineConfigModal from '@/components/EngineConfigModal';
 import { useToast } from '@/components/Toast';
 import { useProjects } from '@/hooks/useProjects';
 import { projectApi } from '@/api/project';
-import { engineApi } from '@/api/engine';
 import type { Project, ProjectStatus } from '@/types/project';
 import { log } from '@/utils/log';
 
