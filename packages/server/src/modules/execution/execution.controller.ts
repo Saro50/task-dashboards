@@ -123,6 +123,12 @@ export async function messages(ctx: Context) {
   ctx.body = { messages: msgs };
 }
 
+export async function activeByProject(ctx: Context) {
+  const { projectId } = ctx.params;
+  const executions = await Service.getActiveByProject(projectId);
+  ctx.body = { data: executions };
+}
+
 export async function diff(ctx: Context) {
   const { executionId } = ctx.params;
   const diffs = await Service.getDiff(executionId);

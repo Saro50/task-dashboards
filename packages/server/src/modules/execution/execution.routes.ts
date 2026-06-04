@@ -24,4 +24,8 @@ executionRouter.get('/branches', Controller.branches);
 executionRouter.get('/diff', Controller.diff);
 executionRouter.get('/messages', Controller.messages);
 
-export default [router, executionRouter];
+const projectRouter = new Router({ prefix: '/api/projects/:projectId/executions' });
+
+projectRouter.get('/active', Controller.activeByProject);
+
+export default [router, executionRouter, projectRouter];

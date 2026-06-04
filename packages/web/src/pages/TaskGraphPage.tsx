@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { ReactFlow, Background, Controls, MiniMap, Panel, useNodesState, useEdgesState, type Node, type Edge, type MiniMapNodeProps, type Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { EngineStatus } from '@/components/Layout';
-import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
+import type { Task } from '@/types/task';
 import { taskApi } from '@/api/task';
 import { executionApi } from '@/api/execution';
 import { useTasks } from '@/hooks/useTasks';
@@ -210,14 +210,21 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     onTaskUpdated: refetch,
   });
 
-  // 页面加载时恢复执行状态
+  /**
+   * 恢复执行状态 + 合并流程自动触发。
+   *
+   * 合并流程触发条件：execution 从 null/其他状态 变为 COMPLETED 时，
+   * 自动弹出 DiffPreview 让用户预览变更，确认后进入 MergeDialog 选择目标分支。
+   *
+   * restoredRef 确保 restoreExecution() 完成后才检查触发条件，
+   * 避免首次渲染时 execution 还未加载就误触发。
+   */
   const restoredRef = useRef(false);
   useEffect(() => {
     restoreExecution();
     restoredRef.current = true;
   }, [restoreExecution]);
 
-  // 首次恢复到 COMPLETED 状态时弹出合并对话框提示用户
   useEffect(() => {
     if (restoredRef.current && execution?.status === 'COMPLETED' && !showDiffPreview && !showMerge) {
       setShowDiffPreview(true);
@@ -351,6 +358,10 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     }
   }, [refetch, showToast, executing]);
 
+  /**
+   * 合并处理：MergeDialog 中用户选择目标分支后调用。
+   * 流程：DiffPreview 预览变更 → 确认 → MergeDialog 选分支 → handleMerge → 后端 squash merge
+   */
   const handleMerge = useCallback(async (branch: string) => {
     await mergeExecution(branch);
     setShowMerge(false);
@@ -575,7 +586,6 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           onUpdated={refetch}
           onHoverDep={handleHoverDep}
           disabled={executing}
-          sessionMessages={sessionMessages}
         />
       )}
 

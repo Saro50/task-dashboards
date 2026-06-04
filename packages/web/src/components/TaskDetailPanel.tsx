@@ -4,7 +4,6 @@ import remarkGfm from 'remark-gfm';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
 import { taskApi } from '@/api/task';
 import { log } from '@/utils/log';
-import { ExecutionMessageRenderer } from '@/components/session-message';
 import { Collapsible } from '@/components/session-message/Collapsible';
 
 const S = 'TaskDetailPanel';
@@ -37,7 +36,6 @@ interface Props {
   onUpdated: () => void;
   onHoverDep?: (depId: string | null, type: 'dep' | 'dependent') => void;
   disabled?: boolean;
-  sessionMessages?: any[];
 }
 
 function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
@@ -119,7 +117,7 @@ function DescriptionRenderer({ description }: { description: string }) {
   );
 }
 
-export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, onHoverDep, disabled, sessionMessages = [] }: Props) {
+export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, onHoverDep, disabled }: Props) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingStatus, setEditingStatus] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
@@ -309,14 +307,6 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
               <span className="text-xs font-medium text-red-700">阻塞原因</span>
             </div>
             <p className="text-xs text-red-600 leading-relaxed">{task.blockedReason}</p>
-          </div>
-        )}
-
-        {/* Agent response */}
-        {task.status === 'IN_PROGRESS' && sessionMessages.length > 0 && (
-          <div>
-            <span className="text-xs font-medium text-gray-500 mb-1.5 block">Agent 响应</span>
-            <ExecutionMessageRenderer messages={sessionMessages} />
           </div>
         )}
 

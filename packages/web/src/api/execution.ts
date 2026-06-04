@@ -54,4 +54,8 @@ export const executionApi = {
   getBranches(executionId: string): Promise<{ branches: string[]; current: string }> {
     return apiRequest<{ branches: string[]; current: string }>(S, `${BASE}/executions/${executionId}/branches`);
   },
+
+  getActive(projectId: string): Promise<{ data: TaskExecution[] }> {
+    return apiRequest<{ data: TaskExecution[] }>(S, `${BASE}/projects/${projectId}/executions/active`);
+  },
 };

@@ -410,6 +410,26 @@ export async function getDiff(executionId: string) {
   return OpencodeV2.getDiff(baseUrl, execution.worktreeDirectory, 'branch');
 }
 
+/**
+ * 合并执行 — 将 worktree 中的代码变更 squash merge 到用户选择的目标分支。
+ *
+ * ┌────────────────────────────────────────────────────────────────────┐
+ * │ 完整步骤：                                                          │
+ * │ 1. 校验：execution 必须 COMPLETED，且有 worktreeBranch/Directory    │
+ * │ 2. worktree commit：opencode 不自动 commit，需手动 git add -A +     │
+ * │    commit 将 AI 修改的文件提交到 worktree 分支                       │
+ * │ 3. 主仓库 checkout targetBranch                                     │
+ * │ 4. squash merge：git merge --squash worktreeBranch                  │
+ * │    - 冲突则 abort 并抛错                                             │
+ * │    - 无实际变更则跳过 commit（幂等）                                  │
+ * │ 5. 清理：删除 worktree（失败仅 warn，不阻断合并结果）                 │
+ * │ 6. 更新数据库：status → MERGED，记录 targetBranch                    │
+ * └────────────────────────────────────────────────────────────────────┘
+ *
+ * 为什么用 squash merge 而非普通 merge：
+ *   任务链可能包含几十个任务的改动，squash merge 将所有变更压缩为一个 commit，
+ *   保持主分支历史整洁。commit message 以 topic name 为前缀便于追溯。
+ */
 export async function merge(executionId: string, targetBranch: string) {
   const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!execution) throw new Error('Execution not found');
@@ -475,6 +495,20 @@ export async function getStatus(topicId: string) {
 export async function getByTopic(topicId: string) {
   return prisma.taskExecution.findMany({
     where: { topicId },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+/**
+ * 获取项目下的活跃执行（供 ExecutionPanel 全局面板使用）。
+ *
+ * 注意：仅返回 CREATING_WORKTREE / RUNNING / COMPLETED 状态的执行。
+ * STOPPED / FAILED / MERGED 状态的执行不会返回。
+ * 按 topicId 精确查询应使用 getStatus(topicId)。
+ */
+export async function getActiveByProject(projectId: string) {
+  return prisma.taskExecution.findMany({
+    where: { projectId, status: { in: ['CREATING_WORKTREE', 'RUNNING', 'COMPLETED'] } },
     orderBy: { createdAt: 'desc' },
   });
 }

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { log } from '@/utils/log';
 import { useToast } from '@/components/Toast';
+import ExecutionPanel from '@/components/ExecutionPanel';
 
 export type EngineStatus = 'connected' | 'disconnected' | 'error';
 
@@ -42,6 +43,7 @@ export default function Layout({ children, onOpenEngineConfig, engineStatus }: P
           <img src="/starboard.svg" alt="AICodeAgent" className="h-8" />
         </div>
         <div className="ml-auto flex items-center gap-3">
+          <ExecutionPanel />
           <button
             onClick={handleFeedback}
             title="复制运行日志"

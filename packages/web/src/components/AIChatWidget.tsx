@@ -88,6 +88,38 @@ function Collapsible({ title, icon, defaultOpen = false, children }: {
   );
 }
 
+function repairJson(str: string): string {
+  let result = '';
+  let inString = false;
+  let i = 0;
+  while (i < str.length) {
+    const ch = str[i];
+    if (!inString) {
+      result += ch;
+      if (ch === '"') inString = true;
+    } else {
+      if (ch === '\\') {
+        result += ch + (str[i + 1] || '');
+        i += 2;
+        continue;
+      }
+      if (ch === '"') {
+        const rest = str.slice(i + 1).trimStart();
+        if (rest.length === 0 || /^[,}\]):]/.test(rest)) {
+          result += ch;
+          inString = false;
+        } else {
+          result += '\\"';
+        }
+      } else {
+        result += ch;
+      }
+    }
+    i++;
+  }
+  return result;
+}
+
 function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTopics, onPlanImported }: {
   part: ChatPart;
   projectId?: string;
@@ -108,7 +140,14 @@ function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTop
         segments.push({ type: 'text', content: text.slice(lastIndex, match.index) });
       }
       try {
-        const plan = JSON.parse(match[1]);
+        let jsonStr = match[1].trim();
+        jsonStr = jsonStr.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/,'');
+        let plan: TaskPlan;
+        try {
+          plan = JSON.parse(jsonStr);
+        } catch {
+          plan = JSON.parse(repairJson(jsonStr));
+        }
         segments.push({ type: 'plan', content: plan });
       } catch {
         segments.push({ type: 'text', content: match[0] });
