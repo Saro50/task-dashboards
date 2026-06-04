@@ -26,6 +26,11 @@ const S = 'TaskGraphPage';
 
 interface Props {
   engineStatus: EngineStatus;
+  /**
+   * 项目级最大并发主题数，由 App 顶层传入；调用 executeChain 时透传到后端，
+   * 限制同项目下可并行运行的任务链条数。
+   */
+  maxConcurrency: number;
 }
 
 const taskStatusColor: Record<string, string> = {
@@ -161,7 +166,7 @@ function MergeDialog({ execution, onMerge, onClose }: {
   );
 }
 
-export default function TaskGraphPage({ engineStatus }: Props) {
+export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
   const { projectId, topicId } = useParams<{ projectId: string; topicId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
@@ -202,12 +207,11 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     executing,
     execution,
     sessionMessages,
-    maxConcurrency,
-    setMaxConcurrency,
   } = useTaskExecution({
     topicId,
     projectId,
     onTaskUpdated: refetch,
+    maxConcurrency,
   });
 
   /**
@@ -241,6 +245,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const prevTaskKey = useRef<string>('');
 
   const handleDeleteTask = useCallback(async (taskId: string) => {
+    if (execution) return;
     const task = filteredTasks.find((t) => t.id === taskId);
     if (!task) return;
     const confirmed = window.confirm(`确定删除任务「${task.title}」？`);
@@ -255,7 +260,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
       log.error(S, 'handleDeleteTask error', err);
       showToast(err.message, 'error');
     }
-  }, [filteredTasks, selectedTaskId, showToast, refetch]);
+  }, [filteredTasks, selectedTaskId, showToast, refetch, execution]);
 
   useEffect(() => {
     const taskMap = new Map(filteredTasks.map((t) => [t.id, t]));
@@ -321,7 +326,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedTaskId && !executing) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedTaskId && !execution) {
         const target = e.target as HTMLElement;
         if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) return;
         e.preventDefault();
@@ -330,7 +335,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectedTaskId, executing, handleDeleteTask]);
+  }, [selectedTaskId, execution, handleDeleteTask]);
 
   const handleHoverDep = useCallback((depId: string | null, type: 'dep' | 'dependent') => {
     if (!depId || !selectedTaskId) {
@@ -342,7 +347,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   }, [selectedTaskId]);
 
   const onConnect = useCallback(async (connection: Connection) => {
-    if (executing) return;
+    if (execution) return;
     if (!connection.source || !connection.target) return;
     if (connection.source === connection.target) return;
     log.info(S, 'onConnect', { source: connection.source, target: connection.target });
@@ -356,7 +361,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         showToast(err.message, 'error');
       }
     }
-  }, [refetch, showToast, executing]);
+  }, [refetch, showToast, execution]);
 
   /**
    * 合并处理：MergeDialog 中用户选择目标分支后调用。
@@ -403,19 +408,6 @@ export default function TaskGraphPage({ engineStatus }: Props) {
               )}
             </div>
           )}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-gray-500">并发</span>
-            <select
-              value={maxConcurrency}
-              onChange={(e) => { const v = Number(e.target.value); log.info(S, 'setMaxConcurrency', { value: v }); setMaxConcurrency(v); }}
-              disabled={executing}
-              className="text-xs border border-gray-200 rounded-md px-1.5 py-1 bg-white text-gray-700 outline-none focus:border-sky-400 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-            >
-              {[1, 2, 3, 4, 5].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </div>
           {execution?.worktreeBranch && execution.status !== 'MERGED' && (
             <div className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-xs text-gray-600">
               <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -582,6 +574,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
         <TaskDetailPanel
           task={selectedTask}
           allTasks={filteredTasks}
+          executionId={execution?.id}
           onClose={() => setSelectedTaskId(null)}
           onUpdated={refetch}
           onHoverDep={handleHoverDep}

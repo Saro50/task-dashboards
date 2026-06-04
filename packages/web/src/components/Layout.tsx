@@ -9,6 +9,13 @@ interface Props {
   children: React.ReactNode;
   onOpenEngineConfig: () => void;
   engineStatus: EngineStatus;
+  /**
+   * 项目级最大并发主题数，由 App 顶层 useConcurrencySetting 提供。
+   * 上下游影响：Layout 顶部菜单展示并修改；调用 executionApi.start 时透传给后端，
+   * 限制同项目下可并行运行的任务链条数。
+   */
+  maxConcurrency: number;
+  onMaxConcurrencyChange: (v: number) => void;
 }
 
 const statusDot: Record<EngineStatus, { color: string; title: string }> = {
@@ -17,7 +24,7 @@ const statusDot: Record<EngineStatus, { color: string; title: string }> = {
   error: { color: 'bg-red-400', title: '引擎连接失败' },
 };
 
-export default function Layout({ children, onOpenEngineConfig, engineStatus }: Props) {
+export default function Layout({ children, onOpenEngineConfig, engineStatus, maxConcurrency, onMaxConcurrencyChange }: Props) {
   const dot = statusDot[engineStatus];
   const { showToast } = useToast();
 
@@ -44,6 +51,18 @@ export default function Layout({ children, onOpenEngineConfig, engineStatus }: P
         </div>
         <div className="ml-auto flex items-center gap-3">
           <ExecutionPanel />
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm text-gray-500">最大并发</span>
+            <select
+              value={maxConcurrency}
+              onChange={(e) => onMaxConcurrencyChange(Number(e.target.value))}
+              className="text-sm border border-gray-200 rounded-md px-1.5 py-1 bg-white text-gray-700 outline-none focus:border-sky-400 cursor-pointer"
+            >
+              {[1, 2, 3, 4, 5].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={handleFeedback}
             title="复制运行日志"

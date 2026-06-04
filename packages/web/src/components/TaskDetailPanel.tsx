@@ -1,10 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
+import type { FileDiff } from '@/types/execution';
+import type { SessionMessage, SessionMessageAssistant } from '@/types/session-message';
 import { taskApi } from '@/api/task';
+import { executionApi } from '@/api/execution';
 import { log } from '@/utils/log';
 import { Collapsible } from '@/components/session-message/Collapsible';
+import { AssistantContent } from '@/components/session-message/AssistantContent';
 
 const S = 'TaskDetailPanel';
 
@@ -29,9 +33,16 @@ const statusOptions: { value: TaskStatus; label: string }[] = [
   { value: 'BLOCKED', label: '已阻塞' },
 ];
 
+function diffStatusLabel(status: string): { text: string; color: string } {
+  if (status === 'added') return { text: 'A', color: 'text-green-600 bg-green-50' };
+  if (status === 'deleted') return { text: 'D', color: 'text-red-600 bg-red-50' };
+  return { text: 'M', color: 'text-amber-600 bg-amber-50' };
+}
+
 interface Props {
   task: Task;
   allTasks: Task[];
+  executionId?: string;
   onClose: () => void;
   onUpdated: () => void;
   onHoverDep?: (depId: string | null, type: 'dep' | 'dependent') => void;
@@ -49,13 +60,14 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
   );
 }
 
-function StatusIcon({ status, onClick }: { status: TaskStatus; onClick: () => void }) {
+function StatusIcon({ status, onClick, disabled }: { status: TaskStatus; onClick: () => void; disabled?: boolean }) {
   const cfg = statusConfig[status];
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${cfg.iconBg} ${cfg.iconColor} ring-1 ${cfg.ring} hover:opacity-80 transition-opacity cursor-pointer`}
-      title={`状态: ${cfg.label}（点击修改）`}
+      disabled={disabled}
+      className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${cfg.iconBg} ${cfg.iconColor} ring-1 ${cfg.ring} transition-opacity cursor-pointer disabled:cursor-not-allowed disabled:opacity-50`}
+      title={disabled ? '执行中不可修改状态' : `状态: ${cfg.label}（点击修改）`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${statusDotColor[status]}`} />
       {cfg.label}
@@ -117,7 +129,8 @@ function DescriptionRenderer({ description }: { description: string }) {
   );
 }
 
-export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, onHoverDep, disabled }: Props) {
+export default function TaskDetailPanel({ task, allTasks, executionId, onClose, onUpdated, onHoverDep, disabled }: Props) {
+  const locked = !!executionId;
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingStatus, setEditingStatus] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
@@ -126,9 +139,72 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
   const [descDraft, setDescDraft] = useState(task.description);
   const [saving, setSaving] = useState(false);
   const [addingDepId, setAddingDepId] = useState<string | null>(null);
+  const [taskDiffs, setTaskDiffs] = useState<FileDiff[]>([]);
+  const [diffLoading, setDiffLoading] = useState(false);
+  const [diffError, setDiffError] = useState('');
+  const [expandedDiffFile, setExpandedDiffFile] = useState<string | null>(null);
+  const [taskMessages, setTaskMessages] = useState<SessionMessage[]>([]);
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [msgUnavailable, setMsgUnavailable] = useState(false);
 
   const deps = allTasks.filter((t) => task.dependencies.includes(t.id));
   const dependents = allTasks.filter((t) => t.dependencies.includes(task.id));
+
+  // 获取任务变更 diff
+  useEffect(() => {
+    if (!executionId || task.status !== 'COMPLETED') {
+      setTaskDiffs([]);
+      return;
+    }
+    let cancelled = false;
+    setDiffLoading(true);
+    setDiffError('');
+    executionApi
+      .getTaskDiff(task.id, executionId)
+      .then((res) => {
+        if (!cancelled) {
+          setTaskDiffs(res.diffs ?? []);
+          setDiffLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          log.error(S, 'getTaskDiff error', err);
+          setDiffError(err.message ?? '获取变更失败');
+          setDiffLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [task.id, executionId, task.status]);
+
+  // 获取任务 AI 输出消息
+  useEffect(() => {
+    if (!executionId || !['IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(task.status)) {
+      setTaskMessages([]);
+      setMsgUnavailable(false);
+      return;
+    }
+    let cancelled = false;
+    setMsgLoading(true);
+    setMsgUnavailable(false);
+    executionApi
+      .getTaskMessages(task.id, executionId)
+      .then((res) => {
+        if (!cancelled) {
+          setTaskMessages(res.messages ?? []);
+          setMsgUnavailable(!!res.unavailable);
+          setMsgLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          log.error(S, 'getTaskMessages error', err);
+          setTaskMessages([]);
+          setMsgLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [task.id, executionId, task.status]);
 
   const saveField = useCallback(async (input: UpdateTaskInput) => {
     if (Object.keys(input).length === 0) return;
@@ -228,29 +304,31 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2
-            className="text-base font-semibold text-gray-800 truncate cursor-pointer hover:text-sky-600 transition-colors"
-            onClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
-            title="点击编辑标题"
+            className={`text-base font-semibold text-gray-800 truncate transition-colors ${locked ? 'cursor-default' : 'cursor-pointer hover:text-sky-600'}`}
+            onClick={() => { if (!locked) { setTitleDraft(task.title); setEditingTitle(true); } }}
+            title={locked ? '执行后不可修改标题' : '点击编辑标题'}
           >
             {task.title}
           </h2>
-          <button
-            onClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
-            className="shrink-0 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
-            title="编辑标题"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
-            </svg>
-          </button>
-          <StatusIcon status={task.status} onClick={() => setEditingStatus(true)} />
+          {!locked && (
+            <button
+              onClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
+              className="shrink-0 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              title="编辑标题"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+              </svg>
+            </button>
+          )}
+          <StatusIcon status={task.status} onClick={() => { if (!locked) setEditingStatus(true); }} disabled={locked} />
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
           <button
             onClick={handleDelete}
-            disabled={saving}
-            className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50"
-            title="删除任务"
+            disabled={saving || locked}
+            className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
+            title={locked ? '执行后不可删除任务' : '删除任务'}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -273,26 +351,27 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-gray-500">描述</span>
-            <button
-              onClick={() => { setDescDraft(task.description); setEditingDesc(true); }}
-              className="text-xs text-sky-500 hover:text-sky-600 transition-colors cursor-pointer"
-            >
-              编辑
-            </button>
+            {!locked && (
+              <button
+                onClick={() => { setDescDraft(task.description); setEditingDesc(true); }}
+                className="text-xs text-sky-500 hover:text-sky-600 transition-colors cursor-pointer"
+              >
+                编辑
+              </button>
+            )}
           </div>
           {task.description ? (
             <div
-              className="min-h-[60px] cursor-pointer rounded-lg hover:bg-gray-50 p-2 -m-2 transition-colors"
-              onClick={() => { setDescDraft(task.description); setEditingDesc(true); }}
+              className={`min-h-[60px] rounded-lg p-2 -m-2 transition-colors ${locked ? '' : 'cursor-pointer hover:bg-gray-50'}`}
+              onClick={() => { if (!locked) { setDescDraft(task.description); setEditingDesc(true); } }}
             >
               <DescriptionRenderer description={task.description} />
             </div>
           ) : (
             <div
-              className="min-h-[60px] flex items-center justify-center text-sm text-gray-400 cursor-pointer rounded-lg hover:bg-gray-50 -m-2 p-2 transition-colors"
-              onClick={() => { setDescDraft(''); setEditingDesc(true); }}
+              className={`min-h-[60px] flex items-center justify-center text-sm text-gray-400 rounded-lg -m-2 p-2 transition-colors ${locked ? '' : 'cursor-pointer hover:bg-gray-50'}`}
             >
-              点击添加描述...
+              {locked ? '暂无描述' : '点击添加描述...'}
             </div>
           )}
         </div>
@@ -310,6 +389,133 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
           </div>
         )}
 
+        {/* Task changes (diff) — 仅在有 executionId 且任务已完成时显示 */}
+        {executionId && task.status === 'COMPLETED' && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-500">变更</span>
+              {taskDiffs.length > 0 && (
+                <span className="text-xs tabular-nums">
+                  <span className="text-green-600">+{taskDiffs.reduce((s, d) => s + (d.additions ?? 0), 0)}</span>
+                  <span className="text-gray-300 mx-0.5">/</span>
+                  <span className="text-red-600">-{taskDiffs.reduce((s, d) => s + (d.deletions ?? 0), 0)}</span>
+                </span>
+              )}
+            </div>
+            {diffLoading && (
+              <div className="flex items-center py-3 text-xs text-gray-400">
+                <div className="w-3.5 h-3.5 border border-gray-200 border-t-sky-500 rounded-full animate-spin mr-2" />
+                加载变更中...
+              </div>
+            )}
+            {diffError && (
+              <div className="text-xs text-red-500 py-2">{diffError}</div>
+            )}
+            {!diffLoading && !diffError && taskDiffs.length === 0 && (
+              <div className="text-xs text-gray-400 py-2">该任务未产生文件修改</div>
+            )}
+            {!diffLoading && !diffError && taskDiffs.length > 0 && (
+              <div className="space-y-1">
+                {taskDiffs.map((d) => {
+                  const st = diffStatusLabel(d.status ?? 'modified');
+                  const isExpanded = expandedDiffFile === d.file;
+                  return (
+                    <div key={d.file} className="rounded-lg border border-gray-100 overflow-hidden">
+                      <button
+                        onClick={() => setExpandedDiffFile(isExpanded ? null : d.file)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-gray-50 transition-colors cursor-pointer"
+                      >
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${st.color}`}>
+                          {st.text}
+                        </span>
+                        <span className="text-xs font-mono text-gray-700 flex-1 truncate">{d.file}</span>
+                        <span className="text-[11px] tabular-nums shrink-0">
+                          <span className="text-green-600">+{d.additions ?? 0}</span>
+                          <span className="text-gray-300 mx-0.5">/</span>
+                          <span className="text-red-600">-{d.deletions ?? 0}</span>
+                        </span>
+                        <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {isExpanded && d.patch && (
+                        <div className="border-t border-gray-100 bg-gray-50 px-3 py-2 max-h-48 overflow-y-auto">
+                          <pre className="text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
+                            {d.patch.split('\n').map((line, i) => {
+                              if (line.startsWith('+')) return <div key={i} className="bg-green-50 text-green-800">{line}</div>;
+                              if (line.startsWith('-')) return <div key={i} className="bg-red-50 text-red-800">{line}</div>;
+                              return <div key={i} className="text-gray-600">{line}</div>;
+                            })}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI 输出 — 仅在有 executionId 且任务已处理时显示 */}
+        {executionId && ['IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(task.status) && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-gray-500">AI 输出</span>
+            </div>
+            {msgLoading && (
+              <div className="flex items-center py-3 text-xs text-gray-400">
+                <div className="w-3.5 h-3.5 border border-gray-200 border-t-sky-500 rounded-full animate-spin mr-2" />
+                加载 AI 输出中...
+              </div>
+            )}
+            {!msgLoading && msgUnavailable && (
+              <div className="text-xs text-gray-400 py-2">执行环境已清理，无法获取 AI 输出</div>
+            )}
+            {!msgLoading && !msgUnavailable && taskMessages.length === 0 && (
+              <div className="text-xs text-gray-400 py-2">
+                {task.status === 'BLOCKED' ? 'AI 未生成回复' : '暂无 AI 输出'}
+              </div>
+            )}
+            {!msgLoading && !msgUnavailable && taskMessages.length > 0 && (
+              <div className="space-y-2">
+                {taskMessages.map((msg) => {
+                  if (msg.type === 'user') {
+                    return (
+                      <Collapsible
+                        key={msg.id}
+                        title={<span className="text-xs text-gray-500">任务提示词</span>}
+                      >
+                        <div className="rounded-lg bg-sky-50 border border-sky-100 px-3 py-2">
+                          <p className="text-xs text-sky-800 whitespace-pre-wrap break-words leading-relaxed max-h-40 overflow-y-auto">
+                            {msg.text}
+                          </p>
+                        </div>
+                      </Collapsible>
+                    );
+                  }
+                  const assistantMsg = msg as SessionMessageAssistant;
+                  return (
+                    <div key={msg.id} className="space-y-1">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span className="text-[10px] text-gray-400 font-mono">{assistantMsg.agent}</span>
+                        {assistantMsg.error && <span className="text-[10px] text-red-500">错误: {assistantMsg.error.message}</span>}
+                        {!assistantMsg.finish && !assistantMsg.error && (
+                          <svg className="w-3 h-3 animate-pulse text-sky-400" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                        )}
+                      </div>
+                      <AssistantContent content={assistantMsg.content} />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Dependency summary */}
         <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
           <span className="text-xs text-gray-600">
@@ -320,8 +526,9 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
             {deps.length === 0 && dependents.length === 0 && <span className="text-gray-400">暂无依赖关系</span>}
           </span>
           <button
-            onClick={() => setShowDepModal(true)}
-            className="text-xs text-sky-500 hover:text-sky-600 font-medium transition-colors cursor-pointer"
+            onClick={() => { if (!locked) setShowDepModal(true); }}
+            disabled={locked}
+            className="text-xs text-sky-500 hover:text-sky-600 font-medium transition-colors cursor-pointer disabled:text-gray-300 disabled:cursor-not-allowed disabled:hover:text-gray-300"
           >
             管理
           </button>
@@ -428,7 +635,7 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
               >
                 <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor[dep.status]}`} />
                 <span className="truncate flex-1">{dep.title}</span>
-                {!disabled && (
+                {!locked && (
                   <button
                     onClick={() => { handleRemoveDep(dep.id); onHoverDep?.(null, 'dep'); }}
                     className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
@@ -440,7 +647,7 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
                 )}
               </div>
             ))}
-            {!disabled && availableToAdd.length > 0 && (
+            {!locked && availableToAdd.length > 0 && (
               <div className="mt-2">
                 <select
                   value=""
@@ -469,7 +676,7 @@ export default function TaskDetailPanel({ task, allTasks, onClose, onUpdated, on
                 >
                   <span className={`w-2 h-2 rounded-full shrink-0 ${statusDotColor[dep.status]}`} />
                   <span className="truncate flex-1">{dep.title}</span>
-                  {!disabled && (
+                  {!locked && (
                     <button
                       onClick={() => { handleRemoveDependent(dep.id); onHoverDep?.(null, 'dependent'); }}
                       className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-400 hover:text-red-500 hover:bg-red-100 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"

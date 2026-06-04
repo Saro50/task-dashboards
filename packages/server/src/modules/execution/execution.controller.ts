@@ -7,6 +7,7 @@
  *   GET    /api/topics/:topicId/executions           列出所有执行
  *   POST   /api/executions/:executionId/stop         停止执行
  *   POST   /api/executions/:executionId/merge        合并到目标分支
+ *   GET    /api/tasks/:taskId/diff                   获取单个任务的文件变更
  *
  * 注意：start 端点的 projectId 从 request body 获取（而非 ctx.params），
  * 因为路由前缀只包含 :topicId，projectId 由前端在 body 中传递。
@@ -33,6 +34,11 @@ export async function start(ctx: Context) {
   } catch (err: any) {
     if (err.message?.includes('already running')) {
       ctx.status = 409;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('最大并发执行数') || err.message?.includes('max concurrent')) {
+      ctx.status = 429;
       ctx.body = { error: err.message };
       return;
     }
@@ -139,6 +145,52 @@ export async function branches(ctx: Context) {
   const { executionId } = ctx.params;
   try {
     const result = await Service.getBranches(executionId);
+    ctx.body = result;
+  } catch (err: any) {
+    if (err.message?.includes('not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function taskDiff(ctx: Context) {
+  const { taskId } = ctx.params;
+  const executionId = ctx.query.executionId as string;
+
+  if (!executionId) {
+    ctx.status = 400;
+    ctx.body = { error: 'executionId is required' };
+    return;
+  }
+
+  try {
+    const diffs = await Service.getTaskDiff(taskId, executionId);
+    ctx.body = { diffs };
+  } catch (err: any) {
+    if (err.message?.includes('not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}
+
+export async function taskMessages(ctx: Context) {
+  const { taskId } = ctx.params;
+  const executionId = ctx.query.executionId as string;
+
+  if (!executionId) {
+    ctx.status = 400;
+    ctx.body = { error: 'executionId is required' };
+    return;
+  }
+
+  try {
+    const result = await Service.getTaskMessages(taskId, executionId);
     ctx.body = result;
   } catch (err: any) {
     if (err.message?.includes('not found')) {

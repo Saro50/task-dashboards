@@ -7,9 +7,11 @@
  * - merge: 将已完成的执行合并到目标分支
  * - getLatest: 获取主题下最新的执行状态（前端轮询用）
  * - list: 列出主题下所有执行历史
+ * - getTaskDiff: 获取单个任务的文件变更（per-task diff）
  */
 import { apiRequest } from '@/api/lib';
 import type { TaskExecution, FileDiff } from '@/types/execution';
+import type { SessionMessage } from '@/types/session-message';
 
 const BASE = '/api';
 const S = 'executionApi';
@@ -57,5 +59,13 @@ export const executionApi = {
 
   getActive(projectId: string): Promise<TaskExecution[]> {
     return apiRequest<TaskExecution[]>(S, `${BASE}/projects/${projectId}/executions/active`);
+  },
+
+  getTaskDiff(taskId: string, executionId: string): Promise<{ diffs: FileDiff[] }> {
+    return apiRequest<{ diffs: FileDiff[] }>(S, `${BASE}/tasks/${taskId}/diff?executionId=${executionId}`);
+  },
+
+  getTaskMessages(taskId: string, executionId: string): Promise<{ messages: SessionMessage[]; unavailable?: boolean }> {
+    return apiRequest<{ messages: SessionMessage[]; unavailable?: boolean }>(S, `${BASE}/tasks/${taskId}/messages?executionId=${executionId}`);
   },
 };

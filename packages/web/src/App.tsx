@@ -8,11 +8,13 @@ import TaskGraphPage from './pages/TaskGraphPage';
 import EngineConfigModal from './components/EngineConfigModal';
 import { ToastProvider, useToast } from './components/Toast';
 import { engineApi } from './api/engine';
+import { useConcurrencySetting } from './hooks/useConcurrencySetting';
 
 function AppContent() {
   const { showToast } = useToast();
   const [engineConfigOpen, setEngineConfigOpen] = useState(false);
   const [engineStatus, setEngineStatus] = useState<EngineStatus>('disconnected');
+  const { maxConcurrency, setMaxConcurrency } = useConcurrencySetting();
 
   const checkEngineStatus = useCallback(async () => {
     try {
@@ -33,11 +35,16 @@ function AppContent() {
   }, [checkEngineStatus]);
 
   return (
-    <Layout onOpenEngineConfig={() => setEngineConfigOpen(true)} engineStatus={engineStatus}>
+    <Layout
+      onOpenEngineConfig={() => setEngineConfigOpen(true)}
+      engineStatus={engineStatus}
+      maxConcurrency={maxConcurrency}
+      onMaxConcurrencyChange={setMaxConcurrency}
+    >
       <Routes>
         <Route path="/" element={<ProjectListPage onOpenEngineConfig={() => setEngineConfigOpen(true)} engineStatus={engineStatus} onEngineStatusChange={checkEngineStatus} />} />
         <Route path="/project/:projectId" element={<TopicGraphPage engineStatus={engineStatus} />} />
-        <Route path="/project/:projectId/topic/:topicId" element={<TaskGraphPage engineStatus={engineStatus} />} />
+        <Route path="/project/:projectId/topic/:topicId" element={<TaskGraphPage engineStatus={engineStatus} maxConcurrency={maxConcurrency} />} />
       </Routes>
 
       <EngineConfigModal

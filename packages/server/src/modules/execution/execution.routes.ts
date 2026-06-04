@@ -28,4 +28,9 @@ const projectRouter = new Router({ prefix: '/api/projects/:projectId/executions'
 
 projectRouter.get('/active', Controller.activeByProject);
 
-export default [router, executionRouter, projectRouter];
+const taskRouter = new Router({ prefix: '/api/tasks/:taskId' });
+
+taskRouter.get('/diff', Controller.taskDiff);
+taskRouter.get('/messages', Controller.taskMessages);
+
+export default [router, executionRouter, projectRouter, taskRouter];

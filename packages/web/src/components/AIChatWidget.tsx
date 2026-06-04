@@ -749,14 +749,47 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
               );
             })}
 
-            {isLoading && streamingText && (
-              <div className="flex justify-start">
-                <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-200 text-gray-700">
-                  <p className="whitespace-pre-wrap break-words">{streamingText}</p>
-                  <span className="inline-block w-1.5 h-4 bg-sky-400 animate-pulse ml-0.5 align-text-bottom" />
+            {isLoading && streamingText && (() => {
+              const PLAN_TAG = '<task-plan>';
+              const planStart = streamingText.indexOf(PLAN_TAG);
+
+              let visibleText = streamingText;
+              let showPlanPlaceholder = false;
+
+              if (planStart !== -1) {
+                visibleText = streamingText.slice(0, planStart);
+                showPlanPlaceholder = true;
+              } else {
+                const lastLt = streamingText.lastIndexOf('<');
+                if (lastLt !== -1) {
+                  const tail = streamingText.slice(lastLt);
+                  if (PLAN_TAG.startsWith(tail)) {
+                    visibleText = streamingText.slice(0, lastLt);
+                    showPlanPlaceholder = true;
+                  }
+                }
+              }
+
+              return (
+                <div className="flex justify-start">
+                  <div className="max-w-[80%] rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm leading-relaxed bg-gray-50 border border-gray-200 text-gray-700">
+                    {visibleText && <p className="whitespace-pre-wrap break-words">{visibleText}</p>}
+                    {showPlanPlaceholder && (
+                      <div className="flex items-center gap-2 py-1.5 px-3 bg-sky-50 border border-sky-100 rounded-lg">
+                        <svg className="w-3.5 h-3.5 text-sky-500 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span className="text-xs text-sky-600">计划生成中...</span>
+                      </div>
+                    )}
+                    {!showPlanPlaceholder && (
+                      <span className="inline-block w-1.5 h-4 bg-sky-400 animate-pulse ml-0.5 align-text-bottom" />
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {isLoading && !streamingText && !loadingTimedOut && (
               <div className="flex justify-start">

@@ -32,14 +32,18 @@ interface UseTaskExecutionOptions {
   topicId: string | undefined;
   projectId: string | undefined;
   onTaskUpdated: () => void;
+  /**
+   * 项目级最大并发主题数，由全局设置传入。
+   * 调用 executionApi.start 时透传给后端，限制同项目下可并行运行的任务链条数。
+   */
+  maxConcurrency: number;
 }
 
-export function useTaskExecution({ topicId, projectId, onTaskUpdated }: UseTaskExecutionOptions) {
+export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurrency }: UseTaskExecutionOptions) {
   const { showToast } = useToast();
   const [executing, setExecuting] = useState(false);
   const [execution, setExecution] = useState<TaskExecution | null>(null);
   const [sessionMessages, setSessionMessages] = useState<any[]>([]);
-  const [maxConcurrency, setMaxConcurrency] = useState(2);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopPolling = useCallback(() => {
@@ -203,7 +207,5 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated }: UseTaskE
     executing,
     execution,
     sessionMessages,
-    maxConcurrency,
-    setMaxConcurrency,
   };
 }
