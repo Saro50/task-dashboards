@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, type Node, type Edge, type MiniMapNodeProps, type Connection } from '@xyflow/react';
+import { ReactFlow, Background, Controls, MiniMap, Panel, useNodesState, useEdgesState, type Node, type Edge, type MiniMapNodeProps, type Connection } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { EngineStatus } from '@/components/Layout';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
@@ -312,6 +312,19 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     setSelectedTaskId(null);
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedTaskId && !executing) {
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) return;
+        e.preventDefault();
+        handleDeleteTask(selectedTaskId);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [selectedTaskId, executing, handleDeleteTask]);
+
   const handleHoverDep = useCallback((depId: string | null, type: 'dep' | 'dependent') => {
     if (!depId || !selectedTaskId) {
       setHoveredEdgeId(null);
@@ -448,6 +461,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           onInit={(instance) => {
             setTimeout(() => instance.fitView({ padding: 0.2 }), 50);
           }}
+          deleteKeyCode={null}
           minZoom={0.3}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
@@ -457,6 +471,22 @@ export default function TaskGraphPage({ engineStatus }: Props) {
             showInteractive={false}
             className="!bg-white !border-gray-200 !rounded-lg !shadow-sm [&>button]:!border-gray-200 [&>button]:!bg-white"
           />
+          <Panel position="bottom-left" style={{ left: 40 }}>
+            <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg shadow-sm px-3 py-2 text-[10px] text-gray-400 flex flex-col gap-1.5">
+              <span className="flex items-center gap-1">
+                <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Delete</kbd>
+                删除任务
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">拖拽</kbd>
+                连接依赖
+              </span>
+              <span className="flex items-center gap-1">
+                <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">点击</kbd>
+                查看详情
+              </span>
+            </div>
+          </Panel>
           <MiniMap
             nodeColor={miniMapNodeColor}
             nodeComponent={MiniMapNode}
