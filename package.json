@@ -12,6 +12,7 @@
     "prisma:migrate": "pnpm --filter @task-dashboards/server prisma:migrate",
     "prisma:generate": "pnpm --filter @task-dashboards/server prisma:generate",
     "prisma:studio": "pnpm --filter @task-dashboards/server prisma:studio",
-    "test": "pnpm --filter @task-dashboards/server test && pnpm --filter @task-dashboards/web test"
+    "test": "pnpm --filter @task-dashboards/server test && pnpm --filter @task-dashboards/web test",
+    "test:integration": "pnpm --filter @task-dashboards/server exec vitest run src/__tests__/opencode-v2.integration.test.ts --reporter=verbose"
   }
 }
