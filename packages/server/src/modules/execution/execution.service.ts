@@ -313,14 +313,21 @@ async function executeTasks(
     return;
   }
 
-  // 等待 assistant 消息增长到 baseline + 1
+  // 两步串行等待，消除两种竞态：
+  //   Step 1 waitForAssistantMessages: 阻塞到 AI 至少产出 baseline+1 条 assistant 消息，
+  //     证明 prompt 已被 pickup 并开始处理（消除 promptAsync + session.wait 空窗期竞态）
+  //   Step 2 waitForSessionIdle: 阻塞到 session 真正空闲（所有 tool call 完成，AI 停止生成），
+  //     确保 commitTaskChanges 执行时 AI 创建的文件已全部落盘
   const targetCount = baseline + 1;
-  logger.info(S, 'waiting for assistant message', { executionId, target: targetCount });
+  logger.info(S, 'waiting for AI response', { executionId, baseline, target: targetCount });
 
   try {
+    // Step 1: 等 AI 至少产出一条新 assistant 消息
     await OpencodeV2.waitForAssistantMessages(baseUrl, sessionId, directory, targetCount);
+    // Step 2: 等 session 真正空闲（所有工具调用完成）
+    await OpencodeV2.waitForSessionIdle(baseUrl, sessionId, directory);
   } catch (err: any) {
-    logger.error(S, 'waitForAssistantMessages error', { executionId, error: err.message });
+    logger.error(S, 'waitForAI error', { executionId, error: err.message });
     const check = await prisma.taskExecution.findUnique({ where: { id: executionId } });
     if (!check || check.status === 'STOPPED' || check.status === 'FAILED') return;
     await TaskService.update(task.id, { status: 'BLOCKED', blockedReason: `AI 处理超时或失败: ${err.message}` });
@@ -351,14 +358,14 @@ async function executeTasks(
   const isCompleted = assistantCount >= targetCount;
 
   if (isCompleted) {
-    await TaskService.update(task.id, { status: 'COMPLETED' });
-
-    // 提交变更并记录 TaskCommit
+    // 先提交变更（创建 TaskCommit 记录），再标记 COMPLETED
+    // 确保 frontend 轮询看到 COMPLETED 时 diff 数据已就绪
     try {
       await commitTaskChanges(directory, task, executionId, execution.initialCommitHash, baseUrl, sessionId);
     } catch (err: any) {
       logger.error(S, 'commitTaskChanges error', { executionId, taskId: task.id, error: err.message });
     }
+    await TaskService.update(task.id, { status: 'COMPLETED' });
   } else {
     await TaskService.update(task.id, {
       status: 'BLOCKED',

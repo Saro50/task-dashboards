@@ -19,11 +19,13 @@ export function ToolContent({ tool }: { tool: AssistantTool }) {
       }
     >
       <div className="space-y-1">
-        {'input' in state && state.input && typeof state.input === 'object' && (
+        {'input' in state && state.input && (
           <div className="rounded bg-gray-100 px-2 py-1">
             <p className="text-[10px] text-gray-400 mb-0.5">输入</p>
-            <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all font-mono">
-              {JSON.stringify(state.input, null, 2).slice(0, 500)}
+            <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto">
+              {typeof state.input === 'string'
+                ? state.input
+                : JSON.stringify(state.input, null, 2)}
             </pre>
           </div>
         )}
@@ -31,7 +33,7 @@ export function ToolContent({ tool }: { tool: AssistantTool }) {
           <div className="rounded bg-gray-100 px-2 py-1">
             <p className="text-[10px] text-gray-400 mb-0.5">输出</p>
             <pre className="text-xs text-gray-600 whitespace-pre-wrap break-all font-mono max-h-40 overflow-y-auto">
-              {output.slice(0, 2000)}
+              {output}
             </pre>
           </div>
         )}

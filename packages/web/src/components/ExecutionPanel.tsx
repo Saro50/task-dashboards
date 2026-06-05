@@ -48,12 +48,12 @@ const toolStatusIcon: Record<string, string> = {
   pending: 'text-gray-400',
 };
 
-export default function ExecutionPanel() {
+export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: number }) {
   const location = useLocation();
   const navigate = useNavigate();
   const match = location.pathname.match(/\/project\/([^/]+)/);
   const projectId = match?.[1];
-  const { executions, executionMessages, hasRunning, stopExecution, startExecution } = useActiveExecutions(projectId);
+  const { executions, executionMessages, hasRunning, stopExecution, startExecution } = useActiveExecutions(projectId, maxConcurrency);
   const [expanded, setExpanded] = useState(false);
 
   const running = executions.filter(

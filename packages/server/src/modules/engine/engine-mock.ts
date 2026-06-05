@@ -180,6 +180,7 @@ export class MockEngine {
     _baseUrl: string,
     sessionId: string,
     _directory: string,
+    _timeoutMs?: number,
   ): Promise<void> {
     const session = sessions.get(sessionId);
     if (!session) throw new Error(`Mock session not found: ${sessionId}`);

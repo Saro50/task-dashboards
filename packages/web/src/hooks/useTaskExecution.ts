@@ -19,12 +19,13 @@
  *   导致 STOPPED/FAILED/MERGED 状态的执行不可见，execution 变为 null。
  *   本 hook 直接用 getLatest(topicId) 按 topicId 精确查询，无状态过滤，避免以上问题。
  */
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Task } from '@/types/task';
 import type { TaskExecution } from '@/types/execution';
 import { executionApi } from '@/api/execution';
 import { useToast } from '@/components/Toast';
 import { log } from '@/utils/log';
+import { emitExecutionEvent, onExecutionEvent } from '@/utils/executionEvents';
 
 const S = 'useTaskExecution';
 
@@ -114,6 +115,8 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
           setExecution(exec);
           showToast('任务链执行已开始', 'success');
           startPolling(exec.id);
+          // 通知 ExecutionPanel 立即刷新（避免 5s 轮询延迟）
+          emitExecutionEvent({ type: 'started', executionId: exec.id, topicId });
         })
         .catch((err: any) => {
           log.error(S, 'executeChain error', err);
@@ -134,6 +137,8 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
       setExecuting(false);
       stopPolling();
       onTaskUpdated();
+      // 通知 ExecutionPanel 立即把卡片移到"最近"区
+      emitExecutionEvent({ type: 'stopped', executionId: execution.id, topicId: execution.topicId });
     } catch (err: any) {
       log.error(S, 'cancelExecution error', err);
       showToast(err.message, 'error');
@@ -156,6 +161,8 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
       const updated = await executionApi.merge(execution.id, targetBranch);
       setExecution(updated);
       showToast(`已合并到 ${targetBranch}`, 'success');
+      // 通知 ExecutionPanel：MERGED 状态不在面板显示，触发后卡片会从列表移除
+      emitExecutionEvent({ type: 'merged', executionId: execution.id, topicId: execution.topicId });
     } catch (err: any) {
       log.error(S, 'mergeExecution error', err);
       showToast(err.message, 'error');
@@ -198,6 +205,24 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
       log.error(S, 'restoreExecution error', err);
     }
   }, [topicId, startPolling]);
+
+  /**
+   * 订阅事件总线：当 ExecutionPanel（或其他位置）对该 topic 发起 stop/start/merge 时，
+   * 立即调用 restoreExecution 同步本地状态。
+   *
+   * 关键场景：本 hook 在检测到 STOPPED 后会 stopPolling()，此时若用户在面板里点了"执行"
+   * 重新启动一条 execution，本 hook 没有事件订阅就会永远感知不到，面包屑按钮卡在
+   * "执行任务链"可点击状态。订阅事件后 restoreExecution 会检测到新的 RUNNING 状态
+   * 并自动 startPolling 恢复跟踪。
+   */
+  useEffect(() => {
+    if (!topicId) return;
+    return onExecutionEvent((event) => {
+      if (event.topicId !== topicId) return;
+      log.info(S, 'event received, restoring', { type: event.type, executionId: event.executionId });
+      restoreExecution();
+    });
+  }, [topicId, restoreExecution]);
 
   return {
     executeChain,

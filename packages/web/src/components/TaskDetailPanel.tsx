@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
 import type { FileDiff } from '@/types/execution';
-import type { SessionMessage, SessionMessageAssistant } from '@/types/session-message';
+import type { SessionMessage, SessionMessageUser, SessionMessageAssistant } from '@/types/session-message';
 import { taskApi } from '@/api/task';
 import { executionApi } from '@/api/execution';
 import { log } from '@/utils/log';
@@ -149,6 +149,16 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
 
   const deps = allTasks.filter((t) => task.dependencies.includes(t.id));
   const dependents = allTasks.filter((t) => t.dependencies.includes(task.id));
+
+  // 将任务消息按类型拆分：user → AI 输入（提示词），assistant → AI 输出（回复）
+  const userMsgs = useMemo(
+    () => taskMessages.filter((m): m is SessionMessageUser => m.type === 'user'),
+    [taskMessages],
+  );
+  const assistantMsgs = useMemo(
+    () => taskMessages.filter((m): m is SessionMessageAssistant => m.type === 'assistant'),
+    [taskMessages],
+  );
 
   // 获取任务变更 diff
   useEffect(() => {
@@ -457,46 +467,54 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
           </div>
         )}
 
-        {/* AI 输出 — 仅在有 executionId 且任务已处理时显示 */}
+        {/* AI 输入 / AI 输出 — 仅在有 executionId 且任务已处理时显示 */}
         {executionId && ['IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(task.status) && (
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-gray-500">AI 输出</span>
+          <>
+            {/* AI 输入（用户提示词） */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-500">AI 输入</span>
+              </div>
+              {msgLoading && (
+                <div className="flex items-center py-3 text-xs text-gray-400">
+                  <div className="w-3.5 h-3.5 border border-gray-200 border-t-sky-500 rounded-full animate-spin mr-2" />
+                  加载 AI 输入中...
+                </div>
+              )}
+              {!msgLoading && msgUnavailable && (
+                <div className="text-xs text-gray-400 py-2">执行环境已清理，无法获取 AI 输入</div>
+              )}
+              {!msgLoading && !msgUnavailable && userMsgs.length === 0 && (
+                <div className="text-xs text-gray-400 py-2">暂无 AI 输入</div>
+              )}
+              {!msgLoading && !msgUnavailable && userMsgs.length > 0 && (
+                <div className="space-y-2">
+                  {userMsgs.map((msg) => (
+                    <div key={msg.id} className="rounded-lg bg-sky-50 border border-sky-100 px-3 py-2">
+                      <p className="text-xs text-sky-800 whitespace-pre-wrap break-words leading-relaxed max-h-40 overflow-y-auto">
+                        {msg.text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            {msgLoading && (
-              <div className="flex items-center py-3 text-xs text-gray-400">
-                <div className="w-3.5 h-3.5 border border-gray-200 border-t-sky-500 rounded-full animate-spin mr-2" />
-                加载 AI 输出中...
+
+            {/* AI 输出（assistant 回复） */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-medium text-gray-500">AI 输出</span>
               </div>
-            )}
-            {!msgLoading && msgUnavailable && (
-              <div className="text-xs text-gray-400 py-2">执行环境已清理，无法获取 AI 输出</div>
-            )}
-            {!msgLoading && !msgUnavailable && taskMessages.length === 0 && (
-              <div className="text-xs text-gray-400 py-2">
-                {task.status === 'BLOCKED' ? 'AI 未生成回复' : '暂无 AI 输出'}
-              </div>
-            )}
-            {!msgLoading && !msgUnavailable && taskMessages.length > 0 && (
-              <div className="space-y-2">
-                {taskMessages.map((msg) => {
-                  if (msg.type === 'user') {
-                    return (
-                      <Collapsible
-                        key={msg.id}
-                        title={<span className="text-xs text-gray-500">任务提示词</span>}
-                      >
-                        <div className="rounded-lg bg-sky-50 border border-sky-100 px-3 py-2">
-                          <p className="text-xs text-sky-800 whitespace-pre-wrap break-words leading-relaxed max-h-40 overflow-y-auto">
-                            {msg.text}
-                          </p>
-                        </div>
-                      </Collapsible>
-                    );
-                  }
-                  const assistantMsg = msg as SessionMessageAssistant;
-                  return (
-                    <div key={msg.id} className="space-y-1">
+              {/* loading / unavailable 已在 AI 输入板块展示，此处不重复 */}
+              {!msgLoading && !msgUnavailable && assistantMsgs.length === 0 && (
+                <div className="text-xs text-gray-400 py-2">
+                  {task.status === 'BLOCKED' ? 'AI 未生成回复' : '暂无 AI 输出'}
+                </div>
+              )}
+              {!msgLoading && !msgUnavailable && assistantMsgs.length > 0 && (
+                <div className="space-y-2">
+                  {assistantMsgs.map((assistantMsg) => (
+                    <div key={assistantMsg.id} className="space-y-1">
                       <div className="flex items-center gap-1.5 mb-1">
                         <span className="text-[10px] text-gray-400 font-mono">{assistantMsg.agent}</span>
                         {assistantMsg.error && <span className="text-[10px] text-red-500">错误: {assistantMsg.error.message}</span>}
@@ -509,11 +527,11 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
                       </div>
                       <AssistantContent content={assistantMsg.content} />
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
         )}
 
         {/* Dependency summary */}

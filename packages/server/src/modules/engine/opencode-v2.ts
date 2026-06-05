@@ -52,7 +52,7 @@ interface EngineAdapter {
   sendPrompt(baseUrl: string, sessionId: string, text: string, directory: string, options?: { workspace?: string; agent?: string }): Promise<void>;
   getSessionStatus(baseUrl: string, directory: string): Promise<any>;
   abortSession(baseUrl: string, sessionId: string, directory: string): Promise<void>;
-  waitForSessionIdle(baseUrl: string, sessionId: string, directory: string): Promise<void>;
+  waitForSessionIdle(baseUrl: string, sessionId: string, directory: string, timeoutMs?: number): Promise<void>;
   waitForAssistantMessages(baseUrl: string, sessionId: string, directory: string, targetCount: number, timeoutMs?: number): Promise<void>;
   getSessionMessages(baseUrl: string, sessionId: string, directory: string): Promise<any[]>;
   getVcsInfo(baseUrl: string, directory: string): Promise<{ branch?: string; defaultBranch?: string }>;
@@ -163,10 +163,18 @@ const realEngine: EngineAdapter = {
     await client.session.abort({ sessionID: sessionId, directory });
   },
 
-  async waitForSessionIdle(baseUrl, sessionId, directory) {
+  async waitForSessionIdle(baseUrl, sessionId, directory, timeoutMs = 1800000) {
     const client = await getClient(baseUrl);
-    logger.info(S, 'waitForSessionIdle — calling v2.session.wait', { sessionId });
-    await client.v2.session.wait({ sessionID: sessionId, directory });
+    logger.info(S, 'waitForSessionIdle — calling v2.session.wait', { sessionId, timeoutMs });
+
+    // 超时保护：防止 session.wait 永远不返回（与 waitForAssistantMessages 一致 30 分钟）
+    await Promise.race([
+      client.v2.session.wait({ sessionID: sessionId, directory }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Session wait timed out after ${timeoutMs}ms`)), timeoutMs),
+      ),
+    ]);
+
     logger.info(S, 'waitForSessionIdle done', { sessionId });
   },
 

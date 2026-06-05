@@ -50,7 +50,7 @@ export default function Layout({ children, onOpenEngineConfig, engineStatus, max
           <img src="/starboard.svg" alt="AICodeAgent" className="h-8" />
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <ExecutionPanel />
+          <ExecutionPanel maxConcurrency={maxConcurrency} />
           <div className="flex items-center gap-1.5">
             <span className="text-sm text-gray-500">最大并发</span>
             <select
