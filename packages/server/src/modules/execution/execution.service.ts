@@ -286,17 +286,16 @@ async function executeTasks(
   const refreshed = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!refreshed || refreshed.status === 'STOPPED' || refreshed.status === 'FAILED') return;
 
-  // 记录发送前的 assistant 消息数量
-  let baseline = 0;
-  try {
-    const preMessages = await OpencodeV2.getSessionMessages(baseUrl, sessionId, directory);
-    baseline = preMessages.filter((m: any) => m.type === 'assistant').length;
-  } catch {}
-  logger.info(S, 'baseline assistant count', { executionId, baseline });
-
   await TaskService.update(task.id, { status: 'IN_PROGRESS' });
   const deps = task.dependencies.map((id) => allTasks.find((t) => t.id === id)).filter(Boolean) as TaskWithDeps[];
-  const prompt = buildPrompt(task, deps, allTasks);
+
+  // 构造 prompt + 任务完成标记
+  // AI 被要求在完成时输出 <task-{id}>done</task-{id}>，
+  // waitForAssistantText 通过搜索该标记判断任务是否完成——
+  // 比消息计数更可靠（不受 tool-call 中间消息数量影响）
+  const taskMarker = `<task-${task.id}>done</task-${task.id}>`;
+  const prompt = buildPrompt(task, deps, allTasks)
+    + `\n\nWhen you have completed this task, include exactly the following marker in your response:\n${taskMarker}`;
 
   logger.info(S, 'sending task prompt', { executionId, taskId: task.id, title: task.title });
 
@@ -313,17 +312,16 @@ async function executeTasks(
     return;
   }
 
-  // 两步串行等待，消除两种竞态：
-  //   Step 1 waitForAssistantMessages: 阻塞到 AI 至少产出 baseline+1 条 assistant 消息，
-  //     证明 prompt 已被 pickup 并开始处理（消除 promptAsync + session.wait 空窗期竞态）
+  // 两步串行等待：
+  //   Step 1 waitForAssistantText: 等 AI 输出中包含任务完成标记 <task-{id}>done</task-{id}>，
+  //     证明 AI 已明确宣告完成（不依赖消息计数，避免 tool-call 中间消息干扰）
   //   Step 2 waitForSessionIdle: 阻塞到 session 真正空闲（所有 tool call 完成，AI 停止生成），
   //     确保 commitTaskChanges 执行时 AI 创建的文件已全部落盘
-  const targetCount = baseline + 1;
-  logger.info(S, 'waiting for AI response', { executionId, baseline, target: targetCount });
+  logger.info(S, 'waiting for AI task marker', { executionId, taskId: task.id });
 
   try {
-    // Step 1: 等 AI 至少产出一条新 assistant 消息
-    await OpencodeV2.waitForAssistantMessages(baseUrl, sessionId, directory, targetCount);
+    // Step 1: 等 AI 输出任务完成标记
+    await OpencodeV2.waitForAssistantText(baseUrl, sessionId, directory, taskMarker);
     // Step 2: 等 session 真正空闲（所有工具调用完成）
     await OpencodeV2.waitForSessionIdle(baseUrl, sessionId, directory);
   } catch (err: any) {
@@ -338,42 +336,21 @@ async function executeTasks(
     return;
   }
 
-  // 验证 AI 响应并标记任务完成
+  // 验证执行状态（waitForAssistantText 已确认 AI 返回了完成标记，无需再检查消息数）
   const check = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!check || check.status !== 'RUNNING') {
     logger.info(S, 'execution no longer RUNNING, skip marking task', { executionId, status: check?.status });
     return;
   }
 
-  let assistantCount = 0;
+  // 先提交变更（创建 TaskCommit 记录），再标记 COMPLETED
+  // 确保 frontend 轮询看到 COMPLETED 时 diff 数据已就绪
   try {
-    const messages = await OpencodeV2.getSessionMessages(baseUrl, sessionId, directory);
-    assistantCount = messages.filter((m: any) => m.type === 'assistant').length;
-    logger.info(S, 'session messages check', { executionId, assistantCount });
+    await commitTaskChanges(directory, task, executionId, execution.initialCommitHash, baseUrl, sessionId);
   } catch (err: any) {
-    logger.warn(S, 'getSessionMessages error, assuming completed', { error: err.message });
-    assistantCount = 1;
+    logger.error(S, 'commitTaskChanges error', { executionId, taskId: task.id, error: err.message });
   }
-
-  const isCompleted = assistantCount >= targetCount;
-
-  if (isCompleted) {
-    // 先提交变更（创建 TaskCommit 记录），再标记 COMPLETED
-    // 确保 frontend 轮询看到 COMPLETED 时 diff 数据已就绪
-    try {
-      await commitTaskChanges(directory, task, executionId, execution.initialCommitHash, baseUrl, sessionId);
-    } catch (err: any) {
-      logger.error(S, 'commitTaskChanges error', { executionId, taskId: task.id, error: err.message });
-    }
-    await TaskService.update(task.id, { status: 'COMPLETED' });
-  } else {
-    await TaskService.update(task.id, {
-      status: 'BLOCKED',
-      blockedReason: `AI 未生成回复 (${assistantCount}/${targetCount})`,
-    });
-    // 丢弃 BLOCKED 任务的文件修改
-    await resetWorktreeChanges(directory).catch((e) => logger.warn(S, 'resetWorktreeChanges error', { error: e.message }));
-  }
+  await TaskService.update(task.id, { status: 'COMPLETED' });
 
   const allNow = await TaskService.listByTopic(execution.topicId);
   const completedCount = allNow.filter((t) => t.status === 'COMPLETED').length;
@@ -381,7 +358,7 @@ async function executeTasks(
     where: { id: executionId, status: 'RUNNING' },
     data: { completedTasks: completedCount, totalTasks: allNow.length },
   });
-  logger.info(S, 'task completed', { executionId, taskId: task.id, status: isCompleted ? 'COMPLETED' : 'BLOCKED', completedCount });
+  logger.info(S, 'task completed', { executionId, taskId: task.id, status: 'COMPLETED', completedCount });
 
   executeTasks(executionId, baseUrl, directory, sessionId, maxConcurrency).catch((e) =>
     logger.error(S, 'executeTasks recursion error', e)

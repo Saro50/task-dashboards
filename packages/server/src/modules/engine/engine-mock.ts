@@ -270,6 +270,39 @@ export class MockEngine {
     return [...session.messages];
   }
 
+  /**
+   * Mock 版 waitForAssistantText：在已生成的消息中搜索子串。
+   * 由于 mock 的 generateResponses 是同步的，通常不需要轮询——但为了与
+   * realEngine 行为一致（调用方可能先 waitForSessionIdle 再 waitForAssistantText，
+   * 也可能反过来），这里用短间隔轮询保证时序兼容。
+   */
+  async waitForAssistantText(
+    _baseUrl: string,
+    sessionId: string,
+    _directory: string,
+    substring: string,
+    timeoutMs?: number,
+  ): Promise<void> {
+    const session = sessions.get(sessionId);
+    if (!session) throw new Error(`Mock session not found: ${sessionId}`);
+    if (session.aborted) throw new Error('Session already aborted');
+
+    const POLL_INTERVAL = 100;
+    const effectiveTimeout = timeoutMs ?? 30000;
+    const start = Date.now();
+
+    while (Date.now() - start < effectiveTimeout) {
+      const found = session.messages
+        .filter((m: any) => m.type === 'assistant')
+        .flatMap((m: any) => (m.content ?? []).filter((p: any) => p.type === 'text').map((p: any) => p.text as string))
+        .some((text: string) => text.includes(substring));
+
+      if (found) return;
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+    }
+    throw new Error(`Timed out waiting for assistant text "${substring.slice(0, 80)}" after ${effectiveTimeout}ms`);
+  }
+
   async getSessionStatus(_baseUrl: string, _directory: string): Promise<any> {
     return { status: 'idle' };
   }

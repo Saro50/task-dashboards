@@ -54,6 +54,7 @@ interface EngineAdapter {
   abortSession(baseUrl: string, sessionId: string, directory: string): Promise<void>;
   waitForSessionIdle(baseUrl: string, sessionId: string, directory: string, timeoutMs?: number): Promise<void>;
   waitForAssistantMessages(baseUrl: string, sessionId: string, directory: string, targetCount: number, timeoutMs?: number): Promise<void>;
+  waitForAssistantText(baseUrl: string, sessionId: string, directory: string, substring: string, timeoutMs?: number): Promise<void>;
   getSessionMessages(baseUrl: string, sessionId: string, directory: string): Promise<any[]>;
   getVcsInfo(baseUrl: string, directory: string): Promise<{ branch?: string; defaultBranch?: string }>;
   getDiff(baseUrl: string, directory: string, mode: 'git' | 'branch'): Promise<any[]>;
@@ -217,6 +218,44 @@ const realEngine: EngineAdapter = {
     return raw.map((msg: any) => transformV1Message(msg)).filter(Boolean);
   },
 
+  /**
+   * 轮询 assistant 消息，等待出现包含指定子串的文本。
+   *
+   * 这是一个通用能力——调用方决定搜什么文本（比如任务完成 marker），
+   * 适配器只负责"在 opencode 消息格式中搜索文本"这个与 SDK 强耦合的操作。
+   *
+   * 搜索范围：所有 assistant 消息的 content[].type === 'text' 的 text 字段。
+   */
+  async waitForAssistantText(baseUrl, sessionId, directory, substring, timeoutMs = 1800000) {
+    const POLL_INTERVAL = 3000;
+    const start = Date.now();
+    let pollCount = 0;
+
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const messages = await this.getSessionMessages(baseUrl, sessionId, directory);
+        const found = messages
+          .filter((m: any) => m.type === 'assistant')
+          .flatMap((m: any) => (m.content ?? []).filter((p: any) => p.type === 'text').map((p: any) => p.text as string))
+          .some((text: string) => text.includes(substring));
+
+        if (found) {
+          logger.info(S, 'waitForAssistantText — substring found', { sessionId, substring: substring.slice(0, 60), elapsedMs: Date.now() - start });
+          return;
+        }
+      } catch (err: any) {
+        logger.warn(S, 'waitForAssistantText — poll error, retrying', { sessionId, error: err.message });
+      }
+
+      pollCount++;
+      if (pollCount <= 3 || pollCount % 10 === 0) {
+        logger.info(S, 'waitForAssistantText — polling', { sessionId, substring: substring.slice(0, 60), pollCount, elapsedMs: Date.now() - start });
+      }
+      await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+    }
+    throw new Error(`Timed out waiting for assistant text "${substring.slice(0, 80)}" after ${timeoutMs}ms`);
+  },
+
   async getVcsInfo(baseUrl, directory) {
     const client = await getClient(baseUrl);
     const result = await client.vcs.get({ directory });
@@ -250,6 +289,7 @@ export const getSessionStatus = engine.getSessionStatus.bind(engine);
 export const abortSession = engine.abortSession.bind(engine);
 export const waitForSessionIdle = engine.waitForSessionIdle.bind(engine);
 export const waitForAssistantMessages = engine.waitForAssistantMessages.bind(engine);
+export const waitForAssistantText = engine.waitForAssistantText.bind(engine);
 export const getSessionMessages = engine.getSessionMessages.bind(engine);
 export const getVcsInfo = engine.getVcsInfo.bind(engine);
 export const getDiff = engine.getDiff.bind(engine);

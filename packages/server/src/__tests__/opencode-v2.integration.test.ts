@@ -13,7 +13,52 @@
  *   npx vitest run src/__tests__/opencode-v2.integration.test.ts
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import * as OpencodeV2 from '../modules/engine/opencode-v2.js';
+
+/**
+ * 验证 AI 确实在 worktree 中创建了指定文件，且内容包含期望的子串。
+ * AI 产出的文件可能有额外空白行或格式差异，所以用 includes 而非精确匹配。
+ *
+ * 注意：waitForSessionIdle 返回后，文件写入可能还有短暂延迟（工具调用完成 →
+ * 文件系统 flush 之间有间隙），所以用轮询重试而非一次性读取。
+ */
+async function expectFileCreated(dir: string, filename: string, contentSubstring: string, timeoutMs = 10_000) {
+  const filePath = join(dir, filename);
+  const POLL_INTERVAL = 500;
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const content = await readFile(filePath, 'utf-8');
+      expect(content).toContain(contentSubstring);
+      return; // 成功
+    } catch (err: any) {
+      if (err.code !== 'ENOENT' && !(err instanceof Error && err.message.includes('toContain'))) {
+        throw err; // 非预期错误，直接抛出
+      }
+      // ENOENT 或内容不匹配，继续轮询
+    }
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL));
+  }
+  // 最后一次尝试（让 ENOENT 错误自然抛出，给出清晰的报错信息）
+  const content = await readFile(filePath, 'utf-8');
+  expect(content).toContain(contentSubstring);
+}
+
+/**
+ * 构造带完成标记的 prompt。
+ *
+ * Marker 机制：prompt 要求 AI 在完成时输出 <task-{id}>done</task-{id}>，
+ * 调用方通过 waitForAssistantText(marker) 轮询 AI 输出中是否包含该标记。
+ * 比消息计数更可靠——不受 tool-call 中间消息数量影响。
+ */
+function buildPromptWithMarker(promptBody: string, taskId: string): { prompt: string; marker: string } {
+  const marker = `<task-${taskId}>done</task-${taskId}>`;
+  const prompt = `${promptBody}\n\nWhen you have completed this task, include exactly the following marker in your response:\n${marker}`;
+  return { prompt, marker };
+}
 
 const BASE_URL = process.env.OPENCODE_BASE_URL || 'http://localhost:4096';
 const WORKSPACE = '/Users/finlaywu/MyWork/task-dashboards';
@@ -35,7 +80,7 @@ describe('opencode-v2 integration (真实 server)', () => {
     worktreeName = `integration-test-${Date.now()}`;
     const wt = await OpencodeV2.createWorktree(BASE_URL, WORKSPACE, worktreeName);
     worktreeDir = wt.directory;
-
+    console.log(`Created worktree: ${worktreeDir}`);
     const session = await OpencodeV2.createSessionInWorkspace(BASE_URL, worktreeDir, {
       title: 'integration-test',
     });
@@ -46,9 +91,9 @@ describe('opencode-v2 integration (真实 server)', () => {
     if (sessionId) {
       await OpencodeV2.abortSession(BASE_URL, sessionId, worktreeDir).catch(() => {});
     }
-    if (worktreeDir) {
-      await OpencodeV2.removeWorktree(BASE_URL, WORKSPACE, worktreeDir).catch(() => {});
-    }
+    // if (worktreeDir) {
+    //   await OpencodeV2.removeWorktree(BASE_URL, WORKSPACE, worktreeDir).catch(() => {});
+    // }
   }, HOOK_TIMEOUT);
 
   // -----------------------------------------------------------------------
@@ -59,6 +104,7 @@ describe('opencode-v2 integration (真实 server)', () => {
       'getSessionStatus 应返回有效结果',
       async () => {
         const status = await OpencodeV2.getSessionStatus(BASE_URL, worktreeDir);
+        console.log('status:' ,status)
         expect(status).toBeDefined();
       },
       10_000,
@@ -73,7 +119,7 @@ describe('opencode-v2 integration (真实 server)', () => {
   // -----------------------------------------------------------------------
   describe('I2: Worktree 生命周期', () => {
     it(
-      'listWorktrees 应包含我们创建的 worktree',
+      `listWorktrees 应包含我们创建的 worktree:${worktreeDir}`,
       async () => {
         const list = await OpencodeV2.listWorktrees(BASE_URL, WORKSPACE);
         expect(list).toBeDefined();
@@ -92,113 +138,61 @@ describe('opencode-v2 integration (真实 server)', () => {
   });
 
   // -----------------------------------------------------------------------
-  // I3 + I4: 单条 prompt 的两步等待
-  //   这是 execution.service.ts 核心竞态修复的直接验证
+  // I3 + I4: 单条 prompt 的两步等待（marker 版）
+  //   prompt 要求 AI 输出完成标记，waitForAssistantText 搜索该标记判断完成。
+  //   这是 execution.service.ts 核心完成检测逻辑的直接验证。
   // -----------------------------------------------------------------------
-  describe('I3 + I4: 单条 prompt 两步等待', () => {
+  describe('I3 + I4: 单条 prompt 两步等待 (marker)', () => {
     it(
-      'sendPrompt → waitForAssistantMessages → waitForSessionIdle',
+      'sendPrompt → waitForAssistantText(marker) → waitForSessionIdle → 文件验收',
       async () => {
-        // 1. 记录 baseline
-        const preMessages = await OpencodeV2.getSessionMessages(BASE_URL, sessionId, worktreeDir);
-        const baseline = preMessages.filter((m: any) => m.type === 'assistant').length;
-        expect(baseline).toBeGreaterThanOrEqual(0);
-
-        const targetCount = baseline + 1;
-
-        // 2. 发送 prompt（创建一个简单文件）
-        await OpencodeV2.sendPrompt(
-          BASE_URL,
-          sessionId,
+        const { prompt, marker } = buildPromptWithMarker(
           "Create a file called test-marker.txt with content 'hello from integration test'",
-          worktreeDir,
+          'i3-marker',
         );
 
-        // 3. Step 1: 等 AI 至少产出一条新 assistant 消息
-        await OpencodeV2.waitForAssistantMessages(BASE_URL, sessionId, worktreeDir, targetCount);
+        await OpencodeV2.sendPrompt(BASE_URL, sessionId, prompt, worktreeDir);
 
-        // 4. Step 2: 等 session 真正空闲
+        // Step 1: 等 AI 输出完成标记
+        await OpencodeV2.waitForAssistantText(BASE_URL, sessionId, worktreeDir, marker);
+        // Step 2: 等 session 真正空闲（工具调用完成、文件落盘）
         await OpencodeV2.waitForSessionIdle(BASE_URL, sessionId, worktreeDir);
 
-        // 5. 验证消息数
-        const postMessages = await OpencodeV2.getSessionMessages(BASE_URL, sessionId, worktreeDir);
-        const assistantCount = postMessages.filter((m: any) => m.type === 'assistant').length;
-        expect(assistantCount).toBeGreaterThanOrEqual(targetCount);
+        // 验收：AI 确实创建了指定文件
+        await expectFileCreated(worktreeDir, 'test-marker.txt', 'hello from integration test');
       },
       TEST_TIMEOUT,
     );
   });
 
   // -----------------------------------------------------------------------
-  // I5: 顺序发送两条 prompt 的消息计数
-  //   验证 baseline 计数逻辑（execution.service.ts:290-294）
-  //   注意：真实 AI 一条 prompt 可能产出多条 assistant 消息（tool-calls + stop），
-  //   所以等待策略是"count 至少增加 1"，而非"达到固定 target"。
-  //   如果用固定 target，第一条 prompt 产出的多条 assistant 可能让第二条的
-  //   target 在 AI 还没开始处理时就已满足，导致竞态。
+  // I5: 顺序两条 prompt，各自独立的 marker（marker 版）
+  //   每条 prompt 用不同 taskId，互不干扰。
+  //   不再需要 baseline/midAssistantCount 计数——marker 是唯一的完成信号。
   // -----------------------------------------------------------------------
-  describe('I5: 顺序两条 prompt 消息计数', () => {
+  describe('I5: 顺序两条 prompt 独立 marker', () => {
     it(
-      '两条 prompt 后消息正确交错，每条 user 后至少有一条 assistant',
+      '两条 prompt 各自通过 marker 完成检测，文件验收通过',
       async () => {
-        const preMessages = await OpencodeV2.getSessionMessages(BASE_URL, sessionId, worktreeDir);
-        const baseline = preMessages.filter((m: any) => m.type === 'assistant').length;
-
         // 第一条 prompt
-        await OpencodeV2.sendPrompt(
-          BASE_URL,
-          sessionId,
+        const p1 = buildPromptWithMarker(
           "Create a file called test-marker-2.txt with content 'second file'",
-          worktreeDir,
+          'i5a-marker',
         );
-        // 等 count 至少增加 1（不使用 baseline + 1 作为 target，因为 target
-        // 可能在 prompt 被 AI pickup 前就已满足）
-        await OpencodeV2.waitForAssistantMessages(BASE_URL, sessionId, worktreeDir, baseline + 1);
+        await OpencodeV2.sendPrompt(BASE_URL, sessionId, p1.prompt, worktreeDir);
+        await OpencodeV2.waitForAssistantText(BASE_URL, sessionId, worktreeDir, p1.marker);
         await OpencodeV2.waitForSessionIdle(BASE_URL, sessionId, worktreeDir);
+        await expectFileCreated(worktreeDir, 'test-marker-2.txt', 'second file');
 
-        // 记录第一条 prompt 后的 assistant count
-        const midMessages = await OpencodeV2.getSessionMessages(BASE_URL, sessionId, worktreeDir);
-        const midAssistantCount = midMessages.filter((m: any) => m.type === 'assistant').length;
-
-        // 第二条 prompt
-        await OpencodeV2.sendPrompt(
-          BASE_URL,
-          sessionId,
+        // 第二条 prompt（不同 taskId，独立 marker）
+        const p2 = buildPromptWithMarker(
           "Create a file called test-marker-3.txt with content 'third file'",
-          worktreeDir,
+          'i5b-marker',
         );
-        // 等 count 比第一条 prompt 后至少再增加 1
-        await OpencodeV2.waitForAssistantMessages(BASE_URL, sessionId, worktreeDir, midAssistantCount + 1);
+        await OpencodeV2.sendPrompt(BASE_URL, sessionId, p2.prompt, worktreeDir);
+        await OpencodeV2.waitForAssistantText(BASE_URL, sessionId, worktreeDir, p2.marker);
         await OpencodeV2.waitForSessionIdle(BASE_URL, sessionId, worktreeDir);
-
-        // 验证消息总数
-        const postMessages = await OpencodeV2.getSessionMessages(BASE_URL, sessionId, worktreeDir);
-        const assistantMsgs = postMessages.filter((m: any) => m.type === 'assistant');
-        const userMsgs = postMessages.filter((m: any) => m.type === 'user');
-        expect(assistantMsgs.length).toBeGreaterThanOrEqual(midAssistantCount + 1);
-
-        // 验证 user 消息至少增加了 2 条
-        const preUserCount = preMessages.filter((m: any) => m.type === 'user').length;
-        expect(userMsgs.length).toBeGreaterThanOrEqual(preUserCount + 2);
-
-        // 验证最后一条消息是 assistant（session idle 后 AI 应已完成）
-        const lastMsg = postMessages[postMessages.length - 1];
-        expect(lastMsg.type).toBe('assistant');
-
-        // 验证消息序列中存在两条新 user 消息，且每条后面至少有一条 assistant
-        const newRange = postMessages.slice(preMessages.length);
-        const newUserMsgs = newRange.filter((m: any) => m.type === 'user');
-        expect(newUserMsgs.length).toBe(2);
-
-        // 每条新 user 消息后面必须至少有一条 assistant 消息
-        for (let i = 0; i < newRange.length; i++) {
-          if (newRange[i].type === 'user') {
-            const hasFollowUpAssistant = newRange
-              .slice(i + 1)
-              .some((m: any) => m.type === 'assistant');
-            expect(hasFollowUpAssistant).toBe(true);
-          }
-        }
+        await expectFileCreated(worktreeDir, 'test-marker-3.txt', 'third file');
       },
       TEST_TIMEOUT * 2,
     );
