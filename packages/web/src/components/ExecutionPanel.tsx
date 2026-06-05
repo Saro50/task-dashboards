@@ -8,6 +8,7 @@
 import { useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useActiveExecutions } from '@/hooks/useActiveExecutions';
+import { useToast } from '@/components/Toast';
 import type { SessionMessage, SessionMessageAssistant, AssistantTool } from '@/types/session-message';
 
 const statusLabel: Record<string, { text: string; color: string }> = {
@@ -53,8 +54,10 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
   const navigate = useNavigate();
   const match = location.pathname.match(/\/project\/([^/]+)/);
   const projectId = match?.[1];
-  const { executions, executionMessages, hasRunning, stopExecution, startExecution } = useActiveExecutions(projectId, maxConcurrency);
+  const { executions, executionMessages, hasRunning, stopExecution, startExecution, pendingTopics, startAllPending } = useActiveExecutions(projectId, maxConcurrency);
   const [expanded, setExpanded] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const { showToast } = useToast();
 
   const running = executions.filter(
     (e) => e.status === 'RUNNING' || e.status === 'CREATING_WORKTREE',
@@ -72,26 +75,58 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
     }
   }, [projectId, navigate]);
 
-  if (!hasRunning && executions.length === 0) return null;
+  /**
+   * 一键执行：顺序启动所有 pendingTopics，后端按 maxConcurrency 拦截 429。
+   * 执行期间按钮 disabled，避免重复点击。
+   */
+  const handleStartAll = useCallback(async () => {
+    if (starting) return;
+    setStarting(true);
+    try {
+      const { started, skipped } = await startAllPending();
+      if (started > 0) {
+        showToast(`已启动 ${started} 个主题执行${skipped > 0 ? `，跳过 ${skipped} 个` : ''}`, 'success');
+      } else {
+        showToast(`没有可启动的主题${skipped > 0 ? `（跳过 ${skipped} 个）` : ''}`, 'info');
+      }
+    } catch (err: any) {
+      showToast(err.message || '批量启动失败', 'error');
+    } finally {
+      setStarting(false);
+    }
+  }, [startAllPending, starting, showToast]);
+
+  if (!hasRunning && executions.length === 0 && pendingTopics.length === 0) return null;
 
   return (
     <>
+      {/* 一键执行图标按钮：仅当有待执行主题时显示，点击触发批量启动 */}
+      {pendingTopics.length > 0 && (
+        <button
+          onClick={handleStartAll}
+          disabled={starting}
+          title={`一键启动 ${pendingTopics.length} 个待执行主题`}
+          className="text-sky-600 hover:text-sky-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center cursor-pointer transition-colors"
+        >
+          {starting ? (
+            <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+          )}
+        </button>
+      )}
+      {/* 文字按钮：点击展开/收起面板 */}
       <button
         onClick={toggle}
-        className={`text-sm transition-colors flex items-center gap-1.5 cursor-pointer ${
+        className={`text-sm transition-colors flex items-center cursor-pointer ${
           hasRunning ? 'text-sky-600 hover:text-sky-700' : 'text-gray-500 hover:text-gray-800'
         }`}
       >
-        {hasRunning ? (
-          <svg className="w-4 h-4 animate-pulse text-sky-500" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-        ) : (
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-          </svg>
-        )}
         <span className="hidden sm:inline">
           {hasRunning
             ? `执行中 ${running.length} 条`
@@ -253,7 +288,7 @@ function RunningCard({ name, status, progress, branch, messages, onStop, onExecu
             )
           ) : (
             <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-              <svg className="w-3 h-3 animate-pulse" fill="none" viewBox="0 0 24 24">
+              <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>

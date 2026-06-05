@@ -78,7 +78,27 @@ export const log = {
   getHistory(): LogEntry[] {
     return history.slice();
   },
-  getHistoryText(): string {
-    return history.map(formatEntry).join('\n');
+  /**
+   * 把 history 序列化成单行字符串。
+   *
+   * 上下游影响：
+   * - 反馈按钮（Layout.handleFeedback）以 `{ scopes: API_SCOPES }` 调用，
+   *   只拷贝接口请求/响应行，方便用户用 requestId 到 packages/server/log/ 里 grep。
+   * - 不传 filter 时返回全量日志，保持向后兼容。
+   *
+   * @param filter.scopes 按 scope 白名单过滤（精确匹配，不传 = 不过滤）
+   * @param filter.levels 按 level 白名单过滤（'info' | 'warn' | 'error'，不传 = 不过滤）
+   */
+  getHistoryText(filter?: { scopes?: string[]; levels?: LogLevel[] }): string {
+    let entries = history;
+    if (filter?.scopes?.length) {
+      const allow = new Set(filter.scopes);
+      entries = entries.filter((e) => allow.has(e.scope));
+    }
+    if (filter?.levels?.length) {
+      const allow = new Set(filter.levels);
+      entries = entries.filter((e) => allow.has(e.level));
+    }
+    return entries.map(formatEntry).join('\n');
   },
 };

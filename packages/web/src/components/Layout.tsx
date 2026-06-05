@@ -24,20 +24,33 @@ const statusDot: Record<EngineStatus, { color: string; title: string }> = {
   error: { color: 'bg-red-400', title: '引擎连接失败' },
 };
 
+/**
+ * 反馈按钮拷贝时的 scope 白名单。
+ * 与 packages/web/src/api/ 下每个模块顶部 `const S = 'xxxApi'` 一一对应，
+ * 确保 getHistoryText 只返回走 apiRequest 统一拦截的接口调用记录
+ * （含响应里的 requestId，用于在 packages/server/log/ 下 grep 定位后端日志）。
+ * 上下游影响：新增 api 模块时需同步把 scope 字符串加进这里。
+ */
+const API_SCOPES = ['chatApi', 'engineApi', 'executionApi', 'projectApi', 'taskApi', 'topicApi'];
+
 export default function Layout({ children, onOpenEngineConfig, engineStatus, maxConcurrency, onMaxConcurrencyChange }: Props) {
   const dot = statusDot[engineStatus];
   const { showToast } = useToast();
 
   const handleFeedback = useCallback(async () => {
-    log.info('Layout', 'feedback clicked', { logCount: log.getHistory().length });
-    const text = log.getHistoryText();
-    if (!text) {
-      showToast('暂无运行日志', 'info');
+    log.info('Layout', 'feedback clicked');
+    const body = log.getHistoryText({ scopes: API_SCOPES });
+    if (!body) {
+      showToast('暂无接口调用记录', 'info');
       return;
     }
+    const header =
+      `=== Task Dashboards 接口调用追踪 ===\n` +
+      `=== 拷贝时间: ${new Date().toISOString()} ===\n` +
+      `=== 定位后端日志: rg "[requestId]" packages/server/log/ ===\n\n`;
     try {
-      await navigator.clipboard.writeText(text);
-      showToast(`已复制 ${log.getHistory().length} 条日志到剪贴板`, 'success');
+      await navigator.clipboard.writeText(header + body);
+      showToast('已复制接口调用记录到剪贴板', 'success');
     } catch {
       showToast('复制失败，请检查浏览器权限', 'error');
     }
@@ -65,7 +78,7 @@ export default function Layout({ children, onOpenEngineConfig, engineStatus, max
           </div>
           <button
             onClick={handleFeedback}
-            title="复制运行日志"
+            title="复制接口调用记录"
             className="text-sm text-gray-500 hover:text-gray-800 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
