@@ -75,13 +75,21 @@ export function useActiveExecutions(projectId: string | undefined, maxConcurrenc
   }, [projectId]);
 
   useEffect(() => {
+    // 切换到无 projectId 的页面（如项目管理页 /）时：清空残留 state，不启动轮询。
+    // 否则从 /project/A 返回 / 时 executions/topics 仍保留 A 的数据，面板会错误显示。
+    if (!projectId) {
+      setExecutions([]);
+      setExecutionMessages({});
+      setTopics([]);
+      return;
+    }
     refresh();
     refreshTopics();
     timerRef.current = setInterval(refresh, POLL_INTERVAL);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [refresh, refreshTopics]);
+  }, [projectId, refresh, refreshTopics]);
 
   // 订阅事件总线：TaskGraphPage 内的动作触发后立即 refresh，避免 5s 轮询延迟
   useEffect(() => {

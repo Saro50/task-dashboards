@@ -59,13 +59,6 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
   const [starting, setStarting] = useState(false);
   const { showToast } = useToast();
 
-  const running = executions.filter(
-    (e) => e.status === 'RUNNING' || e.status === 'CREATING_WORKTREE',
-  );
-  const recent = executions.filter(
-    (e) => e.status === 'COMPLETED' || e.status === 'STOPPED' || e.status === 'FAILED',
-  );
-
   const toggle = useCallback(() => setExpanded((v) => !v), []);
 
   const handleNavigate = useCallback((topicId: string) => {
@@ -95,6 +88,18 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
       setStarting(false);
     }
   }, [startAllPending, starting, showToast]);
+
+  // 项目管理页（/）无 projectId，面板数据绑定具体项目，明确不展示。
+  // 注意：必须放在所有 hook 调用之后，否则会触发 React "Rules of Hooks" 错误
+  // （hook 数量在不同渲染中不一致）。
+  if (!projectId) return null;
+
+  const running = executions.filter(
+    (e) => e.status === 'RUNNING' || e.status === 'CREATING_WORKTREE',
+  );
+  const recent = executions.filter(
+    (e) => e.status === 'COMPLETED' || e.status === 'STOPPED' || e.status === 'FAILED',
+  );
 
   if (!hasRunning && executions.length === 0 && pendingTopics.length === 0) return null;
 

@@ -60,14 +60,15 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
   );
 }
 
-function StatusIcon({ status, onClick, disabled }: { status: TaskStatus; onClick: () => void; disabled?: boolean }) {
+function StatusIcon({ status, onClick, disabled, title }: { status: TaskStatus; onClick: () => void; disabled?: boolean; title?: string }) {
   const cfg = statusConfig[status];
+  const defaultTitle = disabled ? '执行中不可修改状态' : `状态: ${cfg.label}（点击修改）`;
   return (
     <button
       onClick={onClick}
       disabled={disabled}
       className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full ${cfg.iconBg} ${cfg.iconColor} ring-1 ${cfg.ring} transition-opacity cursor-pointer disabled:cursor-not-allowed disabled:opacity-50`}
-      title={disabled ? '执行中不可修改状态' : `状态: ${cfg.label}（点击修改）`}
+      title={title ?? defaultTitle}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${statusDotColor[status]}`} />
       {cfg.label}
@@ -331,7 +332,23 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
               </svg>
             </button>
           )}
-          <StatusIcon status={task.status} onClick={() => { if (!locked) setEditingStatus(true); }} disabled={locked} />
+          {(() => {
+            // BLOCKED 任务即使在执行后也允许用户手动修改状态（如改回 PENDING 重跑、改 COMPLETED 跳过）。
+            // 其它状态在有 executionId 时仍保持锁定，避免误改已完成/进行中的任务。
+            const statusChangeDisabled = locked && task.status !== 'BLOCKED';
+            const statusTitle =
+              task.status === 'BLOCKED' && !statusChangeDisabled
+                ? '点击修改阻塞状态'
+                : undefined;
+            return (
+              <StatusIcon
+                status={task.status}
+                onClick={() => { if (!statusChangeDisabled) setEditingStatus(true); }}
+                disabled={statusChangeDisabled}
+                title={statusTitle}
+              />
+            );
+          })()}
         </div>
         <div className="flex items-center gap-1 shrink-0 ml-2">
           <button
