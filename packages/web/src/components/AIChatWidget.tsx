@@ -4,7 +4,7 @@ import { useChat } from '@/hooks/useChat';
 import { log } from '@/utils/log';
 import { unwrap } from '@/api/lib';
 import type { ChatMessage, ChatPart, ChatMode } from '@/types/chat';
-import type { TaskPlan } from '@/types/task';
+import type { TaskPlan, Task } from '@/types/task';
 import TaskPlanPreview from './TaskPlanPreview';
 import { ChatDebugPanel, type ContextSource } from './ChatDebugPanel';
 
@@ -25,6 +25,8 @@ interface Props {
   onPlanImported?: () => void;
   /** 调试面板数据源（仅开发环境使用） */
   debugSource?: ContextSource;
+  /** 当前主题的已有任务列表，用于 TaskPlanPreview diff 比对与更新 */
+  existingTasks?: Task[];
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -129,13 +131,15 @@ function repairJson(str: string): string {
   return result;
 }
 
-function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTopics, onPlanImported }: {
+function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTopics, onPlanImported, existingTasks }: {
   part: ChatPart;
   projectId?: string;
   topicId?: string;
   chatSessionId?: string;
   importedPlanTopics: Set<string>;
   onPlanImported: (topicName: string) => void;
+  /** 当前主题已有任务，用于 diff 比对 */
+  existingTasks?: Task[];
 }) {
   if (part.type === 'text' && part.text) {
     const text = part.text;
@@ -185,6 +189,7 @@ function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTop
               chatSessionId={chatSessionId}
               imported={importedPlanTopics.has((seg.content as TaskPlan).topic)}
               onPlanImported={onPlanImported}
+              existingTasks={existingTasks}
             />
           )
         )}
@@ -282,7 +287,7 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, chatModes, onPlanImported, debugSource }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, chatModes, onPlanImported, debugSource, existingTasks }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
@@ -927,6 +932,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                         chatSessionId={currentSessionId ?? undefined}
                         importedPlanTopics={importedPlanTopics}
                         onPlanImported={handlePlanImported}
+                        existingTasks={existingTasks}
                       />
                     ))}
                     <div className="flex items-center justify-between gap-2">

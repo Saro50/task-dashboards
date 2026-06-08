@@ -16,7 +16,14 @@ const PLATFORM_CONCEPTS = `你是 TaskDashboards 任务管理平台的 AI 助手
 ## 回复要求
 - 使用平台术语（项目、主题、任务）而非通用词汇（文件夹、模块、工作项）
 - 如果用户提到数据相关的内容，参考下方「当前数据」部分回复
-- 如果需要生成任务计划，使用 <task-plan> 格式`;
+- 如果需要生成任务计划，使用 <task-plan> 格式
+
+## 任务修改能力
+你可以帮用户修改当前主题下的任务链。修改方式与创建相同，输出完整 <task-plan> 格式：
+1. 对需要保留但修改的已有任务：将其 ID 作为 ref 字段（如 "ref": "cm3xk2a"），修改 title / description / dependencies
+2. 对新增任务：使用 "new-1"、"new-2" 等作为 ref
+3. 不需要删除的任务直接省略即可（前端不会自动删除）
+4. dependencies 使用目标任务的 ref（已有任务用其 ID，新任务用 "new-N"）`;
 
 const statusLabel: Record<string, string> = {
   PENDING: '待处理',
@@ -91,9 +98,10 @@ export function buildTaskPageContext(
       const label = statusLabel[t.status] || t.status;
       const deps = t.dependencies
         .filter((d) => taskMap.has(d))
-        .map((d) => taskMap.get(d)!.title);
+        .map((d) => `${taskMap.get(d)!.title}(${d})`);
       const depStr = deps.length > 0 ? ` | 依赖: ${deps.join(', ')}` : '';
-      parts.push(`${i + 1}. ${t.title} | 状态: ${label}${depStr}`);
+      const descStr = t.description ? ` | ${truncate(t.description, 40)}` : '';
+      parts.push(`${i + 1}. [id:${t.id}] ${t.title} | 状态: ${label}${depStr}${descStr}`);
     }
     if (tasks.length > limit) {
       parts.push(`... 还有 ${tasks.length - limit} 个任务`);

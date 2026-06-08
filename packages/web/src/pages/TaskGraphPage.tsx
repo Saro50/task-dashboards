@@ -602,7 +602,7 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} chatModes={chatModes} debugSource={{ type: 'task', project: project ?? null, topic: currentTopic ?? null, tasks: filteredTasks }} onPlanImported={refetch} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} chatModes={chatModes} debugSource={{ type: 'task', project: project ?? null, topic: currentTopic ?? null, tasks: filteredTasks }} onPlanImported={refetch} existingTasks={filteredTasks} />
 
       {showDiffPreview && execution && execution.status === 'COMPLETED' && (
         <DiffPreview
