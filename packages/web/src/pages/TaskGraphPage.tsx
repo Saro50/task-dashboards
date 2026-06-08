@@ -19,7 +19,7 @@ import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
 import DiffPreview from '@/components/DiffPreview';
 import { applyDagreLayout } from '@/utils/layout';
-import { buildTaskPageContext } from '@/utils/pageContext';
+import { buildTaskPageContext, buildTopicPageContext } from '@/utils/pageContext';
 import { log } from '@/utils/log';
 
 const S = 'TaskGraphPage';
@@ -194,10 +194,30 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
     [topics, topicId]
   );
 
-  const pageContext = useMemo(
+  const taskContext = useMemo(
     () => buildTaskPageContext(project, currentTopic ?? null, filteredTasks),
     [project, currentTopic, filteredTasks]
   );
+
+  /** 主题模式 context：复用 TopicGraphPage 的同一函数，展示项目所有主题概览 */
+  const topicContext = useMemo(
+    () => buildTopicPageContext(project, topics),
+    [project, topics]
+  );
+
+  /**
+   * 双模式 chatModes 配置。
+   * 详情任务模式放首位（默认激活），主题模式放第二位供切换。
+   * AIChatWidget 会根据当前激活的 mode 选取对应 context 注入会话，
+   * pageContext prop 作为兜底。
+   */
+  const chatModes = useMemo(() => [
+    { key: 'task', label: '详情任务', description: '查看当前主题的任务和依赖关系', context: taskContext },
+    { key: 'topic', label: '主题', description: '查看项目所有主题信息', context: topicContext },
+  ], [taskContext, topicContext]);
+
+  /** pageContext 保留作为兜底，与 taskContext 保持一致（向后兼容） */
+  const pageContext = taskContext;
 
   const {
     executeChain,
@@ -582,7 +602,7 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} debugSource={{ type: 'task', project: project ?? null, topic: currentTopic ?? null, tasks: filteredTasks }} onPlanImported={refetch} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} chatModes={chatModes} debugSource={{ type: 'task', project: project ?? null, topic: currentTopic ?? null, tasks: filteredTasks }} onPlanImported={refetch} />
 
       {showDiffPreview && execution && execution.status === 'COMPLETED' && (
         <DiffPreview

@@ -3,7 +3,7 @@ import type { EngineStatus } from './Layout';
 import { useChat } from '@/hooks/useChat';
 import { log } from '@/utils/log';
 import { unwrap } from '@/api/lib';
-import type { ChatMessage, ChatPart } from '@/types/chat';
+import type { ChatMessage, ChatPart, ChatMode } from '@/types/chat';
 import type { TaskPlan } from '@/types/task';
 import TaskPlanPreview from './TaskPlanPreview';
 import { ChatDebugPanel, type ContextSource } from './ChatDebugPanel';
@@ -16,6 +16,12 @@ interface Props {
   projectId?: string;
   topicId?: string;
   pageContext?: string;
+  /**
+   * 多模式配置列表。
+   * 若传入，则组件默认激活第一个 ChatMode，并使用该模式的 context 替代 pageContext。
+   * 若不传，则行为与之前完全一致（直接使用 pageContext prop）。
+   */
+  chatModes?: ChatMode[];
   onPlanImported?: () => void;
   /** 调试面板数据源（仅开发环境使用） */
   debugSource?: ContextSource;
@@ -276,11 +282,12 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, onPlanImported, debugSource }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, chatModes, onPlanImported, debugSource }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const [showAgentList, setShowAgentList] = useState(false);
+  const [showFeatureMenu, setShowFeatureMenu] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -289,6 +296,33 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /** 追踪上次实际注入的 pageContext，用于去重（功能一） */
   const lastSentContextRef = useRef<string | null>(null);
+
+  /**
+   * 多模式：当前激活的 ChatMode key。
+   * 默认激活 chatModes[0].key；若无 chatModes 则为 null，此时使用 pageContext prop。
+   */
+  const [activeModeKey, setActiveModeKey] = useState<string | null>(
+    () => (chatModes && chatModes.length > 0 ? chatModes[0].key : null),
+  );
+
+  /**
+   * 计算当前实际使用的 pageContext。
+   * 优先使用 activeModeKey 对应的 ChatMode.context；
+   * 若无 chatModes 或 key 不匹配，则回退到 pageContext prop。
+   */
+  const effectivePageContext = (() => {
+    if (activeModeKey && chatModes) {
+      const mode = chatModes.find((m) => m.key === activeModeKey);
+      if (mode) return mode.context;
+    }
+    return pageContext;
+  })();
+
+  /** 当前激活的 ChatMode 对象，用于标题栏 badge 显示 */
+  const activeMode = useMemo(() => {
+    if (!activeModeKey || !chatModes) return null;
+    return chatModes.find((m) => m.key === activeModeKey) ?? null;
+  }, [activeModeKey, chatModes]);
 
   const [fabPos, setFabPos] = useState(() => ({ x: window.innerWidth - 72, y: window.innerHeight - 72 }));
   const [chatPos, setChatPos] = useState<{ x: number; y: number } | null>(null);
@@ -383,6 +417,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     log.info(S, 'handleToggle', { currentOpen: open });
     setOpen((prev) => !prev);
     setShowSessionList(false);
+    setShowFeatureMenu(false);
   }, [engineStatus]);
 
   const onFabPointerDown = useCallback((e: React.PointerEvent) => {
@@ -447,9 +482,9 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     // 功能一：pageContext 去重注入
     // 仅在首条消息或 pageContext 内容变化时注入 system，避免每轮重复发送
     const isFirstMessage = messages.length === 0;
-    const contextChanged = pageContext !== lastSentContextRef.current;
-    const contextToSend = (isFirstMessage || contextChanged) ? pageContext : undefined;
-    lastSentContextRef.current = pageContext ?? lastSentContextRef.current;
+    const contextChanged = effectivePageContext !== lastSentContextRef.current;
+    const contextToSend = (isFirstMessage || contextChanged) ? effectivePageContext : undefined;
+    lastSentContextRef.current = effectivePageContext ?? lastSentContextRef.current;
     if (contextToSend) {
       log.info(S, 'injecting pageContext', { reason: isFirstMessage ? 'first-message' : 'context-changed', length: contextToSend.length });
     } else {
@@ -458,7 +493,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
     await sendMessage(text, contextToSend);
     log.info(S, 'sendMessage returned');
-  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, pageContext, messages.length]);
+  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, effectivePageContext, messages.length]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -612,6 +647,18 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                     <span className="truncate">{directory.split('/').pop()}</span>
                   </span>
                 )}
+                {/* 当前 AI 上下文模式标签 */}
+                {activeMode && (
+                  <span
+                    title={activeMode.description ?? activeMode.label}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-sky-50 text-sky-600 border border-sky-100"
+                  >
+                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                    </svg>
+                    {activeMode.label}
+                  </span>
+                )}
                 {/* 功能二：会话累计 token 徽章 */}
                 {sessionTokens.input > 0 && (
                   <span
@@ -628,9 +675,78 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             </div>
 
             <div className="flex items-center gap-2">
+              {/* 功能菜单：仅当 chatModes 存在且 >1 项时显示 */}
+              {chatModes && chatModes.length > 1 && (
+                <div className="relative">
+                  <button
+                    onClick={() => { log.info(S, 'toggle feature menu'); setShowFeatureMenu((prev) => !prev); setShowSessionList(false); setShowAgentList(false); }}
+                    className={`p-1 rounded hover:bg-gray-100 transition-colors cursor-pointer ${
+                      showFeatureMenu ? 'text-sky-500 bg-sky-50' : 'text-gray-400 hover:text-gray-600'
+                    }`}
+                    title="功能菜单"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                    </svg>
+                  </button>
+
+                  {showFeatureMenu && (
+                    <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-10">
+                      {/* 区块一：AI 上下文模式 */}
+                      <div className="px-3 py-1.5 text-[10px] text-gray-400 font-medium uppercase tracking-wider border-b border-gray-100">
+                        AI 上下文模式
+                      </div>
+                      {chatModes.map((mode) => {
+                        const isActive = mode.key === activeModeKey;
+                        return (
+                          <button
+                            key={mode.key}
+                            onClick={() => {
+                              log.info(S, 'switch chat mode', { key: mode.key });
+                              setActiveModeKey(mode.key);
+                              setShowFeatureMenu(false);
+                            }}
+                            className={`w-full text-left px-3 py-2 text-xs cursor-pointer transition-colors flex items-start gap-2 ${
+                              isActive
+                                ? 'bg-sky-50 text-sky-700'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            {/* ✓ 标记占位，保持对齐 */}
+                            <span className={`w-4 shrink-0 flex items-center justify-center ${isActive ? 'text-sky-500' : 'invisible'}`}>
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                            </span>
+                            <span className="flex flex-col min-w-0">
+                              <span className="font-medium truncate">{mode.label}</span>
+                              {mode.description && (
+                                <span className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{mode.description}</span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      {/* ── 分隔线：未来可在此下方追加更多区块（如「导出对话」「清空会话」等） ── */}
+                      {/*
+                      <div className="border-t border-gray-100" />
+                      <div className="px-3 py-1.5 text-[10px] text-gray-400 font-medium uppercase tracking-wider border-b border-gray-100">
+                        其他功能
+                      </div>
+                      <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer flex items-center gap-2">
+                        <span className="w-4 shrink-0 flex items-center justify-center">…</span>
+                        <span>导出对话</span>
+                      </button>
+                      */}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="relative">
                 <button
-                  onClick={() => { log.info(S, 'toggle session list'); setShowSessionList((prev) => !prev); setShowAgentList(false); }}
+                  onClick={() => { log.info(S, 'toggle session list'); setShowSessionList((prev) => !prev); setShowAgentList(false); setShowFeatureMenu(false); }}
                   className="text-xs text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer max-w-[160px]"
                 >
                   <span className="truncate">{currentSession?.title || '选择会话'}</span>
@@ -719,7 +835,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
               <div className="relative">
                 <button
-                  onClick={() => { log.info(S, 'toggle agent list'); setShowAgentList((prev) => !prev); setShowSessionList(false); }}
+                  onClick={() => { log.info(S, 'toggle agent list'); setShowAgentList((prev) => !prev); setShowSessionList(false); setShowFeatureMenu(false); }}
                   className="text-xs text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
                 >
                   <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -780,7 +896,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
           {/* 调试面板 — 仅开发环境渲染 */}
           {import.meta.env.DEV && showDebug && (
             <ChatDebugPanel
-              pageContext={pageContext}
+              pageContext={effectivePageContext}
               lastSent={lastSent ?? null}
               debugSource={debugSource}
               messages={messages}
@@ -930,7 +1046,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                   <div className="flex gap-2 mt-1.5">
                     <button
                       type="button"
-                      onClick={() => retryInNewSession(pageContext)}
+                      onClick={() => retryInNewSession(effectivePageContext)}
                       className="text-xs bg-amber-500 text-white px-2.5 py-1 rounded hover:bg-amber-600 cursor-pointer"
                     >
                       新建会话并重试
