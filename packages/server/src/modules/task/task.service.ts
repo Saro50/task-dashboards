@@ -3,11 +3,14 @@ import { TaskStatus } from '@prisma/client';
 import prisma from '../../prisma.js';
 import type { ImportTaskPlanRequest, ImportTaskPlanResponse, ImportedPlanItem } from './types.js';
 
-function computePlanHash(plan: { topic: string; tasks: { ref: string; title: string; description: string; dependencies: string[] }[] }): string {
-  const canonical = JSON.stringify({
-    topic: plan.topic,
-    tasks: plan.tasks.map((t) => ({ ref: t.ref, title: t.title, description: t.description, dependencies: [...t.dependencies].sort() })),
-  });
+/**
+ * 计算 plan 的去重哈希。
+ * 基于 topicName + projectId + topicId，不包含任务内容。
+ * 这样同一主题在同一会话中只能导入一次，AI 修改任务后重新生成的 plan
+ * 只要 topicName 相同就会命中去重，前端据此进入 diff 更新模式。
+ */
+function computePlanHash(topicName: string, projectId: string, topicId?: string | null): string {
+  const canonical = JSON.stringify({ topicName, projectId, topicId: topicId ?? null });
   return crypto.createHash('sha256').update(canonical).digest('hex');
 }
 
@@ -114,7 +117,7 @@ export async function remove(id: string) {
 }
 
 export async function importPlan(projectId: string, plan: ImportTaskPlanRequest): Promise<ImportTaskPlanResponse> {
-  const planHash = computePlanHash(plan);
+  const planHash = computePlanHash(plan.topic, projectId, plan.topicId);
 
   if (plan.chatSessionId) {
     const existing = await prisma.planImport.findUnique({
