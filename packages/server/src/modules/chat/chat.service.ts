@@ -72,3 +72,10 @@ export async function updateSession(sessionId: string, title: string, directory?
   logger.info(S, 'updateSession result', result?.data);
   return result.data;
 }
+
+export async function deleteSession(sessionId: string, directory?: string) {
+  const baseUrl = await getBaseUrl();
+  logger.info(S, 'deleteSession', { baseUrl, sessionId, directory });
+  await Opencode.deleteSession(baseUrl, sessionId, directory);
+  logger.info(S, 'deleteSession completed', { sessionId });
+}

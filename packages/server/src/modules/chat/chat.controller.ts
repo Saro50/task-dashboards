@@ -57,6 +57,22 @@ export async function updateSession(ctx: Context) {
   }
 }
 
+export async function deleteSession(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  try {
+    const { id } = ctx.params;
+    const directory = ctx.query.directory as string | undefined;
+    log.info(S, 'deleteSession', { sessionId: id, directory });
+    await Service.deleteSession(id, directory);
+    log.info(S, 'deleteSession completed', { sessionId: id });
+    ctx.status = 204;
+  } catch (err: any) {
+    log.error(S, 'deleteSession error', err.message);
+    ctx.status = 502;
+    ctx.body = { error: 'Failed to delete session', detail: err.message };
+  }
+}
+
 export async function getMessages(ctx: Context) {
   const log = reqLogger(ctx.state.requestId);
   try {
@@ -149,6 +165,7 @@ export async function subscribeEvents(ctx: Context) {
       'session.created',
       'session.updated',
       'session.idle',
+      'session.compacted',
     ]);
 
     for await (const event of stream) {

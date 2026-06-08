@@ -126,3 +126,11 @@ export async function updateSession(baseUrl: string, sessionId: string, title: s
   logger.info(S, 'updateSession result', { id: result?.data?.id, title: result?.data?.title });
   return result;
 }
+
+export async function deleteSession(baseUrl: string, sessionId: string, directory?: string) {
+  logger.info(S, 'deleteSession', { baseUrl, sessionId, directory });
+  const client = await getClient(baseUrl);
+  const result = await client.session.delete({ path: { id: sessionId }, query: { directory } });
+  logger.info(S, 'deleteSession completed', { sessionId });
+  return result;
+}

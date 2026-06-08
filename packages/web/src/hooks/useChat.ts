@@ -8,6 +8,17 @@ const S = 'useChat';
 const LOADING_TIMEOUT_MS = 60_000;
 const SSE_RECONNECT_DELAY_MS = 3_000;
 
+/**
+ * 最近一次 sendMessage 的完整快照，供调试面板展示
+ * 实际传入后端的 { text, agent, context } 原文。
+ */
+export interface LastSentSnapshot {
+  text: string;
+  agent: string;
+  context?: string;
+  timestamp: number;
+}
+
 export function useChat(directory?: string) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -28,6 +39,8 @@ export function useChat(directory?: string) {
   const lastSentTextRef = useRef<string | null>(null);
   const [sessionBroken, setSessionBroken] = useState(false);
   const [importedPlanTopics, setImportedPlanTopics] = useState<Set<string>>(new Set());
+  const [lastSent, setLastSent] = useState<LastSentSnapshot | null>(null);
+  const [compacted, setCompacted] = useState(false);
 
   const currentSession = sessions.find((s) => s.id === currentSessionId) || null;
 
@@ -180,6 +193,11 @@ export function useChat(directory?: string) {
             );
           }
         }
+
+        if (payload.type === 'session.compacted') {
+          log.info(S, 'SSE session.compacted — engine auto-compacted context');
+          setCompacted(true);
+        }
       },
       () => {
         log.warn(S, 'SSE error, scheduling reconnect');
@@ -263,6 +281,7 @@ export function useChat(directory?: string) {
     }
 
     lastSentTextRef.current = text;
+    setLastSent({ text, agent: selectedAgent, context, timestamp: Date.now() });
     setMessages((prev) => [
       ...prev,
       {
@@ -300,6 +319,12 @@ export function useChat(directory?: string) {
 
   const deleteSession = useCallback(async (sessionId: string) => {
     log.info(S, 'deleteSession', { sessionId, currentSessionId });
+    try {
+      await chatApi.deleteSession(sessionId, directory);
+      log.info(S, 'deleteSession API call completed', { sessionId });
+    } catch (err) {
+      log.error(S, 'deleteSession API error', err);
+    }
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
     if (currentSessionId === sessionId) {
       const remaining = sessions.filter((s) => s.id !== sessionId);
@@ -310,7 +335,7 @@ export function useChat(directory?: string) {
         setMessages([]);
       }
     }
-  }, [currentSessionId, sessions, switchSession]);
+  }, [currentSessionId, directory, sessions, switchSession]);
 
   const retryInNewSession = useCallback(async (context?: string) => {
     const text = lastSentTextRef.current;
@@ -355,6 +380,8 @@ export function useChat(directory?: string) {
     loadingTimedOut,
     sessionBroken,
     importedPlanTopics,
+    lastSent,
+    compacted,
     selectedAgent,
     setSelectedAgent,
     loadSessions,

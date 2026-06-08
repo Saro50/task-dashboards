@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef, type KeyboardEvent, type FormEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, useImperativeHandle, useMemo, forwardRef, type KeyboardEvent, type FormEvent } from 'react';
 import type { EngineStatus } from './Layout';
 import { useChat } from '@/hooks/useChat';
 import { log } from '@/utils/log';
@@ -6,6 +6,7 @@ import { unwrap } from '@/api/lib';
 import type { ChatMessage, ChatPart } from '@/types/chat';
 import type { TaskPlan } from '@/types/task';
 import TaskPlanPreview from './TaskPlanPreview';
+import { ChatDebugPanel, type ContextSource } from './ChatDebugPanel';
 
 const S = 'AIChatWidget';
 
@@ -16,6 +17,8 @@ interface Props {
   topicId?: string;
   pageContext?: string;
   onPlanImported?: () => void;
+  /** 调试面板数据源（仅开发环境使用） */
+  debugSource?: ContextSource;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -273,16 +276,19 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, onPlanImported }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, onPlanImported, debugSource }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const [showAgentList, setShowAgentList] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [agents, setAgents] = useState<Array<{ name: string; description?: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  /** 追踪上次实际注入的 pageContext，用于去重（功能一） */
+  const lastSentContextRef = useRef<string | null>(null);
 
   const [fabPos, setFabPos] = useState(() => ({ x: window.innerWidth - 72, y: window.innerHeight - 72 }));
   const [chatPos, setChatPos] = useState<{ x: number; y: number } | null>(null);
@@ -301,6 +307,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     sessionBroken,
     selectedAgent,
     setSelectedAgent,
+    lastSent,
+    compacted,
     loadSessions,
     createSession,
     switchSession,
@@ -405,6 +413,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     log.info(S, 'handleNewSession');
     await createSession('新会话');
     setShowSessionList(false);
+    lastSentContextRef.current = null;
     inputRef.current?.focus();
   }, [createSession]);
 
@@ -412,6 +421,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     log.info(S, 'handleSwitchSession', { sessionId });
     await switchSession(sessionId);
     setShowSessionList(false);
+    // 切换会话时重置 pageContext 去重追踪，确保新会话首条消息注入上下文
+    lastSentContextRef.current = null;
   }, [switchSession]);
 
   const handleDeleteSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
@@ -432,9 +443,22 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       await switchSession(session.id);
     }
     setInput('');
-    await sendMessage(text, pageContext);
+
+    // 功能一：pageContext 去重注入
+    // 仅在首条消息或 pageContext 内容变化时注入 system，避免每轮重复发送
+    const isFirstMessage = messages.length === 0;
+    const contextChanged = pageContext !== lastSentContextRef.current;
+    const contextToSend = (isFirstMessage || contextChanged) ? pageContext : undefined;
+    lastSentContextRef.current = pageContext ?? lastSentContextRef.current;
+    if (contextToSend) {
+      log.info(S, 'injecting pageContext', { reason: isFirstMessage ? 'first-message' : 'context-changed', length: contextToSend.length });
+    } else {
+      log.info(S, 'skipping pageContext injection (unchanged)');
+    }
+
+    await sendMessage(text, contextToSend);
     log.info(S, 'sendMessage returned');
-  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, pageContext]);
+  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, pageContext, messages.length]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -447,6 +471,24 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
   function formatTime(timestamp: number): string {
     return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  /** 功能二：计算当前会话累计 token（所有 assistant 消息的 tokens 之和） */
+  const sessionTokens = useMemo(() => {
+    let input = 0;
+    let output = 0;
+    for (const msg of messages) {
+      if (msg.info.role === 'assistant' && msg.info.tokens) {
+        input += msg.info.tokens.input || 0;
+        output += msg.info.tokens.output || 0;
+      }
+    }
+    return { input, output };
+  }, [messages]);
+
+  function formatTokenCount(n: number): string {
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+    return String(n);
   }
 
   const [chatSize, setChatSize] = useState({ w: 660, h: 640 });
@@ -561,7 +603,19 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                     <span className="truncate">{directory.split('/').pop()}</span>
                   </span>
                 )}
-              </div>
+                {/* 功能二：会话累计 token 徽章 */}
+                {sessionTokens.input > 0 && (
+                  <span
+                    title={`累计 Input: ${sessionTokens.input.toLocaleString()} / Output: ${sessionTokens.output.toLocaleString()}`}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-500 border border-indigo-100"
+                  >
+                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+                    </svg>
+                    <span>↑{formatTokenCount(sessionTokens.input)} ↓{formatTokenCount(sessionTokens.output)}</span>
+                  </span>
+                )}
+               </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -686,6 +740,22 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 )}
               </div>
 
+              {/* 调试面板按钮 — 仅开发环境可见 */}
+              {import.meta.env.DEV && (
+                <button
+                  onClick={() => setShowDebug((prev) => !prev)}
+                  className={`p-1 rounded hover:bg-gray-100 transition-colors cursor-pointer ${
+                    showDebug ? 'text-orange-500 bg-orange-50' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                  title="调试面板"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 12.75c.414 0 .75-.336.75-.75s-.336-.75-.75-.75-.75.336-.75.75.336.75.75.75z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 7.5h-9m9 0a2.25 2.25 0 012.25 2.25v3.75a5.25 5.25 0 01-5.25 5.25H9.75A5.25 5.25 0 014.5 13.5V9.75A2.25 2.25 0 016.75 7.5m9.75 0V6a2.25 2.25 0 00-2.25-2.25H9A2.25 2.25 0 006.75 6v1.5m6.75 11.25V19.5m-3-2.25v2.25" />
+                  </svg>
+                </button>
+              )}
+
               <button
                 onClick={() => { log.info(S, 'close chat panel'); setOpen(false); }}
                 className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-800 transition-colors cursor-pointer"
@@ -697,6 +767,26 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
               </button>
             </div>
           </div>
+
+          {/* 调试面板 — 仅开发环境渲染 */}
+          {import.meta.env.DEV && showDebug && (
+            <ChatDebugPanel
+              pageContext={pageContext}
+              lastSent={lastSent ?? null}
+              debugSource={debugSource}
+              messages={messages}
+            />
+          )}
+
+          {/* 功能三：引擎自动压缩提示 */}
+          {compacted && (
+            <div className="flex items-center gap-2 px-4 py-1.5 bg-amber-50 border-b border-amber-100 text-[11px] text-amber-600 shrink-0">
+              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <span>上下文已自动压缩，较早的历史消息已被摘要以节省 token</span>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
             {messages.length === 0 && !streamingText && (
@@ -743,7 +833,15 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                         onPlanImported={handlePlanImported}
                       />
                     ))}
-                    <p className="text-[10px] text-gray-400">{formatTime(msg.info.time.created)}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] text-gray-400">{formatTime(msg.info.time.created)}</p>
+                      {/* 功能二：单条消息 token 统计 */}
+                      {msg.info.tokens && (
+                        <span className="text-[10px] text-gray-400" title={`Input: ${msg.info.tokens.input.toLocaleString()} · Output: ${msg.info.tokens.output.toLocaleString()}${msg.info.tokens.cache?.read ? ` · Cache read: ${msg.info.tokens.cache.read.toLocaleString()}` : ''}`}>
+                          ↑{formatTokenCount(msg.info.tokens.input)} ↓{formatTokenCount(msg.info.tokens.output)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

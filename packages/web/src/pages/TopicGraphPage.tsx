@@ -315,7 +315,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
       </div>
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} onPlanImported={refetch} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} debugSource={{ type: 'topic', project: project ?? null, topics }} onPlanImported={refetch} />
     </div>
   );
 }

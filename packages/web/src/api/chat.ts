@@ -38,6 +38,13 @@ export const chatApi = {
     });
   },
 
+  deleteSession(sessionId: string, directory?: string): Promise<void> {
+    const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
+    return apiRequest<void>(S, `${BASE}/sessions/${sessionId}${query}`, {
+      method: 'DELETE',
+    });
+  },
+
   updateSessionTitle(sessionId: string, title: string, directory?: string): Promise<ChatSession> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
     return apiRequest<ChatSession>(S, `${BASE}/sessions/${sessionId}${query}`, {
@@ -113,6 +120,14 @@ export const chatApi = {
         onEvent({ type: 'session.idle', properties: JSON.parse(e.data) });
       } catch (err) {
         log.error(S, 'SSE parse error session.idle', err);
+      }
+    });
+
+    es.addEventListener('session.compacted', (e) => {
+      try {
+        onEvent({ type: 'session.compacted', properties: JSON.parse(e.data) });
+      } catch (err) {
+        log.error(S, 'SSE parse error session.compacted', err);
       }
     });
 
