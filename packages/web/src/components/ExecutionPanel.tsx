@@ -2,8 +2,11 @@
  * 全局执行面板 — 在导航栏中显示当前项目的执行列表。
  *
  * 面板靠右对齐，固定宽度约 1/3 屏，最大高度 1/3 屏。
- * 执行中的卡片展示最后一条 AI 消息摘要（限制高度，超出省略号）。
- * 暂停的执行也会展示在面板中。
+ * 面板按优先级分组展示：
+ *   - 执行中：RUNNING/CREATING_WORKTREE，卡片展示最后一条 AI 消息摘要。
+ *   - 待合并：COMPLETED，等待用户合并的主题（仅「查看」跳转）。
+ *   - 暂停：STOPPED，用户主动停止，可点「执行」恢复。
+ *   - 待执行：从未有执行记录的主题，可点「执行」启动。
  */
 import { useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router';
@@ -89,6 +92,15 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
     }
   }, [startAllPending, starting, showToast]);
 
+  /**
+   * 单主题执行包装：每次点击「执行」都弹出 info 提醒（无论是否含阻塞任务），
+   * 提醒用户如存在已阻塞任务需先在任务详情改为「待办」，随后照常启动执行（不阻止）。
+   */
+  const handleExecute = useCallback((topicId: string) => {
+    showToast('如存在已阻塞任务，请先在任务详情中将其改为「待办」后再执行', 'info');
+    startExecution(topicId);
+  }, [showToast, startExecution]);
+
   // 项目管理页（/）无 projectId，面板数据绑定具体项目，明确不展示。
   // 注意：必须放在所有 hook 调用之后，否则会触发 React "Rules of Hooks" 错误
   // （hook 数量在不同渲染中不一致）。
@@ -97,11 +109,19 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
   const running = executions.filter(
     (e) => e.status === 'RUNNING' || e.status === 'CREATING_WORKTREE',
   );
-  const recent = executions.filter(
-    (e) => e.status === 'COMPLETED' || e.status === 'STOPPED' || e.status === 'FAILED',
-  );
+  // 待合并：执行完毕（COMPLETED）等待用户合并的主题
+  const pendingMerge = executions.filter((e) => e.status === 'COMPLETED');
+  // 暂停：用户主动停止（STOPPED），可恢复执行
+  const paused = executions.filter((e) => e.status === 'STOPPED');
+  // 待执行：从未有执行记录的主题。
+  // pendingTopics 已排除 RUNNING/CREATING_WORKTREE/COMPLETED，其中"出现在 executions 里"的
+  // 只可能是 STOPPED，过滤掉 STOPPED 后剩下的即纯无记录主题。
+  const noRecord = pendingTopics.filter((t) => !executions.some((e) => e.topicId === t.id));
 
   if (!hasRunning && executions.length === 0 && pendingTopics.length === 0) return null;
+
+  // 分组间分隔线：仅在上方已有分组内容时才显示顶部 border
+  const borderIf = (hasAbove: boolean) => (hasAbove ? 'border-t border-gray-100' : '');
 
   return (
     <>
@@ -135,7 +155,7 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
         <span className="hidden sm:inline">
           {hasRunning
             ? `执行中 ${running.length} 条`
-            : `最近 ${executions.length} 条`}
+            : `待处理 ${paused.length + pendingMerge.length + noRecord.length} 条`}
         </span>
       </button>
 
@@ -156,19 +176,47 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
                       branch={exec.worktreeBranch}
                       messages={executionMessages[exec.id] ?? []}
                       onStop={() => stopExecution(exec.id)}
-                      onExecute={() => startExecution(exec.topicId)}
+                      onExecute={() => handleExecute(exec.topicId)}
                       onClick={() => handleNavigate(exec.topicId)}
                     />
                   ))}
                 </div>
               )}
-              {recent.length > 0 && (
-                <div className={`p-3 space-y-2 ${running.length > 0 ? 'border-t border-gray-100' : ''}`}>
-                  <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">最近</h4>
-                  {recent.slice(0, 5).map((exec) => {
+              {pendingMerge.length > 0 && (
+                <div className={`p-3 space-y-2 ${borderIf(running.length > 0)}`}>
+                  <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">待合并</h4>
+                  {pendingMerge.map((exec) => {
                     const msgs = executionMessages[exec.id] ?? [];
                     const nav = () => handleNavigate(exec.topicId);
-                    const execThis = () => startExecution(exec.topicId);
+                    return msgs.length > 0 ? (
+                      <RunningCard
+                        key={exec.id}
+                        name={exec.topic?.name ?? '未知任务链'}
+                        status={exec.status}
+                        progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                        branch={exec.worktreeBranch}
+                        messages={msgs}
+                        onClick={nav}
+                      />
+                    ) : (
+                      <RecentCard
+                        key={exec.id}
+                        name={exec.topic?.name ?? '未知任务链'}
+                        status={exec.status}
+                        progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                        onClick={nav}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+              {paused.length > 0 && (
+                <div className={`p-3 space-y-2 ${borderIf(running.length > 0 || pendingMerge.length > 0)}`}>
+                  <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">暂停</h4>
+                  {paused.map((exec) => {
+                    const msgs = executionMessages[exec.id] ?? [];
+                    const nav = () => handleNavigate(exec.topicId);
+                    const execThis = () => handleExecute(exec.topicId);
                     return msgs.length > 0 ? (
                       <RunningCard
                         key={exec.id}
@@ -191,6 +239,20 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
                       />
                     );
                   })}
+                </div>
+              )}
+              {noRecord.length > 0 && (
+                <div className={`p-3 space-y-2 ${borderIf(running.length > 0 || pendingMerge.length > 0 || paused.length > 0)}`}>
+                  <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">待执行</h4>
+                  {noRecord.map((topic) => (
+                    <PendingTopicCard
+                      key={topic.id}
+                      name={topic.name}
+                      progress={`${topic.completedCount}/${topic.taskCount}`}
+                      onExecute={() => handleExecute(topic.id)}
+                      onClick={() => handleNavigate(topic.id)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -343,6 +405,39 @@ function RecentCard({ name, status, progress, onClick, onExecute }: {
             className="shrink-0 text-[10px] text-sky-600 hover:text-sky-700 px-1.5 py-0.5 rounded border border-sky-200 bg-white hover:bg-sky-50 transition-colors cursor-pointer"
           >
             查看
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 待执行主题卡片 — 用于从未有执行记录的主题（数据来源 TaskTopic，无 worktree/execution 状态）。
+ * 与 RunningCard/RecentCard 的区别：无状态色点（灰色），固定显示「待执行」标签 + 启动按钮。
+ */
+function PendingTopicCard({ name, progress, onExecute, onClick }: {
+  name: string;
+  progress: string;
+  onExecute?: () => void;
+  onClick?: () => void;
+}) {
+  return (
+    <div onClick={onClick} className={`rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2 transition-colors ${onClick ? 'cursor-pointer hover:bg-gray-100' : ''}`}>
+      <div className="flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full shrink-0 bg-gray-300" />
+        <span className="text-xs font-medium text-gray-800 truncate">{name}</span>
+        <span className="text-[10px] font-medium text-gray-400 ml-auto shrink-0">待执行</span>
+        <span className="text-[10px] text-gray-400 shrink-0">{progress}</span>
+        {onExecute && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onExecute(); }}
+            className="shrink-0 text-[10px] text-sky-600 hover:text-sky-700 px-1.5 py-0.5 rounded border border-sky-200 bg-white hover:bg-sky-50 transition-colors cursor-pointer inline-flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+            </svg>
+            执行
           </button>
         )}
       </div>
