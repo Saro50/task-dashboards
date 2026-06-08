@@ -473,22 +473,31 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
   }
 
-  /** 功能二：计算当前会话累计 token（所有 assistant 消息的 tokens 之和） */
+  /** 功能二：计算当前会话累计 token 与费用（所有 assistant 消息之和） */
   const sessionTokens = useMemo(() => {
     let input = 0;
     let output = 0;
+    let cost = 0;
     for (const msg of messages) {
       if (msg.info.role === 'assistant' && msg.info.tokens) {
         input += msg.info.tokens.input || 0;
         output += msg.info.tokens.output || 0;
+        cost += msg.info.cost || 0;
       }
     }
-    return { input, output };
+    return { input, output, cost };
   }, [messages]);
 
   function formatTokenCount(n: number): string {
     if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
     return String(n);
+  }
+
+  /** 格式化费用：0 不显示，<0.01 显示4位小数，否则2位 */
+  function formatCost(cost: number): string {
+    if (!cost || cost === 0) return '';
+    if (cost < 0.01) return `¥${cost.toFixed(4)}`;
+    return `¥${cost.toFixed(2)}`;
   }
 
   const [chatSize, setChatSize] = useState({ w: 660, h: 640 });
@@ -606,13 +615,13 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 {/* 功能二：会话累计 token 徽章 */}
                 {sessionTokens.input > 0 && (
                   <span
-                    title={`累计 Input: ${sessionTokens.input.toLocaleString()} / Output: ${sessionTokens.output.toLocaleString()}`}
+                    title={`累计 Input: ${sessionTokens.input.toLocaleString()} / Output: ${sessionTokens.output.toLocaleString()}${sessionTokens.cost ? ` / 费用: ¥${sessionTokens.cost.toFixed(4)}` : ''}`}
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-500 border border-indigo-100"
                   >
                     <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
                     </svg>
-                    <span>↑{formatTokenCount(sessionTokens.input)} ↓{formatTokenCount(sessionTokens.output)}</span>
+                    <span>↑{formatTokenCount(sessionTokens.input)} ↓{formatTokenCount(sessionTokens.output)}{formatCost(sessionTokens.cost)}</span>
                   </span>
                 )}
                </div>
@@ -835,10 +844,10 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                     ))}
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] text-gray-400">{formatTime(msg.info.time.created)}</p>
-                      {/* 功能二：单条消息 token 统计 */}
+                      {/* 功能二：单条消息 token 统计与费用 */}
                       {msg.info.tokens && (
-                        <span className="text-[10px] text-gray-400" title={`Input: ${msg.info.tokens.input.toLocaleString()} · Output: ${msg.info.tokens.output.toLocaleString()}${msg.info.tokens.cache?.read ? ` · Cache read: ${msg.info.tokens.cache.read.toLocaleString()}` : ''}`}>
-                          ↑{formatTokenCount(msg.info.tokens.input)} ↓{formatTokenCount(msg.info.tokens.output)}
+                        <span className="text-[10px] text-gray-400" title={`Input: ${msg.info.tokens.input.toLocaleString()} · Output: ${msg.info.tokens.output.toLocaleString()}${msg.info.cost ? ` · 费用: ¥${msg.info.cost.toFixed(4)}` : ''}${msg.info.tokens.cache?.read ? ` · Cache read: ${msg.info.tokens.cache.read.toLocaleString()}` : ''}`}>
+                          ↑{formatTokenCount(msg.info.tokens.input)} ↓{formatTokenCount(msg.info.tokens.output)}{formatCost(msg.info.cost ?? 0)}
                         </span>
                       )}
                     </div>
