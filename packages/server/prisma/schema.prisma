@@ -44,15 +44,21 @@ model TaskTopic {
 }
 
 model Task {
-  id          String     @id @default(cuid())
-  projectId   String
-  title       String     @db.VarChar(200)
-  description String     @default("") @db.Text
+  id            String     @id @default(cuid())
+  projectId     String
+  title         String     @db.VarChar(200)
+  description   String     @default("") @db.Text
   status        TaskStatus @default(PENDING)
   blockedReason String?
   topicId       String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  /// 该任务执行期间 AI 引擎消耗的 input token 总数（累加）
+  tokenInput    Int        @default(0)
+  /// 该任务执行期间 AI 引擎消耗的 output token 总数（累加）
+  tokenOutput   Int        @default(0)
+  /// 该任务执行期间 AI 引擎的缓存命中 token 数
+  cacheRead     Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   topic       TaskTopic?     @relation(fields: [topicId], references: [id], onDelete: Cascade)

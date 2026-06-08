@@ -88,7 +88,7 @@ export async function create(projectId: string, data: { title: string; descripti
   });
 }
 
-export async function update(id: string, data: { title?: string; description?: string; status?: string; blockedReason?: string | null; topicId?: string | null }) {
+export async function update(id: string, data: { title?: string; description?: string; status?: string; blockedReason?: string | null; topicId?: string | null; tokenInput?: number; tokenOutput?: number; cacheRead?: number }) {
   const updateData: Record<string, any> = {};
   if (data.title !== undefined) updateData.title = data.title;
   if (data.description !== undefined) updateData.description = data.description;
@@ -98,6 +98,10 @@ export async function update(id: string, data: { title?: string; description?: s
   }
   if (data.blockedReason !== undefined) updateData.blockedReason = data.blockedReason;
   if (data.topicId !== undefined) updateData.topicId = data.topicId;
+  /** Token 消耗字段：执行完成时累加 */
+  if (data.tokenInput !== undefined) updateData.tokenInput = data.tokenInput;
+  if (data.tokenOutput !== undefined) updateData.tokenOutput = data.tokenOutput;
+  if (data.cacheRead !== undefined) updateData.cacheRead = data.cacheRead;
 
   return prisma.task.update({
     where: { id },

@@ -103,6 +103,9 @@ function transformV1Message(msg: any): any {
       finish: info.finish ?? 'stop',
       time: info.time ?? { created: Date.now() },
       error: info.error ? { message: typeof info.error.message === 'string' ? info.error.message : JSON.stringify(info.error) } : undefined,
+      /** 保留 token 消耗数据，供执行服务写入 Task 记录 */
+      tokens: info.tokens ?? undefined,
+      cost: info.cost ?? undefined,
     };
   }
 

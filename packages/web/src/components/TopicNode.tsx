@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps } from '@xyflow/react';
 import type { AggregatedStatus } from '@/types/topic';
+import { formatTokenCount } from '@/utils/format';
 
 const statusConfig: Record<AggregatedStatus, { bar: string; border: string; text: string; dot: string }> = {
   PENDING: { bar: 'bg-gray-300', border: 'border-gray-200', text: 'text-gray-600', dot: 'bg-gray-400' },
@@ -23,6 +24,12 @@ interface TopicNodeData {
   taskCount: number;
   completedCount: number;
   aggregatedStatus: AggregatedStatus;
+  /** 主题下所有任务的 input token 累计 */
+  tokenInput?: number;
+  /** 主题下所有任务的 output token 累计 */
+  tokenOutput?: number;
+  /** 主题下所有任务的缓存命中 token 累计 */
+  cacheRead?: number;
   onEdit?: (topicId: string) => void;
   onDelete?: (topicId: string) => void;
   editing?: boolean;
@@ -115,6 +122,25 @@ export default function TopicNode({ id, data, selected }: NodeProps) {
           </div>
           <span className="text-[10px] text-gray-400 shrink-0">{d.completedCount}/{d.taskCount}</span>
         </div>
+        {/* Token 消耗统计：仅当有实际消耗时显示 */}
+        {(d.tokenInput ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5 mt-1.5 text-[10px] text-gray-400">
+            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+            </svg>
+            <span>
+              <span className="text-gray-500">↑{formatTokenCount(d.tokenInput!)}</span>
+              <span className="mx-0.5">·</span>
+              <span className="text-gray-500">↓{formatTokenCount(d.tokenOutput!)}</span>
+              {(d.cacheRead ?? 0) > 0 && (
+                <>
+                  <span className="mx-0.5">·</span>
+                  <span className="text-amber-500">缓存:{formatTokenCount(d.cacheRead!)}</span>
+                </>
+              )}
+            </span>
+          </div>
+        )}
       </div>
       <Handle type="source" position={Position.Bottom} className="!w-2 !h-2 !bg-gray-400 !border-0" />
     </div>

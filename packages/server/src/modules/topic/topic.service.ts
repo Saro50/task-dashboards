@@ -6,7 +6,7 @@ export async function listByProject(projectId: string): Promise<TopicWithStats[]
     where: { projectId },
     include: {
       tasks: {
-        select: { status: true },
+        select: { status: true, tokenInput: true, tokenOutput: true, cacheRead: true },
       },
     },
     orderBy: { createdAt: 'asc' },
@@ -26,6 +26,11 @@ export async function listByProject(projectId: string): Promise<TopicWithStats[]
       aggregatedStatus = 'IN_PROGRESS';
     }
 
+    // ── 从 tasks 中累加 token 消耗 ──
+    const tokenInput = topic.tasks.reduce((sum, t) => sum + (t.tokenInput || 0), 0);
+    const tokenOutput = topic.tasks.reduce((sum, t) => sum + (t.tokenOutput || 0), 0);
+    const cacheRead = topic.tasks.reduce((sum, t) => sum + (t.cacheRead || 0), 0);
+
     return {
       id: topic.id,
       projectId: topic.projectId,
@@ -34,6 +39,9 @@ export async function listByProject(projectId: string): Promise<TopicWithStats[]
       taskCount,
       completedCount,
       aggregatedStatus,
+      tokenInput,
+      tokenOutput,
+      cacheRead,
       createdAt: topic.createdAt.toISOString(),
       updatedAt: topic.updatedAt.toISOString(),
     };

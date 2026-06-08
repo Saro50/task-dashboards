@@ -345,12 +345,19 @@ async function executeTasks(
 
   // 先提交变更（创建 TaskCommit 记录），再标记 COMPLETED
   // 确保 frontend 轮询看到 COMPLETED 时 diff 数据已就绪
+  let tokenUsage = { input: 0, output: 0, cacheRead: 0 };
   try {
-    await commitTaskChanges(directory, task, executionId, execution.initialCommitHash, baseUrl, sessionId);
+    const commitResult = await commitTaskChanges(directory, task, executionId, execution.initialCommitHash, baseUrl, sessionId);
+    tokenUsage = commitResult.tokenUsage;
   } catch (err: any) {
     logger.error(S, 'commitTaskChanges error', { executionId, taskId: task.id, error: err.message });
   }
-  await TaskService.update(task.id, { status: 'COMPLETED' });
+  await TaskService.update(task.id, {
+    status: 'COMPLETED',
+    tokenInput: tokenUsage.input,
+    tokenOutput: tokenUsage.output,
+    cacheRead: tokenUsage.cacheRead,
+  });
 
   const allNow = await TaskService.listByTopic(execution.topicId);
   const completedCount = allNow.filter((t) => t.status === 'COMPLETED').length;
@@ -372,6 +379,8 @@ async function executeTasks(
  * 无文件变更时仍创建 TaskCommit 记录（commitHash = HEAD），确保消息不丢失。
  * 一个任务可能产生多轮 assistant 消息（工具调用 → 结果 → 继续调用），
  * 所有轮次的 content 会被合并为一条 assistant message。
+ *
+ * @returns commitHash + 该任务执行期间 AI 消耗的 token 统计
  */
 async function commitTaskChanges(
   worktreeDirectory: string,
@@ -380,7 +389,7 @@ async function commitTaskChanges(
   initialCommitHash: string | null,
   baseUrl: string,
   sessionId: string,
-): Promise<string | null> {
+): Promise<{ commitHash: string | null; tokenUsage: { input: number; output: number; cacheRead: number } }> {
   const git = simpleGit(worktreeDirectory);
   const status = await git.status();
   const hasChanges = !status.isClean();
@@ -411,6 +420,8 @@ async function commitTaskChanges(
   // 一个任务可能产生多轮 user→assistant 对话（工具调用产生中间 user 消息）
   let userMessage: any = null;
   let assistantMessage: any = null;
+  /** 该任务执行期间 assistant 消息累加的 token 消耗 */
+  let tokenUsage = { input: 0, output: 0, cacheRead: 0 };
   try {
     const allMessages = await OpencodeV2.getSessionMessages(baseUrl, sessionId, worktreeDirectory);
     const marker = `## 任务：${task.title}`;
@@ -425,6 +436,15 @@ async function commitTaskChanges(
       const assistantMsgs = allMessages
         .slice(promptIdx + 1)
         .filter((m: any) => m.type === 'assistant');
+
+      // ── 从 assistant 消息中累加 token 消耗 ──
+      for (const m of assistantMsgs) {
+        if (m.tokens) {
+          tokenUsage.input += m.tokens.input || 0;
+          tokenUsage.output += m.tokens.output || 0;
+          tokenUsage.cacheRead += m.tokens.cache?.read || 0;
+        }
+      }
 
       if (assistantMsgs.length === 1) {
         assistantMessage = assistantMsgs[0];
@@ -450,6 +470,13 @@ async function commitTaskChanges(
         const lastAssistantIdx = allMessages.map((m: any) => m.type).lastIndexOf('assistant');
         if (lastAssistantIdx !== -1 && lastAssistantIdx > lastUserIdx) {
           assistantMessage = allMessages[lastAssistantIdx];
+          // 兜底路径也提取 token
+          const lastAssistant = allMessages[lastAssistantIdx];
+          if (lastAssistant.tokens) {
+            tokenUsage.input += lastAssistant.tokens.input || 0;
+            tokenUsage.output += lastAssistant.tokens.output || 0;
+            tokenUsage.cacheRead += lastAssistant.tokens.cache?.read || 0;
+          }
         }
       }
     }
@@ -469,7 +496,7 @@ async function commitTaskChanges(
     },
   });
 
-  return commitHash;
+  return { commitHash, tokenUsage };
 }
 
 /**

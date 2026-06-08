@@ -286,8 +286,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
-  const [showAgentList, setShowAgentList] = useState(false);
-  const [showFeatureMenu, setShowFeatureMenu] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -417,7 +416,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     log.info(S, 'handleToggle', { currentOpen: open });
     setOpen((prev) => !prev);
     setShowSessionList(false);
-    setShowFeatureMenu(false);
+    setShowSettingsMenu(false);
   }, [engineStatus]);
 
   const onFabPointerDown = useCallback((e: React.PointerEvent) => {
@@ -506,33 +505,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
   function formatTime(timestamp: number): string {
     return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  }
-
-  /** 功能二：计算当前会话累计 token 与费用（所有 assistant 消息之和） */
-  const sessionTokens = useMemo(() => {
-    let input = 0;
-    let output = 0;
-    let cost = 0;
-    for (const msg of messages) {
-      if (msg.info.role === 'assistant' && msg.info.tokens) {
-        input += msg.info.tokens.input || 0;
-        output += msg.info.tokens.output || 0;
-        cost += msg.info.cost || 0;
-      }
-    }
-    return { input, output, cost };
-  }, [messages]);
-
-  function formatTokenCount(n: number): string {
-    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-    return String(n);
-  }
-
-  /** 格式化费用：0 不显示，<0.01 显示4位小数，否则2位 */
-  function formatCost(cost: number): string {
-    if (!cost || cost === 0) return '';
-    if (cost < 0.01) return `¥${cost.toFixed(4)}`;
-    return `¥${cost.toFixed(2)}`;
   }
 
   const [chatSize, setChatSize] = useState({ w: 660, h: 640 });
@@ -659,94 +631,140 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                     {activeMode.label}
                   </span>
                 )}
-                {/* 功能二：会话累计 token 徽章 */}
-                {sessionTokens.input > 0 && (
-                  <span
-                    title={`累计 Input: ${sessionTokens.input.toLocaleString()} / Output: ${sessionTokens.output.toLocaleString()}${sessionTokens.cost ? ` / 费用: ¥${sessionTokens.cost.toFixed(4)}` : ''}`}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-indigo-50 text-indigo-500 border border-indigo-100"
-                  >
-                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
-                    </svg>
-                    <span>↑{formatTokenCount(sessionTokens.input)} ↓{formatTokenCount(sessionTokens.output)}{formatCost(sessionTokens.cost)}</span>
-                  </span>
-                )}
                </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {/* 功能菜单：仅当 chatModes 存在且 >1 项时显示 */}
-              {chatModes && chatModes.length > 1 && (
-                <div className="relative">
-                  <button
-                    onClick={() => { log.info(S, 'toggle feature menu'); setShowFeatureMenu((prev) => !prev); setShowSessionList(false); setShowAgentList(false); }}
-                    className={`p-1 rounded hover:bg-gray-100 transition-colors cursor-pointer ${
-                      showFeatureMenu ? 'text-sky-500 bg-sky-50' : 'text-gray-400 hover:text-gray-600'
-                    }`}
-                    title="功能菜单"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                    </svg>
-                  </button>
-
-                  {showFeatureMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-10">
-                      {/* 区块一：AI 上下文模式 */}
-                      <div className="px-3 py-1.5 text-[10px] text-gray-400 font-medium uppercase tracking-wider border-b border-gray-100">
-                        AI 上下文模式
-                      </div>
-                      {chatModes.map((mode) => {
-                        const isActive = mode.key === activeModeKey;
-                        return (
-                          <button
-                            key={mode.key}
-                            onClick={() => {
-                              log.info(S, 'switch chat mode', { key: mode.key });
-                              setActiveModeKey(mode.key);
-                              setShowFeatureMenu(false);
-                            }}
-                            className={`w-full text-left px-3 py-2 text-xs cursor-pointer transition-colors flex items-start gap-2 ${
-                              isActive
-                                ? 'bg-sky-50 text-sky-700'
-                                : 'text-gray-700 hover:bg-gray-50'
-                            }`}
-                          >
-                            {/* ✓ 标记占位，保持对齐 */}
-                            <span className={`w-4 shrink-0 flex items-center justify-center ${isActive ? 'text-sky-500' : 'invisible'}`}>
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.5 12.75l6 6 9-13.5" />
-                              </svg>
-                            </span>
-                            <span className="flex flex-col min-w-0">
-                              <span className="font-medium truncate">{mode.label}</span>
-                              {mode.description && (
-                                <span className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{mode.description}</span>
-                              )}
-                            </span>
-                          </button>
-                        );
-                      })}
-
-                      {/* ── 分隔线：未来可在此下方追加更多区块（如「导出对话」「清空会话」等） ── */}
-                      {/*
-                      <div className="border-t border-gray-100" />
-                      <div className="px-3 py-1.5 text-[10px] text-gray-400 font-medium uppercase tracking-wider border-b border-gray-100">
-                        其他功能
-                      </div>
-                      <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 cursor-pointer flex items-center gap-2">
-                        <span className="w-4 shrink-0 flex items-center justify-center">…</span>
-                        <span>导出对话</span>
-                      </button>
-                      */}
-                    </div>
-                  )}
-                </div>
-              )}
-
+              {/* ── 统一设置下拉菜单（Agent / 上下文模式 / Debug） ── */}
               <div className="relative">
                 <button
-                  onClick={() => { log.info(S, 'toggle session list'); setShowSessionList((prev) => !prev); setShowAgentList(false); setShowFeatureMenu(false); }}
+                  onClick={() => { log.info(S, 'toggle settings menu'); setShowSettingsMenu((prev) => !prev); setShowSessionList(false); }}
+                  className={`p-1 rounded hover:bg-gray-100 transition-colors cursor-pointer ${
+                    showSettingsMenu ? 'text-sky-500 bg-sky-50' : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                  title="设置"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+
+                {showSettingsMenu && (
+                  <div className="absolute right-0 top-full mt-1 w-60 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-10 max-h-[70vh] overflow-y-auto">
+                    {/* ── 区块一：选择 Agent ── */}
+                    {agents.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 text-[10px] text-gray-400 font-medium uppercase tracking-wider border-b border-gray-100 sticky top-0 bg-white z-10">
+                          Agent
+                        </div>
+                        {agents.map((agent) => {
+                          const isActive = agent.name === selectedAgent;
+                          return (
+                            <button
+                              key={agent.name}
+                              onClick={() => {
+                                log.info(S, 'select agent', { agent: agent.name });
+                                setSelectedAgent(agent.name);
+                                setShowSettingsMenu(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 text-xs cursor-pointer transition-colors flex items-start gap-2 ${
+                                isActive ? 'bg-sky-50 text-sky-700' : 'text-gray-700 hover:bg-gray-50'
+                              }`}
+                            >
+                              <span className={`w-4 shrink-0 flex items-center justify-center ${isActive ? 'text-sky-500' : 'invisible'}`}>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.5 12.75l6 6 9-13.5" />
+                                </svg>
+                              </span>
+                              <span className="flex flex-col min-w-0">
+                                <span className="font-medium truncate">{agent.name}</span>
+                                {agent.description && (
+                                  <span className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{agent.description}</span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {/* ── 区块二：AI 上下文模式 ── */}
+                    {chatModes && chatModes.length > 0 && (
+                      <>
+                        {agents.length > 0 && <div className="border-t border-gray-100" />}
+                        <div className="px-3 py-1.5 text-[10px] text-gray-400 font-medium uppercase tracking-wider border-b border-gray-100 sticky top-0 bg-white z-10">
+                          AI 上下文模式
+                        </div>
+                        {chatModes.map((mode) => {
+                          const isActive = mode.key === activeModeKey;
+                          return (
+                            <button
+                              key={mode.key}
+                              onClick={() => {
+                                log.info(S, 'switch chat mode', { key: mode.key });
+                                setActiveModeKey(mode.key);
+                                setShowSettingsMenu(false);
+                              }}
+                              className={`w-full text-left px-3 py-2 text-xs cursor-pointer transition-colors flex items-start gap-2 ${
+                                isActive
+                                  ? 'bg-sky-50 text-sky-700'
+                                  : 'text-gray-700 hover:bg-gray-50'
+                              }`}
+                            >
+                              <span className={`w-4 shrink-0 flex items-center justify-center ${isActive ? 'text-sky-500' : 'invisible'}`}>
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.5 12.75l6 6 9-13.5" />
+                                </svg>
+                              </span>
+                              <span className="flex flex-col min-w-0">
+                                <span className="font-medium truncate">{mode.label}</span>
+                                {mode.description && (
+                                  <span className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{mode.description}</span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+
+                    {/* ── 区块三：调试面板开关（仅开发环境） ── */}
+                    {import.meta.env.DEV && (
+                      <>
+                        {(agents.length > 0 || (chatModes && chatModes.length > 0)) && <div className="border-t border-gray-100" />}
+                        <button
+                          onClick={() => {
+                            setShowDebug((prev) => !prev);
+                            setShowSettingsMenu(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-xs cursor-pointer transition-colors flex items-center gap-2 ${
+                            showDebug ? 'text-orange-600 bg-orange-50' : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className="w-4 shrink-0 flex items-center justify-center">
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 12.75c.414 0 .75-.336.75-.75s-.336-.75-.75-.75-.75.336-.75.75.336.75.75.75z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 7.5h-9m9 0a2.25 2.25 0 012.25 2.25v3.75a5.25 5.25 0 01-5.25 5.25H9.75A5.25 5.25 0 014.5 13.5V9.75A2.25 2.25 0 016.75 7.5m9.75 0V6a2.25 2.25 0 00-2.25-2.25H9A2.25 2.25 0 006.75 6v1.5m6.75 11.25V19.5m-3-2.25v2.25" />
+                            </svg>
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <span>调试面板</span>
+                            {showDebug && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">已开启</span>
+                            )}
+                          </span>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* ── 会话选择器 ── */}
+              <div className="relative">
+                <button
+                  onClick={() => { log.info(S, 'toggle session list'); setShowSessionList((prev) => !prev); setShowSettingsMenu(false); }}
                   className="text-xs text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer max-w-[160px]"
                 >
                   <span className="truncate">{currentSession?.title || '选择会话'}</span>
@@ -833,54 +851,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 )}
               </div>
 
-              <div className="relative">
-                <button
-                  onClick={() => { log.info(S, 'toggle agent list'); setShowAgentList((prev) => !prev); setShowSessionList(false); setShowFeatureMenu(false); }}
-                  className="text-xs text-gray-600 hover:text-gray-800 transition-colors flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 cursor-pointer"
-                >
-                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span>{selectedAgent}</span>
-                </button>
-
-                {showAgentList && (
-                  <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-10">
-                    {agents.map((agent) => (
-                      <div
-                        key={agent.name}
-                        onClick={() => { log.info(S, 'select agent', { agent: agent.name }); setSelectedAgent(agent.name); setShowAgentList(false); }}
-                        className={`flex flex-col px-3 py-2 text-xs cursor-pointer hover:bg-gray-50 transition-colors ${
-                          agent.name === selectedAgent ? 'bg-sky-50 text-sky-700' : 'text-gray-700'
-                        }`}
-                      >
-                        <span className="font-medium">{agent.name}</span>
-                        {agent.description && (
-                          <span className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{agent.description}</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 调试面板按钮 — 仅开发环境可见 */}
-              {import.meta.env.DEV && (
-                <button
-                  onClick={() => setShowDebug((prev) => !prev)}
-                  className={`p-1 rounded hover:bg-gray-100 transition-colors cursor-pointer ${
-                    showDebug ? 'text-orange-500 bg-orange-50' : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                  title="调试面板"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 12.75c.414 0 .75-.336.75-.75s-.336-.75-.75-.75-.75.336-.75.75.336.75.75.75z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 7.5h-9m9 0a2.25 2.25 0 012.25 2.25v3.75a5.25 5.25 0 01-5.25 5.25H9.75A5.25 5.25 0 014.5 13.5V9.75A2.25 2.25 0 016.75 7.5m9.75 0V6a2.25 2.25 0 00-2.25-2.25H9A2.25 2.25 0 006.75 6v1.5m6.75 11.25V19.5m-3-2.25v2.25" />
-                  </svg>
-                </button>
-              )}
-
+              {/* ── 关闭按钮 ── */}
               <button
                 onClick={() => { log.info(S, 'close chat panel'); setOpen(false); }}
                 className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-800 transition-colors cursor-pointer"
@@ -960,12 +931,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                     ))}
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-[10px] text-gray-400">{formatTime(msg.info.time.created)}</p>
-                      {/* 功能二：单条消息 token 统计与费用 */}
-                      {msg.info.tokens && (
-                        <span className="text-[10px] text-gray-400" title={`Input: ${msg.info.tokens.input.toLocaleString()} · Output: ${msg.info.tokens.output.toLocaleString()}${msg.info.cost ? ` · 费用: ¥${msg.info.cost.toFixed(4)}` : ''}${msg.info.tokens.cache?.read ? ` · Cache read: ${msg.info.tokens.cache.read.toLocaleString()}` : ''}`}>
-                          ↑{formatTokenCount(msg.info.tokens.input)} ↓{formatTokenCount(msg.info.tokens.output)}{formatCost(msg.info.cost ?? 0)}
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -1067,19 +1032,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
           </div>
 
           <form onSubmit={handleSubmit} className="shrink-0 border-t border-gray-200 p-3">
-            {isLoading && (
-              <button
-                type="button"
-                onClick={abortGeneration}
-                className="w-full mb-2 text-xs text-red-500 hover:text-red-600 flex items-center justify-center gap-1 py-1 rounded hover:bg-red-50 transition-colors cursor-pointer"
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 10a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0115 10v4a1.5 1.5 0 01-1.5 1.5h-3A1.5 1.5 0 019 14v-4z" />
-                </svg>
-                停止生成
-              </button>
-            )}
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
@@ -1097,15 +1049,29 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                   target.style.height = Math.min(target.scrollHeight, 120) + 'px';
                 }}
               />
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading || engineDisabled}
-                className="shrink-0 w-9 h-9 bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 disabled:opacity-50 rounded-lg flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
-              >
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-                </svg>
-              </button>
+              {isLoading ? (
+                <button
+                  type="button"
+                  onClick={abortGeneration}
+                  title="停止生成"
+                  className="shrink-0 w-9 h-9 bg-red-500 hover:bg-red-600 rounded-lg flex items-center justify-center transition-colors cursor-pointer"
+                >
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={!input.trim() || engineDisabled}
+                  title="发送"
+                  className="shrink-0 w-9 h-9 bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 disabled:opacity-50 rounded-lg flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                  </svg>
+                </button>
+              )}
             </div>
           </form>
 
