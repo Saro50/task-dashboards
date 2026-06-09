@@ -20,7 +20,6 @@ import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
 import DiffPreview from '@/components/DiffPreview';
 import { applyDagreLayout } from '@/utils/layout';
 import { buildTaskPageContext, buildTopicPageContext } from '@/utils/pageContext';
-import { generateIdPool } from '@/utils/idPool';
 import { log } from '@/utils/log';
 
 const S = 'TaskGraphPage';
@@ -195,12 +194,9 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
     [topics, topicId]
   );
 
-  /** 预分配 ID 池：组件生命周期内稳定，供 AI 创建新任务时使用 */
-  const idPool = useMemo(() => generateIdPool(20), []);
-
   const taskContext = useMemo(
-    () => buildTaskPageContext(project, currentTopic ?? null, filteredTasks, idPool),
-    [project, currentTopic, filteredTasks, idPool]
+    () => buildTaskPageContext(project, currentTopic ?? null, filteredTasks),
+    [project, currentTopic, filteredTasks]
   );
 
   /** 主题模式 context：复用 TopicGraphPage 的同一函数，展示项目所有主题概览 */

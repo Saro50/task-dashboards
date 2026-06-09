@@ -19,6 +19,7 @@
     "@koa/cors": "^5.0.0",
     "@opencode-ai/sdk": "^1.15.11",
     "@prisma/client": "^6.9.0",
+    "cuid": "^3.0.0",
     "dotenv": "^16.5.0",
     "koa": "^2.16.1",
     "koa-bodyparser": "^4.4.1",
@@ -26,6 +27,7 @@
     "simple-git": "^3.36.0"
   },
   "devDependencies": {
+    "@types/cuid": "^2.0.4",
     "@types/koa": "^2.15.0",
     "@types/koa-bodyparser": "^4.3.12",
     "@types/koa-router": "^7.4.8",
