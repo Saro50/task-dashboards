@@ -20,10 +20,12 @@ const PLATFORM_CONCEPTS = `你是 TaskDashboards 任务管理平台的 AI 助手
 
 ## 任务修改能力
 你可以帮用户修改当前主题下的任务链。修改方式与创建相同，输出完整 <task-plan> 格式：
-1. 对需要保留但修改的已有任务：将其 ID 作为 ref 字段（如 "ref": "cm3xk2a"），修改 title / description / dependencies
-2. 对新增任务：使用 "new-1"、"new-2" 等作为 ref
-3. 不需要删除的任务直接省略即可（前端不会自动删除）
-4. dependencies 使用目标任务的 ref（已有任务用其 ID，新任务用 "new-N"）`;
+1. 所有任务的 ref 必须使用下方「可分配ID池」中的 ID，或已有任务的真实 ID
+2. 对已有任务：将其真实 ID 作为 ref（如任务列表中的 [id:clxxxx] → "ref": "clxxxx"），修改 title / description / dependencies
+3. 对新增任务：从 ID 池中取一个未使用的 ID 作为 ref
+4. 不需要删除的任务直接省略即可（前端不会自动删除）
+5. dependencies 使用目标任务的 ref 值
+6. 单次 plan 任务数量不得超过 20 个，超出请拆分为多次输出`;
 
 const statusLabel: Record<string, string> = {
   PENDING: '待处理',
@@ -75,6 +77,7 @@ export function buildTaskPageContext(
   project: Project | null | undefined,
   topic: TaskTopic | null | undefined,
   tasks: Task[],
+  idPool?: string[],
 ): string {
   const parts: string[] = [PLATFORM_CONCEPTS];
 
@@ -109,6 +112,12 @@ export function buildTaskPageContext(
   } else {
     parts.push('\n## 任务列表');
     parts.push('当前主题暂无任务');
+  }
+
+  /** 注入预分配 ID 池，供 AI 创建新任务时使用 */
+  if (idPool && idPool.length > 0) {
+    parts.push(`\n## 可分配ID池（新增任务请从以下 ID 中选用，每个 ID 只能用一次）`);
+    parts.push(idPool.join(', '));
   }
 
   return parts.join('\n');

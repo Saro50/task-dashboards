@@ -79,7 +79,7 @@ export function useChat(directory?: string) {
           return [] as Array<{ planHash: string; topicName: string }>;
         }),
       ]);
-      log.info(S, 'loadMessages result', { count: msgs?.length, importedCount: imported.length });
+      log.info(S, 'loadMessages result', { count: msgs?.length, importedCount: imported.length , imported});
       setMessages(msgs);
       setImportedPlanTopics(new Set(imported.map((p) => p.topicName)));
     } catch (err) {

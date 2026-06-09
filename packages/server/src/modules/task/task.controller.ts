@@ -56,18 +56,23 @@ export async function importTaskPlan(ctx: Context) {
       ctx.body = { error: 'Plan already imported', existing: err.existing };
       return;
     }
+    if (err.code === 'INVALID_REF_FORMAT') {
+      ctx.status = 400;
+      ctx.body = { error: err.message };
+      return;
+    }
     throw err;
   }
 }
 
 export async function createTask(ctx: Context) {
-  const { title, description } = ctx.request.body as any;
+  const { id, title, description } = ctx.request.body as any;
   if (!title || typeof title !== 'string') {
     ctx.status = 400;
     ctx.body = { error: 'title is required' };
     return;
   }
-  const task = await Service.create(ctx.params.projectId, { title, description });
+  const task = await Service.create(ctx.params.projectId, { id, title, description });
   ctx.status = 201;
   ctx.body = task;
 }

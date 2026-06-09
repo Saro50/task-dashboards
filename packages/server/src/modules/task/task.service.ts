@@ -80,9 +80,10 @@ export async function getById(id: string) {
   };
 }
 
-export async function create(projectId: string, data: { title: string; description?: string; topicId?: string }) {
+export async function create(projectId: string, data: { id?: string; title: string; description?: string; topicId?: string }) {
   return prisma.task.create({
     data: {
+      ...(data.id ? { id: data.id } : {}),
       projectId,
       title: data.title,
       description: data.description || '',
@@ -116,7 +117,19 @@ export async function remove(id: string) {
   return prisma.task.delete({ where: { id } });
 }
 
+/** cuid 格式校验：以 c 开头 + 小写字母数字，与 Prisma @default(cuid()) 一致 */
+const CUID_RE = /^c[a-z0-9]+$/;
+
 export async function importPlan(projectId: string, plan: ImportTaskPlanRequest): Promise<ImportTaskPlanResponse> {
+  /** 校验所有 ref 必须为 cuid 格式 */
+  for (const item of plan.tasks) {
+    if (!CUID_RE.test(item.ref)) {
+      const err: any = new Error(`Invalid ref format: "${item.ref}". Must be cuid format (e.g. "clxxxx").`);
+      err.code = 'INVALID_REF_FORMAT';
+      throw err;
+    }
+  }
+
   const planHash = computePlanHash(plan.topic, projectId, plan.topicId);
 
   if (plan.chatSessionId) {
@@ -131,7 +144,6 @@ export async function importPlan(projectId: string, plan: ImportTaskPlanRequest)
     }
   }
 
-  const refToId = new Map<string, string>();
   const taskResults: ImportTaskPlanResponse['tasks'] = [];
 
   const result = await prisma.$transaction(async (tx) => {
@@ -148,16 +160,17 @@ export async function importPlan(projectId: string, plan: ImportTaskPlanRequest)
       topicId = topic.id;
     }
 
+    /** ref 就是真实 ID，直接用作 Task.id */
     for (const item of plan.tasks) {
       const task = await tx.task.create({
         data: {
+          id: item.ref,
           projectId,
           topicId,
           title: item.title,
           description: item.description || '',
         },
       });
-      refToId.set(item.ref, task.id);
       taskResults.push({
         id: task.id,
         ref: item.ref,
@@ -166,15 +179,14 @@ export async function importPlan(projectId: string, plan: ImportTaskPlanRequest)
       });
     }
 
+    /** 依赖创建：ref 直接就是目标任务的 ID */
     let depCount = 0;
     for (const item of plan.tasks) {
       for (const depRef of item.dependencies) {
-        const dependsOnId = refToId.get(depRef);
-        if (!dependsOnId) continue;
         await tx.taskDependency.create({
           data: {
-            taskId: refToId.get(item.ref)!,
-            dependsOnId,
+            taskId: item.ref,
+            dependsOnId: depRef,
           },
         });
         depCount++;

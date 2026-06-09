@@ -14,6 +14,8 @@ export interface Task {
 }
 
 export interface CreateTaskInput {
+  /** 预分配 ID（cuid 格式），不传则由后端自动生成 */
+  id?: string;
   title: string;
   description?: string;
 }
