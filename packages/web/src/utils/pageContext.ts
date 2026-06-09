@@ -41,9 +41,22 @@ function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, max) + '...' : s;
 }
 
+/**
+ * 通用：在 context 末尾注入预分配 ID 池。
+ * 上游：TopicGraphPage / TaskGraphPage 生成 ID 池并传入。
+ * 下游：AI 在 <task-plan> 中用这些 ID 作为新任务的 ref。
+ */
+function appendIdPool(parts: string[], idPool?: string[]): void {
+  if (idPool && idPool.length > 0) {
+    parts.push(`\n## 可分配ID池（新增任务请从以下 ID 中选用，每个 ID 只能用一次）`);
+    parts.push(idPool.join(', '));
+  }
+}
+
 export function buildTopicPageContext(
   project: Project | null | undefined,
   topics: TaskTopic[],
+  idPool?: string[],
 ): string {
   const parts: string[] = [PLATFORM_CONCEPTS];
 
@@ -70,6 +83,7 @@ export function buildTopicPageContext(
     parts.push('当前项目暂无主题');
   }
 
+  appendIdPool(parts, idPool);
   return parts.join('\n');
 }
 
@@ -114,11 +128,6 @@ export function buildTaskPageContext(
     parts.push('当前主题暂无任务');
   }
 
-  /** 注入预分配 ID 池，供 AI 创建新任务时使用 */
-  if (idPool && idPool.length > 0) {
-    parts.push(`\n## 可分配ID池（新增任务请从以下 ID 中选用，每个 ID 只能用一次）`);
-    parts.push(idPool.join(', '));
-  }
-
+  appendIdPool(parts, idPool);
   return parts.join('\n');
 }

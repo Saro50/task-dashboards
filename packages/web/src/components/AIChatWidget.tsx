@@ -2,11 +2,11 @@ import { useState, useRef, useEffect, useCallback, useImperativeHandle, useMemo,
 import type { EngineStatus } from './Layout';
 import { useChat } from '@/hooks/useChat';
 import { log } from '@/utils/log';
+import { chatDebug } from '@/utils/chatDebug';
 import { unwrap } from '@/api/lib';
 import type { ChatMessage, ChatPart, ChatMode } from '@/types/chat';
 import type { TaskPlan, Task } from '@/types/task';
 import TaskPlanPreview from './TaskPlanPreview';
-import { ChatDebugPanel, type ContextSource } from './ChatDebugPanel';
 
 const S = 'AIChatWidget';
 
@@ -23,8 +23,6 @@ interface Props {
    */
   chatModes?: ChatMode[];
   onPlanImported?: () => void;
-  /** 调试面板数据源（仅开发环境使用） */
-  debugSource?: ContextSource;
   /** 当前主题的已有任务列表，用于 TaskPlanPreview diff 比对与更新 */
   existingTasks?: Task[];
 }
@@ -287,12 +285,11 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, chatModes, onPlanImported, debugSource, existingTasks }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, chatModes, onPlanImported, existingTasks }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
-  const [showDebug, setShowDebug] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [agents, setAgents] = useState<Array<{ name: string; description?: string }>>([]);
@@ -410,6 +407,17 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       loadSessions();
       loadAgents();
       connectSSE();
+      /** chatDebug.session — 面板打开时输出会话状态概要 */
+      chatDebug.session({
+        sessionId: currentSessionId,
+        sessionTitle: currentSession?.title,
+        agent: selectedAgent,
+        directory,
+        connected: isConnected,
+        loading: isLoading,
+        compacted,
+        messageCount: messages.length,
+      });
     }
   }, [open]);
 
@@ -494,6 +502,14 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     } else {
       log.info(S, 'skipping pageContext injection (unchanged)');
     }
+
+    /** chatDebug.systemPrompt — 在 DevTools Console 输出系统提示词详情 */
+    chatDebug.systemPrompt({
+      pageContext: effectivePageContext,
+      activeMode,
+      contextToSend,
+      reason: isFirstMessage ? 'first-message' : contextChanged ? 'context-changed' : 'unchanged',
+    });
 
     await sendMessage(text, contextToSend);
     log.info(S, 'sendMessage returned');
@@ -733,35 +749,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                         })}
                       </>
                     )}
-
-                    {/* ── 区块三：调试面板开关（仅开发环境） ── */}
-                    {import.meta.env.DEV && (
-                      <>
-                        {(agents.length > 0 || (chatModes && chatModes.length > 0)) && <div className="border-t border-gray-100" />}
-                        <button
-                          onClick={() => {
-                            setShowDebug((prev) => !prev);
-                            setShowSettingsMenu(false);
-                          }}
-                          className={`w-full text-left px-3 py-2 text-xs cursor-pointer transition-colors flex items-center gap-2 ${
-                            showDebug ? 'text-orange-600 bg-orange-50' : 'text-gray-700 hover:bg-gray-50'
-                          }`}
-                        >
-                          <span className="w-4 shrink-0 flex items-center justify-center">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 12.75c.414 0 .75-.336.75-.75s-.336-.75-.75-.75-.75.336-.75.75.336.75.75.75z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 7.5h-9m9 0a2.25 2.25 0 012.25 2.25v3.75a5.25 5.25 0 01-5.25 5.25H9.75A5.25 5.25 0 014.5 13.5V9.75A2.25 2.25 0 016.75 7.5m9.75 0V6a2.25 2.25 0 00-2.25-2.25H9A2.25 2.25 0 006.75 6v1.5m6.75 11.25V19.5m-3-2.25v2.25" />
-                            </svg>
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <span>调试面板</span>
-                            {showDebug && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600">已开启</span>
-                            )}
-                          </span>
-                        </button>
-                      </>
-                    )}
                   </div>
                 )}
               </div>
@@ -868,16 +855,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
               </button>
             </div>
           </div>
-
-          {/* 调试面板 — 仅开发环境渲染 */}
-          {import.meta.env.DEV && showDebug && (
-            <ChatDebugPanel
-              pageContext={effectivePageContext}
-              lastSent={lastSent ?? null}
-              debugSource={debugSource}
-              messages={messages}
-            />
-          )}
 
           {/* 功能三：引擎自动压缩提示 */}
           {compacted && (

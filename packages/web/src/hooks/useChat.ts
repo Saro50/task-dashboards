@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { chatApi } from '@/api/chat';
 import { taskApi } from '@/api/task';
 import { log } from '@/utils/log';
+import { chatDebug } from '@/utils/chatDebug';
 import type { ChatSession, ChatMessage, SSEEventPayload } from '@/types/chat';
 
 const S = 'useChat';
@@ -82,6 +83,11 @@ export function useChat(directory?: string) {
       log.info(S, 'loadMessages result', { count: msgs?.length, importedCount: imported.length , imported});
       setMessages(msgs);
       setImportedPlanTopics(new Set(imported.map((p) => p.topicName)));
+
+      /** chatDebug — 消息加载后输出 Token 统计和历史消息 */
+      chatDebug.tokens(msgs);
+      chatDebug.history(msgs);
+      chatDebug.roundSummary(msgs);
     } catch (err) {
       log.error(S, 'loadMessages error', err);
       setMessages([]);
@@ -112,9 +118,11 @@ export function useChat(directory?: string) {
           if (info?.role === 'assistant' && !info?.finish) {
             assistantMsgId = info.id;
             log.info(S, 'SSE assistant message started', { id: info.id });
+            chatDebug.sseEvent('message.updated', { role: 'assistant', id: info.id, finish: false });
           }
           if (info?.role === 'assistant' && info?.finish) {
             log.info(S, 'SSE assistant finished', { finish: info.finish, deltasReceived: deltaCount });
+            chatDebug.sseEvent('message.updated', { role: 'assistant', finish: info.finish, deltas: deltaCount });
             setIsLoading(false);
             setStreamingText('');
             clearLoadingTimer();
@@ -161,6 +169,7 @@ export function useChat(directory?: string) {
 
         if (payload.type === 'session.idle') {
           log.info(S, 'SSE session.idle', { deltasReceived: deltaCount });
+          chatDebug.sseEvent('session.idle', { deltasReceived: deltaCount });
           setIsLoading(false);
           setStreamingText('');
           clearLoadingTimer();
@@ -196,6 +205,7 @@ export function useChat(directory?: string) {
 
         if (payload.type === 'session.compacted') {
           log.info(S, 'SSE session.compacted — engine auto-compacted context');
+          chatDebug.sseEvent('session.compacted');
           setCompacted(true);
         }
       },
@@ -257,7 +267,10 @@ export function useChat(directory?: string) {
     log.info(S, 'createSession', { directory, title });
     const session = await chatApi.createSession(directory, title);
     log.info(S, 'createSession result', session);
-    setSessions((prev) => [session, ...prev]);
+    setSessions((prev) => {
+      if (prev.some((s) => s.id === session.id)) return prev;
+      return [session, ...prev];
+    });
     setCurrentSessionId(session.id);
     setMessages([]);
     setStreamingText('');
@@ -282,6 +295,9 @@ export function useChat(directory?: string) {
 
     lastSentTextRef.current = text;
     setLastSent({ text, agent: selectedAgent, context, timestamp: Date.now() });
+
+    /** chatDebug.request — 在 DevTools Console 输出完整请求信息 */
+    chatDebug.request({ text, agent: selectedAgent, context, directory, sessionId: currentSessionId });
     setMessages((prev) => [
       ...prev,
       {

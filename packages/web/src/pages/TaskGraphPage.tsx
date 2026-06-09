@@ -222,7 +222,7 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
 
   /** pageContext 保留作为兜底，与 taskContext 保持一致（向后兼容） */
   const pageContext = taskContext;
-
+  console.log('pageContext;',pageContext)
   const {
     executeChain,
     cancelExecution,
@@ -606,7 +606,7 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} chatModes={chatModes} debugSource={{ type: 'task', project: project ?? null, topic: currentTopic ?? null, tasks: filteredTasks }} onPlanImported={refetch} existingTasks={filteredTasks} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingTasks={filteredTasks} />
 
       {showDiffPreview && execution && execution.status === 'COMPLETED' && (
         <DiffPreview

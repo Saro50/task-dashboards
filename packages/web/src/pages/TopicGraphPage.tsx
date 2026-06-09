@@ -14,6 +14,7 @@ import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
 import { applyDagreLayout } from '@/utils/layout';
 import { buildTopicPageContext } from '@/utils/pageContext';
+import { generateIdPool } from '@/utils/idPool';
 import { log } from '@/utils/log';
 
 const S = 'TopicGraphPage';
@@ -76,9 +77,12 @@ export default function TopicGraphPage({ engineStatus }: Props) {
   const [editingName, setEditingName] = useState('');
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
+  /** 预分配 ID 池：组件生命周期内稳定，供 AI 创建新任务时使用 */
+  const idPool = useMemo(() => generateIdPool(20), []);
+
   const pageContext = useMemo(
-    () => buildTopicPageContext(project, topics),
-    [project, topics]
+    () => buildTopicPageContext(project, topics, idPool),
+    [project, topics, idPool]
   );
 
   const handleEditTopic = useCallback((topicId: string) => {
@@ -318,7 +322,7 @@ export default function TopicGraphPage({ engineStatus }: Props) {
 
       </div>
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} debugSource={{ type: 'topic', project: project ?? null, topics }} onPlanImported={refetch} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} onPlanImported={refetch} />
     </div>
   );
 }
