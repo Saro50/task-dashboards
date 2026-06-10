@@ -306,6 +306,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [agents, setAgents] = useState<Array<{ name: string; description?: string }>>([]);
@@ -548,6 +549,9 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   }
 
   const [chatSize, setChatSize] = useState({ w: 660, h: 640 });
+  /** 全屏模式：记录进入全屏前的 chatSize 和 chatPos，用于还原 */
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const beforeFullscreenRef = useRef<{ size: { w: number; h: number }; pos: { x: number; y: number } } | null>(null);
   const resizingRef = useRef(false);
   const startRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
   const chatDraggingRef = useRef(false);
@@ -577,6 +581,31 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [chatPos, fabPos.x, fabPos.y, chatSize.w, chatSize.h]);
+
+  /** 切换全屏：进入全屏时记录当前尺寸/位置，退出时还原 */
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => {
+      if (!prev) {
+        // 进入全屏：记录当前状态
+        const currentPos = chatPos ?? { x: Math.max(8, fabPos.x - chatSize.w), y: Math.max(8, window.innerHeight - fabPos.y - chatSize.h) };
+        beforeFullscreenRef.current = { size: { ...chatSize }, pos: { ...currentPos } };
+        setChatSize({ w: window.innerWidth - 32, h: window.innerHeight - 32 });
+        setChatPos({ x: 16, y: 16 });
+      } else {
+        // 退出全屏：从 ref 恢复（若无记录则用默认值）
+        const saved = beforeFullscreenRef.current;
+        if (saved) {
+          setChatSize(saved.size);
+          setChatPos(saved.pos);
+        } else {
+          setChatSize({ w: 660, h: 640 });
+          setChatPos(null);
+        }
+        beforeFullscreenRef.current = null;
+      }
+      return !prev;
+    });
+  }, [chatSize, chatPos, fabPos.x, fabPos.y]);
 
   const startResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -634,8 +663,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             height: chatSize.h,
             maxWidth: 'calc(100vw - 2rem)',
             maxHeight: 'calc(100vh - 2rem)',
-            left: chatPos?.x ?? Math.max(8, fabPos.x - chatSize.w),
-            top: chatPos?.y ?? Math.max(8, window.innerHeight - fabPos.y - chatSize.h),
+            left: isFullscreen ? 16 : (chatPos?.x ?? Math.max(8, fabPos.x - chatSize.w)),
+            top: isFullscreen ? 16 : (chatPos?.y ?? Math.max(8, window.innerHeight - fabPos.y - chatSize.h)),
           }}
         >
           <div
@@ -862,7 +891,25 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 )}
               </div>
 
-              {/* ── 关闭按钮 ── */}
+              {/* 全屏切换按钮 — 所有环境可见 */}
+              <button
+                onClick={toggleFullscreen}
+                className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                title={isFullscreen ? '还原大小' : '全屏'}
+              >
+                {isFullscreen ? (
+                  /* 还原图标：四向箭头收缩 */
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+                  </svg>
+                ) : (
+                  /* 全屏图标：四向箭头扩张 */
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+                  </svg>
+                )}
+              </button>
+
               <button
                 onClick={() => { log.info(S, 'close chat panel'); setOpen(false); }}
                 className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-800 transition-colors cursor-pointer"
