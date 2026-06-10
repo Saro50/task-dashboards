@@ -233,6 +233,22 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
     maxConcurrency,
   });
 
+  /**
+   * 计算当前有效工作目录：
+   * - 当 execution 拥有 worktreeDirectory 且状态非 MERGED 时，使用 worktree 目录
+   *   （MERGED 后 worktree 已被清理，应回退到主仓库路径）
+   * - 其余情况回退到 project.path
+   *
+   * 下游影响：AIChatWidget 通过 directory prop 接收此值，决定 AI 在哪个目录上下文中执行命令；
+   * 标题栏的目录 Badge 也据此展示当前工作目录的 folder name。
+   */
+  const effectiveDirectory = useMemo(
+    () => (execution?.worktreeDirectory && execution.status !== 'MERGED'
+      ? execution.worktreeDirectory
+      : project?.path) ?? project?.path,
+    [execution?.worktreeDirectory, execution?.status, project?.path]
+  );
+
   const restoredRef = useRef(false);
   useEffect(() => {
     restoreExecution();
@@ -587,7 +603,7 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} taskId={taskId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingSteps={steps} currentTaskName={taskName} />
+      <AIChatWidget ref={chatRef} directory={effectiveDirectory} engineStatus={engineStatus} projectId={projectId} taskId={taskId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingSteps={steps} currentTaskName={taskName} />
 
       {showDiffPreview && execution && execution.status === 'COMPLETED' && (
         <DiffPreview
