@@ -3,7 +3,7 @@
 ## 目标
 
 AI 助手窗口需要感知当前用户访问页面的上下文信息，例如：
-- 在项目页下，AI 助手能知道当前项目的所有「主题」
+- 在项目页下，AI 助手能知道当前项目的所有「任务」
 - AI 助手掌握平台的所有概念和术语
 - 用户提问时，AI 以平台术语和信息回复
 
@@ -57,7 +57,7 @@ OpenCode SDK 的 `session.promptAsync` 支持 `system` 参数，用于注入系�
 ### 架构
 
 ```
-前端页面 (TopicGraphPage / TaskGraphPage)
+前端页面 (TaskGraphPage / StepGraphPage)
   │ 收集当前页面数据 → pageContext.ts 构建上下文字符串
   │
   ▼
@@ -79,16 +79,16 @@ LLM 收到: [agent原始prompt] + [system追加指令] + [对话历史] + [用�
 ### 数据流
 
 ```
-用户输入 "列出所有主题"
+用户输入 "列出所有任务"
   → 前端构建 pageContext（平台术语 + 当前页面数据）
   → 后端调用 promptAsync({
-      parts: [{ type: 'text', text: '列出所有主题' }],
+      parts: [{ type: 'text', text: '列出所有任务' }],
       agent: 'task-helper',
       system: '<平台术语和页面上下文，约300-800 tokens>'
     })
   → AI 收到完整上下文，基于平台术语和数据回复
   → 用户看到正常的 AI 回复
-  → 对话历史中只有 '列出所有主题'，不含上下文
+  → 对话历史中只有 '列出所有任务'，不含上下文
 ```
 
 ### Token 开销分析
@@ -119,8 +119,8 @@ LLM 收到: [agent原始prompt] + [system追加指令] + [对话历史] + [用�
 | `packages/web/src/api/chat.ts` | `sendMessage` 新增 `context` 参数 |
 | `packages/web/src/hooks/useChat.ts` | `sendMessage` 接受并传递 `context` |
 | `packages/web/src/components/AIChatWidget.tsx` | Props 新增 `pageContext`，传递到 `useChat` |
-| `packages/web/src/pages/TopicGraphPage.tsx` | 用 topics + project 数据构建上下文 |
-| `packages/web/src/pages/TaskGraphPage.tsx` | 用 tasks + topics + project 数据构建上下文 |
+| `packages/web/src/pages/TaskGraphPage.tsx` | 用 tasks + project 数据构建上下文 |
+| `packages/web/src/pages/StepGraphPage.tsx` | 用 steps + tasks + project 数据构建上下文 |
 
 ### 不需要的改动
 
@@ -133,21 +133,21 @@ LLM 收到: [agent原始prompt] + [system追加指令] + [对话历史] + [用�
 你是 TaskDashboards 任务管理平台的 AI 助手。请使用以下平台术语与用户交流。
 
 ## 平台概念
-- 项目(Project): 顶层容器，包含多个主题
-- 主题(Topic): 功能模块划分，包含多个任务
-- 任务(Task): 工作单元，状态有 PENDING/IN_PROGRESS/COMPLETED/BLOCKED
+- 项目(Project): 顶层容器，包含多个任务
+- 任务(Task): 功能模块划分，包含多个步骤
+- 步骤(Step): 工作单元，状态有 PENDING/IN_PROGRESS/COMPLETED/BLOCKED
 - 执行(Execution): 按依赖顺序在 worktree 隔离环境中执行任务链
-- 任务计划(TaskPlan): AI 生成的结构化任务规划，包含主题、概述和任务列表
+- 任务计划(TaskPlan): AI 生成的结构化任务规划，包含任务、概述和步骤列表
 
 ## 当前页面
-页面类型: 项目主题图谱
+页面类型: 项目任务图谱
 项目: MyProject
 路径: /path/to/project
 
 ## 当前数据
-主题列表:
-1. 用户认证 | 状态: IN_PROGRESS | 任务: 3/5 完成
-2. 数据管理 | 状态: PENDING | 任务: 0/4 完成
+任务列表:
+1. 用户认证 | 状态: IN_PROGRESS | 步骤: 3/5 完成
+2. 数据管理 | 状态: PENDING | 步骤: 0/4 完成
 ```
 
 ## 验证脚本

@@ -24,7 +24,7 @@ pnpm add simple-git --filter @task-dashboards/server
 | **6** | `packages/server/src/modules/execution/execution.routes.ts` | 注册 `GET /diff` 路由 |
 | **7** | `packages/web/src/api/execution.ts` | 新增 `getDiff()` |
 | **8** | `packages/web/src/types/execution.ts` | 新增 `FileDiff` 类型 |
-| **9** | `packages/web/src/pages/TaskGraphPage.tsx` | 合并前展示变更预览 |
+| **9** | `packages/web/src/pages/StepGraphPage.tsx` | 合并前展示变更预览 |
 | **10** | `packages/web/src/components/MergeDialog.tsx` | 改造：展示 diff 预览 + 确认合并 |
 
 ---
@@ -48,7 +48,7 @@ pnpm add simple-git --filter @task-dashboards/server
    b) simple-git(project.path).merge(['--squash', worktreeBranch])
       ├─ 成功 → 继续
       └─ 冲突 → merge --abort，返回错误，execution 保持 COMPLETED
-   c) simple-git(project.path).commit(`feat: ${topicName} 任务链执行完成`)
+   c) simple-git(project.path).commit(`feat: ${taskName} 任务链执行完成`)
    d) OpencodeV2.removeWorktree(baseUrl, project.path, worktreeDirectory)
    e) prisma update → status: MERGED, targetBranch
   ↓
@@ -142,8 +142,8 @@ export async function merge(executionId: string, targetBranch: string) {
     throw new Error(`合并冲突: ${err.message}`);
   }
 
-  const topic = await prisma.taskTopic.findUnique({ where: { id: execution.topicId } });
-  await git.commit(`feat: ${topic?.name ?? '任务链'} 执行完成`);
+  const task = await prisma.task.findUnique({ where: { id: execution.taskId } });
+  await git.commit(`feat: ${task?.name ?? '任务链'} 执行完成`);
 
   // 销毁 worktree
   if (execution.worktreeDirectory) {

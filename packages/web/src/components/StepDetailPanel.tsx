@@ -1,32 +1,32 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Task, TaskStatus, UpdateTaskInput } from '@/types/task';
+import type { Step, StepStatus, UpdateStepInput } from '@/types/step';
 import type { FileDiff } from '@/types/execution';
 import type { SessionMessage, SessionMessageUser, SessionMessageAssistant } from '@/types/session-message';
-import { taskApi } from '@/api/task';
+import { stepApi } from '@/api/step';
 import { executionApi } from '@/api/execution';
 import { log } from '@/utils/log';
 import { Collapsible } from '@/components/session-message/Collapsible';
 import { AssistantContent } from '@/components/session-message/AssistantContent';
 
-const S = 'TaskDetailPanel';
+const S = 'StepDetailPanel';
 
-const statusConfig: Record<TaskStatus, { label: string; iconBg: string; iconColor: string; ring: string }> = {
+const statusConfig: Record<StepStatus, { label: string; iconBg: string; iconColor: string; ring: string }> = {
   PENDING: { label: '待办', iconBg: 'bg-gray-100', iconColor: 'text-gray-500', ring: 'ring-gray-300' },
   IN_PROGRESS: { label: '进行中', iconBg: 'bg-sky-100', iconColor: 'text-sky-600', ring: 'ring-sky-300' },
   COMPLETED: { label: '已完成', iconBg: 'bg-green-100', iconColor: 'text-green-600', ring: 'ring-green-300' },
   BLOCKED: { label: '已阻塞', iconBg: 'bg-red-100', iconColor: 'text-red-600', ring: 'ring-red-300' },
 };
 
-const statusDotColor: Record<TaskStatus, string> = {
+const statusDotColor: Record<StepStatus, string> = {
   PENDING: 'bg-gray-400',
   IN_PROGRESS: 'bg-sky-500',
   COMPLETED: 'bg-green-500',
   BLOCKED: 'bg-red-500',
 };
 
-const statusOptions: { value: TaskStatus; label: string }[] = [
+const statusOptions: { value: StepStatus; label: string }[] = [
   { value: 'PENDING', label: '待办' },
   { value: 'IN_PROGRESS', label: '进行中' },
   { value: 'COMPLETED', label: '已完成' },
@@ -40,8 +40,8 @@ function diffStatusLabel(status: string): { text: string; color: string } {
 }
 
 interface Props {
-  task: Task;
-  allTasks: Task[];
+  step: Step;
+  allSteps: Step[];
   executionId?: string;
   onClose: () => void;
   onUpdated: () => void;
@@ -60,7 +60,7 @@ function Modal({ open, onClose, children }: { open: boolean; onClose: () => void
   );
 }
 
-function StatusIcon({ status, onClick, disabled, title }: { status: TaskStatus; onClick: () => void; disabled?: boolean; title?: string }) {
+function StatusIcon({ status, onClick, disabled, title }: { status: StepStatus; onClick: () => void; disabled?: boolean; title?: string }) {
   const cfg = statusConfig[status];
   const defaultTitle = disabled ? '执行中不可修改状态' : `状态: ${cfg.label}（点击修改）`;
   return (
@@ -130,68 +130,68 @@ function DescriptionRenderer({ description }: { description: string }) {
   );
 }
 
-export default function TaskDetailPanel({ task, allTasks, executionId, onClose, onUpdated, onHoverDep, disabled }: Props) {
+export default function StepDetailPanel({ step, allSteps, executionId, onClose, onUpdated, onHoverDep, disabled }: Props) {
   const locked = !!executionId;
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingStatus, setEditingStatus] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
   const [showDepModal, setShowDepModal] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(task.title);
-  const [descDraft, setDescDraft] = useState(task.description);
+  const [titleDraft, setTitleDraft] = useState(step.title);
+  const [descDraft, setDescDraft] = useState(step.description);
   const [saving, setSaving] = useState(false);
   const [addingDepId, setAddingDepId] = useState<string | null>(null);
-  const [taskDiffs, setTaskDiffs] = useState<FileDiff[]>([]);
+  const [stepDiffs, setStepDiffs] = useState<FileDiff[]>([]);
   const [diffLoading, setDiffLoading] = useState(false);
   const [diffError, setDiffError] = useState('');
   const [expandedDiffFile, setExpandedDiffFile] = useState<string | null>(null);
-  const [taskMessages, setTaskMessages] = useState<SessionMessage[]>([]);
+  const [stepMessages, setStepMessages] = useState<SessionMessage[]>([]);
   const [msgLoading, setMsgLoading] = useState(false);
   const [msgUnavailable, setMsgUnavailable] = useState(false);
 
-  const deps = allTasks.filter((t) => task.dependencies.includes(t.id));
-  const dependents = allTasks.filter((t) => t.dependencies.includes(task.id));
+  const deps = allSteps.filter((t) => step.dependencies.includes(t.id));
+  const dependents = allSteps.filter((t) => t.dependencies.includes(step.id));
 
-  // 将任务消息按类型拆分：user → AI 输入（提示词），assistant → AI 输出（回复）
+  // 将步骤消息按类型拆分：user → AI 输入（提示词），assistant → AI 输出（回复）
   const userMsgs = useMemo(
-    () => taskMessages.filter((m): m is SessionMessageUser => m.type === 'user'),
-    [taskMessages],
+    () => stepMessages.filter((m): m is SessionMessageUser => m.type === 'user'),
+    [stepMessages],
   );
   const assistantMsgs = useMemo(
-    () => taskMessages.filter((m): m is SessionMessageAssistant => m.type === 'assistant'),
-    [taskMessages],
+    () => stepMessages.filter((m): m is SessionMessageAssistant => m.type === 'assistant'),
+    [stepMessages],
   );
 
-  // 获取任务变更 diff
+  // 获取步骤变更 diff
   useEffect(() => {
-    if (!executionId || task.status !== 'COMPLETED') {
-      setTaskDiffs([]);
+    if (!executionId || step.status !== 'COMPLETED') {
+      setStepDiffs([]);
       return;
     }
     let cancelled = false;
     setDiffLoading(true);
     setDiffError('');
     executionApi
-      .getTaskDiff(task.id, executionId)
+      .getStepDiff(step.id, executionId)
       .then((res) => {
         if (!cancelled) {
-          setTaskDiffs(res.diffs ?? []);
+          setStepDiffs(res.diffs ?? []);
           setDiffLoading(false);
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          log.error(S, 'getTaskDiff error', err);
+          log.error(S, 'getStepDiff error', err);
           setDiffError(err.message ?? '获取变更失败');
           setDiffLoading(false);
         }
       });
     return () => { cancelled = true; };
-  }, [task.id, executionId, task.status]);
+  }, [step.id, executionId, step.status]);
 
-  // 获取任务 AI 输出消息
+  // 获取步骤 AI 输出消息
   useEffect(() => {
-    if (!executionId || !['IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(task.status)) {
-      setTaskMessages([]);
+    if (!executionId || !['IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(step.status)) {
+      setStepMessages([]);
       setMsgUnavailable(false);
       return;
     }
@@ -199,29 +199,29 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
     setMsgLoading(true);
     setMsgUnavailable(false);
     executionApi
-      .getTaskMessages(task.id, executionId)
+      .getStepMessages(step.id, executionId)
       .then((res) => {
         if (!cancelled) {
-          setTaskMessages(res.messages ?? []);
+          setStepMessages(res.messages ?? []);
           setMsgUnavailable(!!res.unavailable);
           setMsgLoading(false);
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          log.error(S, 'getTaskMessages error', err);
-          setTaskMessages([]);
+          log.error(S, 'getStepMessages error', err);
+          setStepMessages([]);
           setMsgLoading(false);
         }
       });
     return () => { cancelled = true; };
-  }, [task.id, executionId, task.status]);
+  }, [step.id, executionId, step.status]);
 
-  const saveField = useCallback(async (input: UpdateTaskInput) => {
+  const saveField = useCallback(async (input: UpdateStepInput) => {
     if (Object.keys(input).length === 0) return;
     setSaving(true);
     try {
-      const resp = await taskApi.update(task.id, input);
+      const resp = await stepApi.update(step.id, input);
       log.info(S, 'saveField response', resp);
       onUpdated();
     } catch (err: any) {
@@ -230,52 +230,52 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
     } finally {
       setSaving(false);
     }
-  }, [task.id, onUpdated]);
+  }, [step.id, onUpdated]);
 
   const handleSaveTitle = useCallback(() => {
     const trimmed = titleDraft.trim();
-    if (!trimmed || trimmed === task.title) {
-      setTitleDraft(task.title);
+    if (!trimmed || trimmed === step.title) {
+      setTitleDraft(step.title);
       setEditingTitle(false);
       return;
     }
     saveField({ title: trimmed }).then(() => setEditingTitle(false));
-  }, [titleDraft, task.title, saveField]);
+  }, [titleDraft, step.title, saveField]);
 
-  const handleStatusChange = useCallback((status: TaskStatus) => {
-    if (status === task.status) {
+  const handleStatusChange = useCallback((status: StepStatus) => {
+    if (status === step.status) {
       setEditingStatus(false);
       return;
     }
     saveField({ status }).then(() => setEditingStatus(false));
-  }, [task.status, saveField]);
+  }, [step.status, saveField]);
 
   const handleDescSave = useCallback(() => {
-    if (descDraft === task.description) {
+    if (descDraft === step.description) {
       setEditingDesc(false);
       return;
     }
     saveField({ description: descDraft }).then(() => setEditingDesc(false));
-  }, [descDraft, task.description, saveField]);
+  }, [descDraft, step.description, saveField]);
 
   const handleDelete = useCallback(async () => {
-    if (!confirm('确定删除此任务？')) return;
-    log.info(S, 'handleDelete', { taskId: task.id });
+    if (!confirm('确定删除此步骤？')) return;
+    log.info(S, 'handleDelete', { stepId: step.id });
     try {
-      await taskApi.remove(task.id);
+      await stepApi.remove(step.id);
       onUpdated();
       onClose();
     } catch (err: any) {
       log.error(S, 'handleDelete error', err);
       alert(err.message);
     }
-  }, [task.id, onUpdated, onClose]);
+  }, [step.id, onUpdated, onClose]);
 
   const handleAddDep = useCallback(async (depId: string) => {
     if (addingDepId) return;
     setAddingDepId(depId);
     try {
-      await taskApi.addDependency(task.id, depId);
+      await stepApi.addDependency(step.id, depId);
       onUpdated();
     } catch (err: any) {
       log.error(S, 'handleAddDep error', err);
@@ -283,30 +283,30 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
     } finally {
       setAddingDepId(null);
     }
-  }, [task.id, onUpdated, addingDepId]);
+  }, [step.id, onUpdated, addingDepId]);
 
   const handleRemoveDep = useCallback(async (depId: string) => {
     try {
-      await taskApi.removeDependency(task.id, depId);
+      await stepApi.removeDependency(step.id, depId);
       onUpdated();
     } catch (err: any) {
       log.error(S, 'handleRemoveDep error', err);
       alert(err.message);
     }
-  }, [task.id, onUpdated]);
+  }, [step.id, onUpdated]);
 
   const handleRemoveDependent = useCallback(async (dependentId: string) => {
     try {
-      await taskApi.removeDependency(dependentId, task.id);
+      await stepApi.removeDependency(dependentId, step.id);
       onUpdated();
     } catch (err: any) {
       log.error(S, 'handleRemoveDependent error', err);
       alert(err.message);
     }
-  }, [task.id, onUpdated]);
+  }, [step.id, onUpdated]);
 
-  const availableToAdd = allTasks.filter(
-    (t) => t.id !== task.id && !task.dependencies.includes(t.id)
+  const availableToAdd = allSteps.filter(
+    (t) => t.id !== step.id && !step.dependencies.includes(t.id)
   );
 
   return (
@@ -316,14 +316,14 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2
             className={`text-base font-semibold text-gray-800 truncate transition-colors ${locked ? 'cursor-default' : 'cursor-pointer hover:text-sky-600'}`}
-            onClick={() => { if (!locked) { setTitleDraft(task.title); setEditingTitle(true); } }}
+            onClick={() => { if (!locked) { setTitleDraft(step.title); setEditingTitle(true); } }}
             title={locked ? '执行后不可修改标题' : '点击编辑标题'}
           >
-            {task.title}
+            {step.title}
           </h2>
           {!locked && (
             <button
-              onClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
+              onClick={() => { setTitleDraft(step.title); setEditingTitle(true); }}
               className="shrink-0 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
               title="编辑标题"
             >
@@ -333,16 +333,16 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
             </button>
           )}
           {(() => {
-            // BLOCKED 任务即使在执行后也允许用户手动修改状态（如改回 PENDING 重跑、改 COMPLETED 跳过）。
-            // 其它状态在有 executionId 时仍保持锁定，避免误改已完成/进行中的任务。
-            const statusChangeDisabled = locked && task.status !== 'BLOCKED';
+            // BLOCKED 步骤即使在执行后也允许用户手动修改状态（如改回 PENDING 重跑、改 COMPLETED 跳过）。
+            // 其它状态在有 executionId 时仍保持锁定，避免误改已完成/进行中的步骤。
+            const statusChangeDisabled = locked && step.status !== 'BLOCKED';
             const statusTitle =
-              task.status === 'BLOCKED' && !statusChangeDisabled
+              step.status === 'BLOCKED' && !statusChangeDisabled
                 ? '点击修改阻塞状态'
                 : undefined;
             return (
               <StatusIcon
-                status={task.status}
+                status={step.status}
                 onClick={() => { if (!statusChangeDisabled) setEditingStatus(true); }}
                 disabled={statusChangeDisabled}
                 title={statusTitle}
@@ -355,7 +355,7 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
             onClick={handleDelete}
             disabled={saving || locked}
             className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
-            title={locked ? '执行后不可删除任务' : '删除任务'}
+            title={locked ? '执行后不可删除步骤' : '删除步骤'}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
@@ -380,19 +380,19 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
             <span className="text-xs font-medium text-gray-500">描述</span>
             {!locked && (
               <button
-                onClick={() => { setDescDraft(task.description); setEditingDesc(true); }}
+                onClick={() => { setDescDraft(step.description); setEditingDesc(true); }}
                 className="text-xs text-sky-500 hover:text-sky-600 transition-colors cursor-pointer"
               >
                 编辑
               </button>
             )}
           </div>
-          {task.description ? (
+          {step.description ? (
             <div
               className={`min-h-[60px] rounded-lg p-2 -m-2 transition-colors ${locked ? '' : 'cursor-pointer hover:bg-gray-50'}`}
-              onClick={() => { if (!locked) { setDescDraft(task.description); setEditingDesc(true); } }}
+              onClick={() => { if (!locked) { setDescDraft(step.description); setEditingDesc(true); } }}
             >
-              <DescriptionRenderer description={task.description} />
+              <DescriptionRenderer description={step.description} />
             </div>
           ) : (
             <div
@@ -404,7 +404,7 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
         </div>
 
         {/* Blocked reason */}
-        {task.status === 'BLOCKED' && task.blockedReason && (
+        {step.status === 'BLOCKED' && step.blockedReason && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-center gap-1.5 mb-1">
               <svg className="w-3.5 h-3.5 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -412,20 +412,20 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
               </svg>
               <span className="text-xs font-medium text-red-700">阻塞原因</span>
             </div>
-            <p className="text-xs text-red-600 leading-relaxed">{task.blockedReason}</p>
+            <p className="text-xs text-red-600 leading-relaxed">{step.blockedReason}</p>
           </div>
         )}
 
-        {/* Task changes (diff) — 仅在有 executionId 且任务已完成时显示 */}
-        {executionId && task.status === 'COMPLETED' && (
+        {/* Step changes (diff) — 仅在有 executionId 且步骤已完成时显示 */}
+        {executionId && step.status === 'COMPLETED' && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-gray-500">变更</span>
-              {taskDiffs.length > 0 && (
+              {stepDiffs.length > 0 && (
                 <span className="text-xs tabular-nums">
-                  <span className="text-green-600">+{taskDiffs.reduce((s, d) => s + (d.additions ?? 0), 0)}</span>
+                  <span className="text-green-600">+{stepDiffs.reduce((s, d) => s + (d.additions ?? 0), 0)}</span>
                   <span className="text-gray-300 mx-0.5">/</span>
-                  <span className="text-red-600">-{taskDiffs.reduce((s, d) => s + (d.deletions ?? 0), 0)}</span>
+                  <span className="text-red-600">-{stepDiffs.reduce((s, d) => s + (d.deletions ?? 0), 0)}</span>
                 </span>
               )}
             </div>
@@ -438,12 +438,12 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
             {diffError && (
               <div className="text-xs text-red-500 py-2">{diffError}</div>
             )}
-            {!diffLoading && !diffError && taskDiffs.length === 0 && (
-              <div className="text-xs text-gray-400 py-2">该任务未产生文件修改</div>
+            {!diffLoading && !diffError && stepDiffs.length === 0 && (
+              <div className="text-xs text-gray-400 py-2">该步骤未产生文件修改</div>
             )}
-            {!diffLoading && !diffError && taskDiffs.length > 0 && (
+            {!diffLoading && !diffError && stepDiffs.length > 0 && (
               <div className="space-y-1">
-                {taskDiffs.map((d) => {
+                {stepDiffs.map((d) => {
                   const st = diffStatusLabel(d.status ?? 'modified');
                   const isExpanded = expandedDiffFile === d.file;
                   return (
@@ -484,8 +484,8 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
           </div>
         )}
 
-        {/* AI 输入 / AI 输出 — 仅在有 executionId 且任务已处理时显示 */}
-        {executionId && ['IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(task.status) && (
+        {/* AI 输入 / AI 输出 — 仅在有 executionId 且步骤已处理时显示 */}
+        {executionId && ['IN_PROGRESS', 'COMPLETED', 'BLOCKED'].includes(step.status) && (
           <>
             {/* AI 输入（用户提示词） */}
             <div>
@@ -525,7 +525,7 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
               {/* loading / unavailable 已在 AI 输入板块展示，此处不重复 */}
               {!msgLoading && !msgUnavailable && assistantMsgs.length === 0 && (
                 <div className="text-xs text-gray-400 py-2">
-                  {task.status === 'BLOCKED' ? 'AI 未生成回复' : '暂无 AI 输出'}
+                  {step.status === 'BLOCKED' ? 'AI 未生成回复' : '暂无 AI 输出'}
                 </div>
               )}
               {!msgLoading && !msgUnavailable && assistantMsgs.length > 0 && (
@@ -630,7 +630,7 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
         <div className="space-y-1.5">
           {statusOptions.map((opt) => {
             const cfg = statusConfig[opt.value];
-            const isActive = opt.value === task.status;
+            const isActive = opt.value === step.status;
             return (
               <button
                 key={opt.value}
@@ -659,7 +659,7 @@ export default function TaskDetailPanel({ task, allTasks, executionId, onClose, 
         <div className="max-h-80 overflow-y-auto">
           {/* Dependencies */}
           <div className="mb-4">
-            <h4 className="text-xs font-medium text-gray-500 mb-2">依赖任务（{deps.length}）</h4>
+            <h4 className="text-xs font-medium text-gray-500 mb-2">依赖步骤（{deps.length}）</h4>
             {deps.length === 0 && <p className="text-xs text-gray-400 py-1">无依赖</p>}
             {deps.map((dep) => (
               <div

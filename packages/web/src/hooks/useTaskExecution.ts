@@ -1,26 +1,26 @@
 /**
- * 单 topic 任务链执行 hook — 管理执行/停止/合并/恢复的完整生命周期。
+ * 单 task 任务链执行 hook — 管理执行/停止/合并/恢复的完整生命周期。
  *
  * ┌─────────────────────────────────────────────────────────────────┐
  * │ 完整生命周期：                                                   │
  * │   restoreExecution() → executeChain() → 轮询 → 完成后合并        │
  * │                                                                 │
- * │ 1. restoreExecution  页面加载时按 topicId 恢复执行状态            │
+ * │ 1. restoreExecution  页面加载时按 taskId 恢复执行状态             │
  * │ 2. executeChain      启动执行（后端创建 worktree + AI 会话）      │
- * │ 3. startPolling      每 3s 轮询 getLatest(topicId) 同步状态      │
- * │ 4. cancelExecution   中止执行，IN_PROGRESS 任务重置为 PENDING     │
+ * │ 3. startPolling      每 3s 轮询 getLatest(taskId) 同步状态       │
+ * │ 4. cancelExecution   中止执行，IN_PROGRESS 步骤重置为 PENDING     │
  * │ 5. mergeExecution    将 worktree 变更 squash merge 到目标分支     │
  * └─────────────────────────────────────────────────────────────────┘
  *
- * 设计决策：为什么用 topicId 而非 projectId 查询执行状态
- *   之前的 ExecutionContext 按 projectId 查询活跃执行，再在 pool 中按 topicId 匹配。
+ * 设计决策：为什么用 taskId 而非 projectId 查询执行状态
+ *   之前的 ExecutionContext 按 projectId 查询活跃执行，再在 pool 中按 taskId 匹配。
  *   这种方式有两个问题：(1) 按 projectId 查可能漏掉不属于该 project 的执行；
  *   (2) getActiveByProject 的状态过滤（仅 CREATING_WORKTREE/RUNNING/COMPLETED）
  *   导致 STOPPED/FAILED/MERGED 状态的执行不可见，execution 变为 null。
- *   本 hook 直接用 getLatest(topicId) 按 topicId 精确查询，无状态过滤，避免以上问题。
+ *   本 hook 直接用 getLatest(taskId) 按 taskId 精确查询，无状态过滤，避免以上问题。
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Task } from '@/types/task';
+import type { Step } from '@/types/step';
 import type { TaskExecution } from '@/types/execution';
 import { executionApi } from '@/api/execution';
 import { useToast } from '@/components/Toast';
@@ -30,17 +30,17 @@ import { emitExecutionEvent, onExecutionEvent } from '@/utils/executionEvents';
 const S = 'useTaskExecution';
 
 interface UseTaskExecutionOptions {
-  topicId: string | undefined;
+  taskId: string | undefined;
   projectId: string | undefined;
-  onTaskUpdated: () => void;
+  onStepUpdated: () => void;
   /**
-   * 项目级最大并发主题数，由全局设置传入。
+   * 项目级最大并发任务数，由全局设置传入。
    * 调用 executionApi.start 时透传给后端，限制同项目下可并行运行的任务链条数。
    */
   maxConcurrency: number;
 }
 
-export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurrency }: UseTaskExecutionOptions) {
+export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurrency }: UseTaskExecutionOptions) {
   const { showToast } = useToast();
   const [executing, setExecuting] = useState(false);
   const [execution, setExecution] = useState<TaskExecution | null>(null);
@@ -57,12 +57,12 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
   const startPolling = useCallback((executionId: string) => {
     stopPolling();
     pollRef.current = setInterval(async () => {
-      if (!topicId) return;
+      if (!taskId) return;
       try {
-        const latest = await executionApi.getLatest(topicId);
+        const latest = await executionApi.getLatest(taskId);
         if (!latest) return;
         setExecution(latest);
-        onTaskUpdated();
+        onStepUpdated();
 
         if (latest.status === 'RUNNING' && latest.id) {
           executionApi.getMessages(latest.id).then((res) => {
@@ -78,7 +78,7 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
               setSessionMessages(res.messages);
             }).catch(() => {});
           }
-          showToast('所有任务已执行完毕', 'success');
+          showToast('所有步骤已执行完毕', 'success');
         } else if (latest.status === 'FAILED') {
           stopPolling();
           setExecuting(false);
@@ -93,30 +93,30 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
         log.error(S, 'polling error', err);
       }
     }, 3000);
-  }, [topicId, onTaskUpdated, showToast, stopPolling]);
+  }, [taskId, onStepUpdated, showToast, stopPolling]);
 
-  // _tasks 参数保留但未使用，仅为兼容 TaskGraphPage 的调用签名（传入 filteredTasks）。
+  // _steps 参数保留但未使用，仅为兼容 StepGraphPage 的调用签名（传入 filteredSteps）。
   const executeChain = useCallback(
-    (_tasks: Task[]) => {
+    (_steps: Step[]) => {
       if (executing) {
         log.warn(S, 'executeChain skipped: already executing');
         return;
       }
-      if (!topicId || !projectId) {
-        log.warn(S, 'executeChain skipped: missing topicId or projectId');
+      if (!taskId || !projectId) {
+        log.warn(S, 'executeChain skipped: missing taskId or projectId');
         return;
       }
-      log.info(S, 'executeChain start', { topicId, projectId, maxConcurrency });
+      log.info(S, 'executeChain start', { taskId, projectId, maxConcurrency });
       setExecuting(true);
 
-      executionApi.start(topicId, projectId, maxConcurrency)
+      executionApi.start(taskId, projectId, maxConcurrency)
         .then((exec) => {
           log.info(S, 'execution started', { id: exec.id, status: exec.status });
           setExecution(exec);
           showToast('任务链执行已开始', 'success');
           startPolling(exec.id);
           // 通知 ExecutionPanel 立即刷新（避免 5s 轮询延迟）
-          emitExecutionEvent({ type: 'started', executionId: exec.id, topicId });
+          emitExecutionEvent({ type: 'started', executionId: exec.id, topicId: taskId });
         })
         .catch((err: any) => {
           log.error(S, 'executeChain error', err);
@@ -124,7 +124,7 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
           setExecuting(false);
         });
     },
-    [executing, topicId, projectId, maxConcurrency, showToast, startPolling],
+    [executing, taskId, projectId, maxConcurrency, showToast, startPolling],
   );
 
   const cancelExecution = useCallback(async () => {
@@ -136,14 +136,14 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
       setExecution(updated);
       setExecuting(false);
       stopPolling();
-      onTaskUpdated();
+      onStepUpdated();
       // 通知 ExecutionPanel 立即把卡片移到"最近"区
-      emitExecutionEvent({ type: 'stopped', executionId: execution.id, topicId: execution.topicId });
+      emitExecutionEvent({ type: 'stopped', executionId: execution.id, topicId: execution.taskId });
     } catch (err: any) {
       log.error(S, 'cancelExecution error', err);
       showToast(err.message, 'error');
     }
-  }, [execution, showToast, stopPolling, onTaskUpdated]);
+  }, [execution, showToast, stopPolling, onStepUpdated]);
 
   /**
    * 合并操作 — 将 worktree 中的代码变更 squash merge 到用户选择的目标分支。
@@ -162,7 +162,7 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
       setExecution(updated);
       showToast(`已合并到 ${targetBranch}`, 'success');
       // 通知 ExecutionPanel：MERGED 状态不在面板显示，触发后卡片会从列表移除
-      emitExecutionEvent({ type: 'merged', executionId: execution.id, topicId: execution.topicId });
+      emitExecutionEvent({ type: 'merged', executionId: execution.id, topicId: execution.taskId });
     } catch (err: any) {
       log.error(S, 'mergeExecution error', err);
       showToast(err.message, 'error');
@@ -170,10 +170,10 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
   }, [execution, showToast]);
 
   /**
-   * 页面加载时恢复执行状态 — 按 topicId 查询最新 execution。
+   * 页面加载时恢复执行状态 — 按 taskId 查询最新 execution。
    *
-   * 关键：使用 getLatest(topicId) 而非 getActiveByProject(projectId)。
-   *   - getLatest 按 topicId 精确查询，无状态过滤，总能找到该 topic 的最新执行
+   * 关键：使用 getLatest(taskId) 而非 getActiveByProject(projectId)。
+   *   - getLatest 按 taskId 精确查询，无状态过滤，总能找到该 task 的最新执行
    *   - getActiveByProject 按 projectId + 有限状态过滤，可能漏掉执行导致 execution 为 null
    *
    * 三种恢复路径：
@@ -182,11 +182,11 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
    *   - 查无记录 → log.warn 提示（可能是首次访问，尚未执行过任务链）
    */
   const restoreExecution = useCallback(async () => {
-    if (!topicId) return;
+    if (!taskId) return;
     try {
-      const latest = await executionApi.getLatest(topicId);
+      const latest = await executionApi.getLatest(taskId);
       if (!latest) {
-        log.warn(S, 'restoreExecution: no execution found for topic', { topicId });
+        log.warn(S, 'restoreExecution: no execution found for task', { taskId });
         return;
       }
       if (latest.status === 'RUNNING' || latest.status === 'CREATING_WORKTREE') {
@@ -196,7 +196,7 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
       } else {
         setExecution(latest);
         log.info(S, 'restoreExecution: execution restored', {
-          topicId,
+          taskId,
           status: latest.status,
           executionId: latest.id,
         });
@@ -204,10 +204,10 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
     } catch (err: any) {
       log.error(S, 'restoreExecution error', err);
     }
-  }, [topicId, startPolling]);
+  }, [taskId, startPolling]);
 
   /**
-   * 订阅事件总线：当 ExecutionPanel（或其他位置）对该 topic 发起 stop/start/merge 时，
+   * 订阅事件总线：当 ExecutionPanel（或其他位置）对该 task 发起 stop/start/merge 时，
    * 立即调用 restoreExecution 同步本地状态。
    *
    * 关键场景：本 hook 在检测到 STOPPED 后会 stopPolling()，此时若用户在面板里点了"执行"
@@ -216,13 +216,13 @@ export function useTaskExecution({ topicId, projectId, onTaskUpdated, maxConcurr
    * 并自动 startPolling 恢复跟踪。
    */
   useEffect(() => {
-    if (!topicId) return;
+    if (!taskId) return;
     return onExecutionEvent((event) => {
-      if (event.topicId !== topicId) return;
+      if (event.topicId !== taskId) return;
       log.info(S, 'event received, restoring', { type: event.type, executionId: event.executionId });
       restoreExecution();
     });
-  }, [topicId, restoreExecution]);
+  }, [taskId, restoreExecution]);
 
   return {
     executeChain,

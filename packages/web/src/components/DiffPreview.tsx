@@ -7,8 +7,8 @@ const S = 'DiffPreview';
 
 interface Props {
   executionId: string;
-  completedTasks: number;
-  totalTasks: number;
+  completedSteps: number;
+  totalSteps: number;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -19,7 +19,7 @@ const statusLabel: Record<string, { text: string; color: string }> = {
   modified: { text: 'M', color: 'text-amber-600 bg-amber-50' },
 };
 
-export default function DiffPreview({ executionId, completedTasks, totalTasks, onConfirm, onClose }: Props) {
+export default function DiffPreview({ executionId, completedSteps, totalSteps, onConfirm, onClose }: Props) {
   const [diffs, setDiffs] = useState<FileDiff[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,7 +58,7 @@ export default function DiffPreview({ executionId, completedTasks, totalTasks, o
         <div className="px-6 py-4 border-b border-gray-200 shrink-0">
           <h3 className="text-lg font-semibold text-gray-800">变更预览</h3>
           <p className="text-sm text-gray-500 mt-1">
-            任务链已执行完毕（{completedTasks}/{totalTasks}），共 {diffs.length} 个文件变更
+            任务链已执行完毕（{completedSteps}/{totalSteps}），共 {diffs.length} 个文件变更
             {diffs.length > 0 && (
               <span className="ml-2">
                 <span className="text-green-600">+{totalAdditions}</span>

@@ -1,8 +1,8 @@
 import dagre from 'dagre';
 import type { Node, Edge } from '@xyflow/react';
 
-// 节点尺寸常量：与 TopicNode (w-72=288px、高度约 120-140px) 匹配，
-// 用于 dagre 计算节点间距。TaskNode 尺寸接近，复用同一常量。
+// 节点尺寸常量：与 TaskNode (w-72=288px、高度约 120-140px) 匹配，
+// 用于 dagre 计算节点间距。StepNode 尺寸接近，复用同一常量。
 const NODE_WIDTH = 288;
 const NODE_HEIGHT = 130;
 
@@ -47,7 +47,7 @@ export function applyDagreLayout(nodes: Node[], edges: Edge[]): { nodes: Node[];
 
 /**
  * 网格布局：节点按行优先排列，列数 = ceil(sqrt(n)) 自适应。
- * 仅在没有任何依赖边时由 applyDagreLayout 调用，避免主题卡片默认横排一行。
+ * 仅在没有任何依赖边时由 applyDagreLayout 调用，避免任务卡片默认横排一行。
  */
 function applyGridLayout(nodes: Node[]): { nodes: Node[]; edges: Edge[] } {
   const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));

@@ -4,9 +4,9 @@
  * 面板靠右对齐，固定宽度约 1/3 屏，最大高度 1/3 屏。
  * 面板按优先级分组展示：
  *   - 执行中：RUNNING/CREATING_WORKTREE，卡片展示最后一条 AI 消息摘要。
- *   - 待合并：COMPLETED，等待用户合并的主题（仅「查看」跳转）。
+ *   - 待合并：COMPLETED，等待用户合并的任务（仅「查看」跳转）。
  *   - 暂停：STOPPED，用户主动停止，可点「执行」恢复。
- *   - 待执行：从未有执行记录的主题，可点「执行」启动。
+ *   - 待执行：从未有执行记录的任务，可点「执行」启动。
  */
 import { useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router';
@@ -57,22 +57,22 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
   const navigate = useNavigate();
   const match = location.pathname.match(/\/project\/([^/]+)/);
   const projectId = match?.[1];
-  const { executions, executionMessages, hasRunning, stopExecution, startExecution, pendingTopics, startAllPending } = useActiveExecutions(projectId, maxConcurrency);
+  const { executions, executionMessages, hasRunning, stopExecution, startExecution, pendingTasks, startAllPending } = useActiveExecutions(projectId, maxConcurrency);
   const [expanded, setExpanded] = useState(false);
   const [starting, setStarting] = useState(false);
   const { showToast } = useToast();
 
   const toggle = useCallback(() => setExpanded((v) => !v), []);
 
-  const handleNavigate = useCallback((topicId: string) => {
+  const handleNavigate = useCallback((taskId: string) => {
     if (projectId) {
-      navigate(`/project/${projectId}/topic/${topicId}`);
+      navigate(`/project/${projectId}/task/${taskId}`);
       setExpanded(false);
     }
   }, [projectId, navigate]);
 
   /**
-   * 一键执行：顺序启动所有 pendingTopics，后端按 maxConcurrency 拦截 429。
+   * 一键执行：顺序启动所有 pendingTasks，后端按 maxConcurrency 拦截 429。
    * 执行期间按钮 disabled，避免重复点击。
    */
   const handleStartAll = useCallback(async () => {
@@ -81,9 +81,9 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
     try {
       const { started, skipped } = await startAllPending();
       if (started > 0) {
-        showToast(`已启动 ${started} 个主题执行${skipped > 0 ? `，跳过 ${skipped} 个` : ''}`, 'success');
+        showToast(`已启动 ${started} 个任务执行${skipped > 0 ? `，跳过 ${skipped} 个` : ''}`, 'success');
       } else {
-        showToast(`没有可启动的主题${skipped > 0 ? `（跳过 ${skipped} 个）` : ''}`, 'info');
+        showToast(`没有可启动的任务${skipped > 0 ? `（跳过 ${skipped} 个）` : ''}`, 'info');
       }
     } catch (err: any) {
       showToast(err.message || '批量启动失败', 'error');
@@ -93,12 +93,12 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
   }, [startAllPending, starting, showToast]);
 
   /**
-   * 单主题执行包装：每次点击「执行」都弹出 info 提醒（无论是否含阻塞任务），
-   * 提醒用户如存在已阻塞任务需先在任务详情改为「待办」，随后照常启动执行（不阻止）。
+   * 单任务执行包装：每次点击「执行」都弹出 info 提醒（无论是否含阻塞步骤），
+   * 提醒用户如存在已阻塞步骤需先在步骤详情改为「待办」，随后照常启动执行（不阻止）。
    */
-  const handleExecute = useCallback((topicId: string) => {
-    showToast('如存在已阻塞任务，请先在任务详情中将其改为「待办」后再执行', 'info');
-    startExecution(topicId);
+  const handleExecute = useCallback((taskId: string) => {
+    showToast('如存在已阻塞步骤，请先在步骤详情中将其改为「待办」后再执行', 'info');
+    startExecution(taskId);
   }, [showToast, startExecution]);
 
   // 项目管理页（/）无 projectId，面板数据绑定具体项目，明确不展示。
@@ -109,28 +109,28 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
   const running = executions.filter(
     (e) => e.status === 'RUNNING' || e.status === 'CREATING_WORKTREE',
   );
-  // 待合并：执行完毕（COMPLETED）等待用户合并的主题
+  // 待合并：执行完毕（COMPLETED）等待用户合并的任务
   const pendingMerge = executions.filter((e) => e.status === 'COMPLETED');
   // 暂停：用户主动停止（STOPPED），可恢复执行
   const paused = executions.filter((e) => e.status === 'STOPPED');
-  // 待执行：从未有执行记录的主题。
-  // pendingTopics 已排除 RUNNING/CREATING_WORKTREE/COMPLETED，其中"出现在 executions 里"的
-  // 只可能是 STOPPED，过滤掉 STOPPED 后剩下的即纯无记录主题。
-  const noRecord = pendingTopics.filter((t) => !executions.some((e) => e.topicId === t.id));
+  // 待执行：从未有执行记录的任务。
+  // pendingTasks 已排除 RUNNING/CREATING_WORKTREE/COMPLETED，其中"出现在 executions 里"的
+  // 只可能是 STOPPED，过滤掉 STOPPED 后剩下的即纯无记录任务。
+  const noRecord = pendingTasks.filter((t) => !executions.some((e) => e.taskId === t.id));
 
-  if (!hasRunning && executions.length === 0 && pendingTopics.length === 0) return null;
+  if (!hasRunning && executions.length === 0 && pendingTasks.length === 0) return null;
 
   // 分组间分隔线：仅在上方已有分组内容时才显示顶部 border
   const borderIf = (hasAbove: boolean) => (hasAbove ? 'border-t border-gray-100' : '');
 
   return (
     <>
-      {/* 一键执行图标按钮：仅当有待执行主题时显示，点击触发批量启动 */}
-      {pendingTopics.length > 0 && (
+      {/* 一键执行图标按钮：仅当有待执行任务时显示，点击触发批量启动 */}
+      {pendingTasks.length > 0 && (
         <button
           onClick={handleStartAll}
           disabled={starting}
-          title={`一键启动 ${pendingTopics.length} 个待执行主题`}
+          title={`一键启动 ${pendingTasks.length} 个待执行任务`}
           className="text-sky-600 hover:text-sky-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center cursor-pointer transition-colors"
         >
           {starting ? (
@@ -170,14 +170,14 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
                   {running.map((exec) => (
                     <RunningCard
                       key={exec.id}
-                      name={exec.topic?.name ?? '未知任务链'}
+                      name={exec.task?.name ?? '未知任务链'}
                       status={exec.status}
-                      progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                      progress={`${exec.completedSteps}/${exec.totalSteps}`}
                       branch={exec.worktreeBranch}
                       messages={executionMessages[exec.id] ?? []}
                       onStop={() => stopExecution(exec.id)}
-                      onExecute={() => handleExecute(exec.topicId)}
-                      onClick={() => handleNavigate(exec.topicId)}
+                      onExecute={() => handleExecute(exec.taskId)}
+                      onClick={() => handleNavigate(exec.taskId)}
                     />
                   ))}
                 </div>
@@ -187,13 +187,13 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
                   <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">待合并</h4>
                   {pendingMerge.map((exec) => {
                     const msgs = executionMessages[exec.id] ?? [];
-                    const nav = () => handleNavigate(exec.topicId);
+                    const nav = () => handleNavigate(exec.taskId);
                     return msgs.length > 0 ? (
                       <RunningCard
                         key={exec.id}
-                        name={exec.topic?.name ?? '未知任务链'}
+                        name={exec.task?.name ?? '未知任务链'}
                         status={exec.status}
-                        progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                        progress={`${exec.completedSteps}/${exec.totalSteps}`}
                         branch={exec.worktreeBranch}
                         messages={msgs}
                         onClick={nav}
@@ -201,9 +201,9 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
                     ) : (
                       <RecentCard
                         key={exec.id}
-                        name={exec.topic?.name ?? '未知任务链'}
+                        name={exec.task?.name ?? '未知任务链'}
                         status={exec.status}
-                        progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                        progress={`${exec.completedSteps}/${exec.totalSteps}`}
                         onClick={nav}
                       />
                     );
@@ -215,14 +215,14 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
                   <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">暂停</h4>
                   {paused.map((exec) => {
                     const msgs = executionMessages[exec.id] ?? [];
-                    const nav = () => handleNavigate(exec.topicId);
-                    const execThis = () => handleExecute(exec.topicId);
+                    const nav = () => handleNavigate(exec.taskId);
+                    const execThis = () => handleExecute(exec.taskId);
                     return msgs.length > 0 ? (
                       <RunningCard
                         key={exec.id}
-                        name={exec.topic?.name ?? '未知任务链'}
+                        name={exec.task?.name ?? '未知任务链'}
                         status={exec.status}
-                        progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                        progress={`${exec.completedSteps}/${exec.totalSteps}`}
                         branch={exec.worktreeBranch}
                         messages={msgs}
                         onExecute={execThis}
@@ -231,9 +231,9 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
                     ) : (
                       <RecentCard
                         key={exec.id}
-                        name={exec.topic?.name ?? '未知任务链'}
+                        name={exec.task?.name ?? '未知任务链'}
                         status={exec.status}
-                        progress={`${exec.completedTasks}/${exec.totalTasks}`}
+                        progress={`${exec.completedSteps}/${exec.totalSteps}`}
                         onExecute={execThis}
                         onClick={nav}
                       />
@@ -244,13 +244,13 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
               {noRecord.length > 0 && (
                 <div className={`p-3 space-y-2 ${borderIf(running.length > 0 || pendingMerge.length > 0 || paused.length > 0)}`}>
                   <h4 className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">待执行</h4>
-                  {noRecord.map((topic) => (
-                    <PendingTopicCard
-                      key={topic.id}
-                      name={topic.name}
-                      progress={`${topic.completedCount}/${topic.taskCount}`}
-                      onExecute={() => handleExecute(topic.id)}
-                      onClick={() => handleNavigate(topic.id)}
+                  {noRecord.map((task) => (
+                    <PendingTaskCard
+                      key={task.id}
+                      name={task.name}
+                      progress={`${task.completedStepCount}/${task.stepCount}`}
+                      onExecute={() => handleExecute(task.id)}
+                      onClick={() => handleNavigate(task.id)}
                     />
                   ))}
                 </div>
@@ -413,10 +413,10 @@ function RecentCard({ name, status, progress, onClick, onExecute }: {
 }
 
 /**
- * 待执行主题卡片 — 用于从未有执行记录的主题（数据来源 TaskTopic，无 worktree/execution 状态）。
+ * 待执行任务卡片 — 用于从未有执行记录的任务（数据来源 Task，无 worktree/execution 状态）。
  * 与 RunningCard/RecentCard 的区别：无状态色点（灰色），固定显示「待执行」标签 + 启动按钮。
  */
-function PendingTopicCard({ name, progress, onExecute, onClick }: {
+function PendingTaskCard({ name, progress, onExecute, onClick }: {
   name: string;
   progress: string;
   onExecute?: () => void;

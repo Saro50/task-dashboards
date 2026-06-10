@@ -1,37 +1,29 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { ReactFlow, Background, Controls, MiniMap, Panel, useNodesState, useEdgesState, type Node, type Edge, type MiniMapNodeProps, type Connection } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import { ReactFlow, Background, Controls, MiniMap, type Node, type Edge, type MiniMapNodeProps } from '@xyflow/react';
 import type { EngineStatus } from '@/components/Layout';
-import type { Task } from '@/types/task';
-import { taskApi } from '@/api/task';
-import { executionApi } from '@/api/execution';
 import { useTasks } from '@/hooks/useTasks';
-import { useTopics } from '@/hooks/useTopics';
 import { useProject } from '@/hooks/useProject';
-import { useTaskExecution } from '@/hooks/useTaskExecution';
 import { useToast } from '@/components/Toast';
+import { taskApi } from '@/api/task';
+import { stepApi } from '@/api/step';
 import TaskNode from '@/components/TaskNode';
+import StepNode from '@/components/StepNode';
 import TaskEdge from '@/components/TaskEdge';
-import TaskDetailPanel from '@/components/TaskDetailPanel';
-import TaskStatusBar from '@/components/TaskStatusBar';
 import AIChatWidget from '@/components/AIChatWidget';
 import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
-import DiffPreview from '@/components/DiffPreview';
 import { applyDagreLayout } from '@/utils/layout';
-import { buildTaskPageContext, buildTopicPageContext } from '@/utils/pageContext';
+import { buildTaskPageContext } from '@/utils/pageContext';
 import { log } from '@/utils/log';
 
 const S = 'TaskGraphPage';
 
 interface Props {
   engineStatus: EngineStatus;
-  /**
-   * 项目级最大并发主题数，由 App 顶层传入；调用 executeChain 时透传到后端，
-   * 限制同项目下可并行运行的任务链条数。
-   */
-  maxConcurrency: number;
 }
+
+const taskNodeTypes = { task: TaskNode, step: StepNode };
+const edgeTypes = { task: TaskEdge };
 
 const taskStatusColor: Record<string, string> = {
   PENDING: '#9ca3af',
@@ -40,8 +32,16 @@ const taskStatusColor: Record<string, string> = {
   BLOCKED: '#ef4444',
 };
 
+const stepStatusColor: Record<string, string> = {
+  PENDING: '#d1d5db',
+  IN_PROGRESS: '#7dd3fc',
+  COMPLETED: '#86efac',
+  BLOCKED: '#fca5a5',
+};
+
 const miniMapNodeColor = (node: Node) => {
-  if (node.type === 'task') return taskStatusColor[(node.data as any).status] || '#94a3b8';
+  if (node.type === 'task') return taskStatusColor[(node.data as any).aggregatedStatus] || '#94a3b8';
+  if (node.type === 'step') return stepStatusColor[(node.data as any).status] || '#d1d5db';
   return '#94a3b8';
 };
 
@@ -65,332 +65,178 @@ function MiniMapNode({ x, y, width, height, color }: MiniMapNodeProps) {
   );
 }
 
-const nodeTypes = { task: TaskNode };
-const edgeTypes = { task: TaskEdge };
-
-/**
- * 合并对话框组件。
- *
- * 为什么需要这个组件：任务链执行完成后（COMPLETED 状态），所有代码变更都在 worktree
- * 隔离环境中，尚未合回主分支。这个对话框让用户选择目标分支（如 main），
- * 确认后调用后端 merge API 将执行标记为 MERGED。
- * 这是执行流程的最后一环：执行 → 完成 → 合并。
- */
-function MergeDialog({ execution, onMerge, onClose }: {
-  execution: { id: string; completedTasks: number; totalTasks: number; worktreeName: string | null };
-  onMerge: (branch: string) => void;
-  onClose: () => void;
-}) {
-  const [branches, setBranches] = useState<string[]>([]);
-  const [current, setCurrent] = useState('main');
-  const [branch, setBranch] = useState('');
-  const [merging, setMerging] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    let cancelled = false;
-    executionApi.getBranches(execution.id).then((res) => {
-      if (!cancelled) {
-        setBranches(res.branches);
-        setCurrent(res.current);
-        setBranch(res.current || res.branches[0] || 'main');
-        setLoading(false);
-      }
-    }).catch((err) => {
-      if (!cancelled) {
-        log.error('MergeDialog', 'getBranches failed', err);
-        setError(err.message ?? '获取分支失败');
-        setLoading(false);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [execution.id]);
-
-  const handleMerge = async () => {
-    setMerging(true);
-    await onMerge(branch);
-    setMerging(false);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-      <div className="bg-white rounded-xl shadow-2xl w-96 p-6">
-        <h3 className="text-lg font-semibold text-gray-800 mb-2">合并到分支</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          任务链已执行完毕（{execution.completedTasks}/{execution.totalTasks}），将 worktree 的变更合并到指定分支。
-        </p>
-        {execution.worktreeName && (
-          <p className="text-xs text-gray-400 mb-4">Worktree: {execution.worktreeName}</p>
-        )}
-        <div className="mb-4">
-          <label className="block text-xs font-medium text-gray-600 mb-1">目标分支</label>
-          {loading ? (
-            <div className="w-full px-3 py-2 text-sm text-gray-400 border border-gray-200 rounded-lg">加载分支...</div>
-          ) : error ? (
-            <div className="w-full px-3 py-2 text-sm text-red-500 border border-red-200 rounded-lg">{error}</div>
-          ) : branches.length === 0 ? (
-            <div className="w-full px-3 py-2 text-sm text-gray-400 border border-gray-200 rounded-lg">未找到可用分支</div>
-          ) : (
-            <select
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 outline-none bg-white cursor-pointer"
-            >
-              {branches.map((b) => (
-                <option key={b} value={b}>
-                  {b}{b === current ? ' (当前)' : ''}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-        <div className="flex gap-2 justify-end">
-          <button
-            onClick={onClose}
-            disabled={merging}
-            className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 cursor-pointer disabled:opacity-50"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleMerge}
-            disabled={merging || loading || !!error || !branch}
-            className="px-4 py-2 text-sm bg-sky-500 hover:bg-sky-600 text-white rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {merging ? '合并中...' : '合并'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
-  const { projectId, topicId } = useParams<{ projectId: string; topicId: string }>();
+export default function TaskGraphPage({ engineStatus }: Props) {
+  const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { showToast } = useToast();
-  const { tasks, loading, error, refetch } = useTasks(projectId);
-  const { topics } = useTopics(projectId);
+  const { tasks, dependencies, orphanSteps, loading, error, refetch } = useTasks(projectId);
   const { project } = useProject(projectId);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
-  const [showMerge, setShowMerge] = useState(false);
-  const [showDiffPreview, setShowDiffPreview] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState('');
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
-  const topicName = useMemo(
-    () => topics.find((t) => t.id === topicId)?.name ?? '',
-    [topics, topicId]
+  const pageContext = useMemo(
+    () => buildTaskPageContext(project, tasks),
+    [project, tasks]
   );
 
-  const filteredTasks = useMemo(
-    () => tasks.filter((t) => t.topicId === topicId),
-    [tasks, topicId]
-  );
+  const handleEditTask = useCallback((taskId: string) => {
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task) return;
+    log.info(S, 'handleEditTask', { taskId, name: task.name });
+    setEditingTaskId(taskId);
+    setEditingName(task.name);
+  }, [tasks]);
 
-  const currentTopic = useMemo(
-    () => topics.find((t) => t.id === topicId),
-    [topics, topicId]
-  );
+  const handleEditingNameChange = useCallback((name: string) => {
+    setEditingName(name);
+  }, []);
 
-  const taskContext = useMemo(
-    () => buildTaskPageContext(project, currentTopic ?? null, filteredTasks),
-    [project, currentTopic, filteredTasks]
-  );
-
-  /** 主题模式 context：复用 TopicGraphPage 的同一函数，展示项目所有主题概览 */
-  const topicContext = useMemo(
-    () => buildTopicPageContext(project, topics),
-    [project, topics]
-  );
-
-  /**
-   * 双模式 chatModes 配置。
-   * 详情任务模式放首位（默认激活），主题模式放第二位供切换。
-   * AIChatWidget 会根据当前激活的 mode 选取对应 context 注入会话，
-   * pageContext prop 作为兜底。
-   */
-  const chatModes = useMemo(() => [
-    { key: 'task', label: '详情任务', description: '查看当前主题的任务和依赖关系', context: taskContext },
-    { key: 'topic', label: '主题', description: '查看项目所有主题信息', context: topicContext },
-  ], [taskContext, topicContext]);
-
-  /** pageContext 保留作为兜底，与 taskContext 保持一致（向后兼容） */
-  const pageContext = taskContext;
-  console.log('pageContext;',pageContext)
-  const {
-    executeChain,
-    cancelExecution,
-    mergeExecution,
-    restoreExecution,
-    executing,
-    execution,
-    sessionMessages,
-  } = useTaskExecution({
-    topicId,
-    projectId,
-    onTaskUpdated: refetch,
-    maxConcurrency,
-  });
-
-  /**
-   * 恢复执行状态 + 合并流程自动触发。
-   *
-   * 合并流程触发条件：execution 从 null/其他状态 变为 COMPLETED 时，
-   * 自动弹出 DiffPreview 让用户预览变更，确认后进入 MergeDialog 选择目标分支。
-   *
-   * restoredRef 确保 restoreExecution() 完成后才检查触发条件，
-   * 避免首次渲染时 execution 还未加载就误触发。
-   */
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    restoreExecution();
-    restoredRef.current = true;
-  }, [restoreExecution]);
-
-  useEffect(() => {
-    if (restoredRef.current && execution?.status === 'COMPLETED' && !showDiffPreview && !showMerge) {
-      setShowDiffPreview(true);
+  const handleEditingConfirm = useCallback(async () => {
+    if (!editingTaskId) return;
+    const trimmed = editingName.trim();
+    if (!trimmed) {
+      setEditingTaskId(null);
+      return;
     }
-  }, [execution?.status]);
+    log.info(S, 'handleEditingConfirm', { editingTaskId, name: trimmed });
+    try {
+      await taskApi.update(editingTaskId, { name: trimmed });
+      showToast('任务已重命名', 'success');
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'handleEditingConfirm error', err);
+      showToast(err.message, 'error');
+    }
+    setEditingTaskId(null);
+  }, [editingTaskId, editingName, showToast, refetch]);
 
-  const selectedTask = useMemo(
-    () => filteredTasks.find((t) => t.id === selectedTaskId) ?? null,
-    [filteredTasks, selectedTaskId]
-  );
-
-  const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
-  const [flowEdges, setFlowEdges] = useEdgesState<Edge>([]);
-  const prevTaskKey = useRef<string>('');
+  const handleEditingCancel = useCallback(() => {
+    setEditingTaskId(null);
+  }, []);
 
   const handleDeleteTask = useCallback(async (taskId: string) => {
-    if (execution) return;
-    const task = filteredTasks.find((t) => t.id === taskId);
+    const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
-    const confirmed = window.confirm(`确定删除任务「${task.title}」？`);
+    const confirmed = window.confirm(`确定要删除任务「${task.name}」吗？该任务下的所有步骤将被一并删除，此操作不可撤销。`);
     if (!confirmed) return;
     log.info(S, 'handleDeleteTask', { taskId });
     try {
       await taskApi.remove(taskId);
       showToast('任务已删除', 'success');
-      if (selectedTaskId === taskId) setSelectedTaskId(null);
       refetch();
     } catch (err: any) {
       log.error(S, 'handleDeleteTask error', err);
       showToast(err.message, 'error');
     }
-  }, [filteredTasks, selectedTaskId, showToast, refetch, execution]);
+  }, [tasks, showToast, refetch]);
 
-  useEffect(() => {
-    const taskMap = new Map(filteredTasks.map((t) => [t.id, t]));
-    const filteredTaskIds = new Set(filteredTasks.map((t) => t.id));
-    const taskKey = filteredTasks
-      .map((t) => `${t.id}:${t.status}:${t.blockedReason ?? ''}:${t.dependencies.filter((d) => filteredTaskIds.has(d)).sort().join(',')}`)
-      .sort()
-      .join('|');
+  const handleDeleteStep = useCallback(async (stepId: string) => {
+    const step = orphanSteps.find((s) => s.id === stepId);
+    if (!step) return;
+    const confirmed = window.confirm(`确定删除步骤「${step.title}」？`);
+    if (!confirmed) return;
+    log.info(S, 'handleDeleteStep', { stepId });
+    try {
+      await stepApi.remove(stepId);
+      showToast('步骤已删除', 'success');
+      refetch();
+    } catch (err: any) {
+      log.error(S, 'handleDeleteStep error', err);
+      showToast(err.message, 'error');
+    }
+  }, [orphanSteps, showToast, refetch]);
 
-    if (taskKey !== prevTaskKey.current) {
-      prevTaskKey.current = taskKey;
+  const { nodes: flowNodes, edges: baseEdges } = useMemo(() => {
+    const nodes: Node[] = [];
 
-      const nodes: Node[] = filteredTasks.map((task) => ({
+    for (const task of tasks) {
+      nodes.push({
         id: task.id,
         type: 'task',
         position: { x: 0, y: 0 },
         data: {
-          title: task.title,
-          status: task.status,
-          description: task.description,
-          blockedReason: task.blockedReason,
-          depCount: task.dependencies.filter((depId) => filteredTaskIds.has(depId)).length,
-          selected: task.id === selectedTaskId,
-          disabled: executing,
+          name: task.name,
+          summary: task.summary,
+          stepCount: task.stepCount,
+          completedStepCount: task.completedStepCount,
+          aggregatedStatus: task.aggregatedStatus,
+          tokenInput: task.tokenInput,
+          tokenOutput: task.tokenOutput,
+          cacheRead: task.cacheRead,
+          onEdit: handleEditTask,
           onDelete: handleDeleteTask,
+          editing: editingTaskId === task.id,
+          editingName,
+          onEditingNameChange: handleEditingNameChange,
+          onEditingConfirm: handleEditingConfirm,
+          onEditingCancel: handleEditingCancel,
         },
-      }));
-
-      const edges: Edge[] = [];
-      for (const task of filteredTasks) {
-        for (const depId of task.dependencies) {
-          if (!filteredTaskIds.has(depId)) continue;
-          edges.push({ id: `${depId}-${task.id}`, source: depId, target: task.id, type: 'task', data: { onDeleted: refetch, hovered: false, disabled: false } });
-        }
-      }
-
-      const { nodes: layoutedNodes } = applyDagreLayout(nodes, edges);
-      setFlowNodes(layoutedNodes);
-      setFlowEdges(edges);
+      });
     }
-  }, [filteredTasks, selectedTaskId, executing, handleDeleteTask, setFlowNodes, setFlowEdges]);
 
-  useEffect(() => {
-    setFlowEdges((prev) =>
-      prev.map((edge) => {
-        const isHovered = edge.id === hoveredEdgeId;
-        const prevHovered = (edge.data as any)?.hovered;
-        const prevDisabled = (edge.data as any)?.disabled;
-        if (isHovered === prevHovered && executing === prevDisabled) return edge;
-        return { ...edge, data: { ...edge.data, hovered: isHovered, disabled: executing } };
-      })
-    );
-  }, [hoveredEdgeId, executing, setFlowEdges]);
+    for (const step of orphanSteps) {
+      nodes.push({
+        id: step.id,
+        type: 'step',
+        position: { x: 0, y: 0 },
+        data: {
+          title: step.title,
+          status: step.status,
+          description: step.description,
+          depCount: step.dependencies.length,
+          onDelete: handleDeleteStep,
+        },
+      });
+    }
+
+    const edges: Edge[] = dependencies.map((dep) => ({
+      id: `${dep.sourceId}-${dep.targetId}`,
+      source: dep.sourceId,
+      target: dep.targetId,
+      type: 'task',
+      data: { onDeleted: refetch },
+    }));
+
+    return applyDagreLayout(nodes, edges);
+  }, [tasks, dependencies, orphanSteps, refetch, editingTaskId, editingName, handleEditTask, handleDeleteTask, handleDeleteStep, handleEditingNameChange, handleEditingConfirm, handleEditingCancel]);
+
+  const flowEdges = useMemo(
+    () => baseEdges.map((e) => ({ ...e, data: { ...e.data, hovered: e.id === hoveredEdgeId } })),
+    [baseEdges, hoveredEdgeId]
+  );
 
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
-    log.info(S, 'onNodeClick', { nodeId: node.id });
-    setSelectedTaskId(node.id);
+    log.info(S, 'onNodeClick', { nodeId: node.id, type: node.type });
+    if (node.type === 'task') {
+      navigate(`/project/${projectId}/task/${node.id}`);
+    }
+  }, [navigate, projectId]);
+
+  const handleCreateTask = useCallback(() => {
+    log.info(S, 'handleCreateTask');
+    chatRef.current?.openWithMessage('请帮我创建一个任务，讨论并规划一个功能模块的实现', { newSession: true, agent: 'task-helper' });
   }, []);
 
-  const onPaneClick = useCallback(() => {
-    setSelectedTaskId(null);
-  }, []);
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)]">
+        <div className="w-8 h-8 border-3 border-gray-200 border-t-sky-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedTaskId && !execution) {
-        const target = e.target as HTMLElement;
-        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable) return;
-        e.preventDefault();
-        handleDeleteTask(selectedTaskId);
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [selectedTaskId, execution, handleDeleteTask]);
-
-  const handleHoverDep = useCallback((depId: string | null, type: 'dep' | 'dependent') => {
-    if (!depId || !selectedTaskId) {
-      setHoveredEdgeId(null);
-      return;
-    }
-    const edgeId = type === 'dep' ? `${depId}-${selectedTaskId}` : `${selectedTaskId}-${depId}`;
-    setHoveredEdgeId(edgeId);
-  }, [selectedTaskId]);
-
-  const onConnect = useCallback(async (connection: Connection) => {
-    if (execution) return;
-    if (!connection.source || !connection.target) return;
-    if (connection.source === connection.target) return;
-    log.info(S, 'onConnect', { source: connection.source, target: connection.target });
-    try {
-      const resp = await taskApi.addDependency(connection.target, connection.source);
-      log.info(S, 'onConnect response', resp);
-      refetch();
-    } catch (err: any) {
-      log.error(S, 'onConnect error', err);
-      if (!err.message?.includes('409')) {
-        showToast(err.message, 'error');
-      }
-    }
-  }, [refetch, showToast, execution]);
-
-  /**
-   * 合并处理：MergeDialog 中用户选择目标分支后调用。
-   * 流程：DiffPreview 预览变更 → 确认 → MergeDialog 选分支 → handleMerge → 后端 squash merge
-   */
-  const handleMerge = useCallback(async (branch: string) => {
-    await mergeExecution(branch);
-    setShowMerge(false);
-  }, [mergeExecution]);
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)]">
+        <div className="text-center">
+          <p className="text-red-500 text-sm mb-4">加载失败：{error}</p>
+          <button onClick={() => refetch()} className="text-sm text-sky-500 hover:text-sky-600 cursor-pointer">重试</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] relative">
@@ -405,60 +251,8 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
           <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
           </svg>
-          <button
-            onClick={() => { log.info(S, 'navigate to project', { projectId }); navigate(`/project/${projectId}`); }}
-            className="text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
-          >
-            {project?.name ?? '...'}
-          </button>
-          <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5l7 7-7 7" />
-          </svg>
-          <span className="font-medium text-gray-800">{topicName || '任务图谱'}</span>
-          {!loading && <span className="text-xs text-gray-400 ml-1">{filteredTasks.length} 个任务</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* 执行进度指示器：显示 worktree 创建状态或任务完成进度 */}
-          {execution && executing && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              {execution.status === 'CREATING_WORKTREE' && !execution.worktreeBranch ? (
-                <span className="text-amber-600">创建 worktree...</span>
-              ) : (
-                <span className="text-sky-600">{execution.completedTasks}/{execution.totalTasks}</span>
-              )}
-            </div>
-          )}
-          {execution?.worktreeBranch && execution.status !== 'MERGED' && (
-            <div className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-gray-50 border border-gray-200 text-xs text-gray-600">
-              <svg className="w-3 h-3 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6.75 4.5h10.5a2.25 2.25 0 012.25 2.25v10.5a2.25 2.25 0 01-2.25 2.25H6.75a2.25 2.25 0 01-2.25-2.25V6.75a2.25 2.25 0 012.25-2.25z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6" />
-              </svg>
-              <span className="font-mono truncate max-w-48">{execution.worktreeBranch}</span>
-            </div>
-          )}
-          {executing ? (
-            <button
-              onClick={cancelExecution}
-              className="inline-flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-red-200 bg-red-50"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
-              </svg>
-              停止执行
-            </button>
-          ) : (
-            <button
-              onClick={() => executeChain(filteredTasks)}
-              disabled={!filteredTasks.some((t) => t.status === 'PENDING')}
-              className="inline-flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 disabled:opacity-50 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-              </svg>
-              执行任务链
-            </button>
-          )}
+          <span className="font-medium text-gray-800">{project?.name ?? '...'}</span>
+          <span className="text-xs text-gray-400 ml-1">{tasks.length} 个任务</span>
         </div>
       </div>
 
@@ -473,18 +267,13 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
         <ReactFlow
           nodes={flowNodes}
           edges={flowEdges}
-          onNodesChange={onNodesChange}
-          nodeTypes={nodeTypes}
+          nodeTypes={taskNodeTypes}
           edgeTypes={edgeTypes}
           onNodeClick={onNodeClick}
-          onPaneClick={onPaneClick}
           onEdgeMouseEnter={(_: React.MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id)}
           onEdgeMouseLeave={() => setHoveredEdgeId(null)}
-          onConnect={onConnect}
-          onInit={(instance) => {
-            setTimeout(() => instance.fitView({ padding: 0.2 }), 50);
-          }}
-          deleteKeyCode={null}
+          fitView
+          fitViewOptions={{ padding: 0.2 }}
           minZoom={0.3}
           maxZoom={2}
           proOptions={{ hideAttribution: true }}
@@ -494,22 +283,6 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
             showInteractive={false}
             className="!bg-white !border-gray-200 !rounded-lg !shadow-sm [&>button]:!border-gray-200 [&>button]:!bg-white"
           />
-          <Panel position="bottom-left" style={{ left: 40 }}>
-            <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg shadow-sm px-3 py-2 text-[10px] text-gray-400 flex flex-col gap-1.5">
-              <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">Delete</kbd>
-                删除任务
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">拖拽</kbd>
-                连接依赖
-              </span>
-              <span className="flex items-center gap-1">
-                <kbd className="px-1 py-0.5 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono">点击</kbd>
-                查看详情
-              </span>
-            </div>
-          </Panel>
           <MiniMap
             nodeColor={miniMapNodeColor}
             nodeComponent={MiniMapNode}
@@ -519,111 +292,33 @@ export default function TaskGraphPage({ engineStatus, maxConcurrency }: Props) {
           />
         </ReactFlow>
 
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="w-8 h-8 border-3 border-gray-200 border-t-sky-500 rounded-full animate-spin" />
-          </div>
-        )}
-
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="text-center pointer-events-auto">
-              <p className="text-red-500 text-sm mb-4">加载失败：{error}</p>
-              <button onClick={() => refetch()} className="text-sm text-sky-500 hover:text-sky-600 cursor-pointer">重试</button>
-            </div>
-          </div>
-        )}
-
-        {!loading && !error && filteredTasks.length === 0 && (
+        {tasks.length === 0 && orphanSteps.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="text-center pointer-events-auto">
               <svg className="w-16 h-16 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
               </svg>
-              <h3 className="text-lg font-semibold text-gray-800 mb-2">该主题下暂无任务</h3>
-              <p className="text-sm text-gray-600">返回主题层查看所有任务</p>
+              <h3 className="text-lg font-semibold text-gray-800 mb-2">暂无任务</h3>
+              <p className="text-sm text-gray-600 mb-4">通过 AI 助手讨论并生成步骤计划，或手动创建任务</p>
+              <div className="flex items-center gap-3 justify-center">
+                <button
+                  onClick={handleCreateTask}
+                  className="inline-flex items-center gap-1.5 bg-sky-500 hover:bg-sky-600 text-white text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.5v15m7.5-7.5h-15" />
+                  </svg>
+                  讨论任务
+                </button>
+               </div>
             </div>
           </div>
         )}
+
+
       </div>
 
-      <TaskStatusBar tasks={filteredTasks} />
-
-      {(execution?.status === 'COMPLETED' || execution?.status === 'MERGED') && (
-        <div className={`flex items-center justify-between px-4 py-2.5 border-t shrink-0 ${
-          execution.status === 'MERGED'
-            ? 'bg-gray-50 border-gray-200'
-            : 'bg-green-50 border-green-200'
-        }`}>
-          <div className="flex items-center gap-2 text-xs">
-            {execution.status === 'MERGED' ? (
-              <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            )}
-            <span className={`font-medium ${execution.status === 'MERGED' ? 'text-gray-600' : 'text-green-700'}`}>
-              {execution.status === 'MERGED'
-                ? `已合并到 ${execution.targetBranch ?? '分支'}`
-                : `任务链执行完毕 (${execution.completedTasks}/${execution.totalTasks})`}
-            </span>
-            {execution.worktreeBranch && (
-              <span className={`font-mono ${execution.status === 'MERGED' ? 'text-gray-400' : 'text-green-600'}`}>
-                · {execution.worktreeBranch}
-              </span>
-            )}
-          </div>
-          {execution.status === 'COMPLETED' && (
-            <button
-              onClick={() => setShowDiffPreview(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              合并到分支
-            </button>
-          )}
-        </div>
-      )}
-
-      {selectedTask && (
-        <TaskDetailPanel
-          task={selectedTask}
-          allTasks={filteredTasks}
-          executionId={execution?.id}
-          onClose={() => setSelectedTaskId(null)}
-          onUpdated={refetch}
-          onHoverDep={handleHoverDep}
-          disabled={executing}
-        />
-      )}
-
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} topicId={topicId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingTasks={filteredTasks} />
-
-      {showDiffPreview && execution && execution.status === 'COMPLETED' && (
-        <DiffPreview
-          executionId={execution.id}
-          completedTasks={execution.completedTasks}
-          totalTasks={execution.totalTasks}
-          onConfirm={() => {
-            setShowDiffPreview(false);
-            setShowMerge(true);
-          }}
-          onClose={() => setShowDiffPreview(false)}
-        />
-      )}
-
-      {showMerge && execution && execution.status === 'COMPLETED' && (
-        <MergeDialog
-          execution={execution}
-          onMerge={handleMerge}
-          onClose={() => setShowMerge(false)}
-        />
-      )}
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} onPlanImported={refetch} />
     </div>
   );
 }

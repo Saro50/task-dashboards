@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { chatApi } from '@/api/chat';
-import { taskApi } from '@/api/task';
+import { stepApi } from '@/api/step';
 import { log } from '@/utils/log';
 import { chatDebug } from '@/utils/chatDebug';
 import type { ChatSession, ChatMessage, SSEEventPayload } from '@/types/chat';
@@ -75,14 +75,14 @@ export function useChat(directory?: string) {
       log.info(S, 'loadMessages', { sessionId, directory: directoryRef.current });
       const [msgs, imported] = await Promise.all([
         chatApi.getMessages(sessionId, directoryRef.current),
-        taskApi.getImportedPlans(sessionId).catch((err) => {
+        stepApi.getImportedPlans(sessionId).catch((err) => {
           log.warn(S, 'getImportedPlans failed', err);
-          return [] as Array<{ planHash: string; topicName: string }>;
+          return [] as Array<{ planHash: string; taskName: string }>;
         }),
       ]);
       log.info(S, 'loadMessages result', { count: msgs?.length, importedCount: imported.length , imported});
       setMessages(msgs);
-      setImportedPlanTopics(new Set(imported.map((p) => p.topicName)));
+      setImportedPlanTopics(new Set(imported.map((p) => p.taskName)));
 
       /** chatDebug — 消息加载后输出 Token 统计和历史消息 */
       chatDebug.tokens(msgs);

@@ -2,15 +2,15 @@
  * 任务链执行控制器 — REST API 端点。
  *
  * 端点：
- *   POST   /api/topics/:topicId/executions          启动执行
- *   GET    /api/topics/:topicId/executions/latest    获取最新执行状态
- *   GET    /api/topics/:topicId/executions           列出所有执行
- *   POST   /api/executions/:executionId/stop         停止执行
- *   POST   /api/executions/:executionId/merge        合并到目标分支
- *   GET    /api/tasks/:taskId/diff                   获取单个任务的文件变更
+ *   POST   /api/tasks/:taskId/executions             启动执行
+ *   GET    /api/tasks/:taskId/executions/latest       获取最新执行状态
+ *   GET    /api/tasks/:taskId/executions              列出所有执行
+ *   POST   /api/executions/:executionId/stop          停止执行
+ *   POST   /api/executions/:executionId/merge         合并到目标分支
+ *   GET    /api/steps/:stepId/diff                    获取单个步骤的文件变更
  *
  * 注意：start 端点的 projectId 从 request body 获取（而非 ctx.params），
- * 因为路由前缀只包含 :topicId，projectId 由前端在 body 中传递。
+ * 因为路由前缀只包含 :taskId，projectId 由前端在 body 中传递。
  * 这里修复了之前的 bug：原来错误地从 ctx.params 提取 projectId 导致执行总是失败。
  */
 import { Context } from 'koa';
@@ -19,16 +19,16 @@ import { reqLogger } from '../../logger.js';
 
 export async function start(ctx: Context) {
   const log = reqLogger(ctx.state.requestId);
-  const { topicId } = ctx.params;
+  const { taskId } = ctx.params;
   // projectId 和 maxConcurrency 都从 request body 获取。
-  // 原来的实现错误地从 ctx.params 提取 projectId，但路由只有 :topicId 参数，
+  // 原来的实现错误地从 ctx.params 提取 projectId，但路由只有 :taskId 参数，
   // 导致 projectId 始终为 undefined，执行必定失败（"Project not found"）。
   const { projectId, maxConcurrency } = ctx.request.body as any || {};
 
-  log.info('execution.ctrl', 'start', { topicId, projectId, maxConcurrency });
+  log.info('execution.ctrl', 'start', { taskId, projectId, maxConcurrency });
 
   try {
-    const execution = await Service.start(topicId, projectId, maxConcurrency);
+    const execution = await Service.start(taskId, projectId, maxConcurrency);
     ctx.status = 201;
     ctx.body = execution;
   } catch (err: any) {
@@ -112,14 +112,14 @@ export async function merge(ctx: Context) {
 }
 
 export async function status(ctx: Context) {
-  const { topicId } = ctx.params;
-  const execution = await Service.getStatus(topicId);
+  const { taskId } = ctx.params;
+  const execution = await Service.getStatus(taskId);
   ctx.body = execution || null;
 }
 
 export async function list(ctx: Context) {
-  const { topicId } = ctx.params;
-  const executions = await Service.getByTopic(topicId);
+  const { taskId } = ctx.params;
+  const executions = await Service.getByTask(taskId);
   ctx.body = { data: executions };
 }
 
@@ -156,8 +156,8 @@ export async function branches(ctx: Context) {
   }
 }
 
-export async function taskDiff(ctx: Context) {
-  const { taskId } = ctx.params;
+export async function stepDiff(ctx: Context) {
+  const { stepId } = ctx.params;
   const executionId = ctx.query.executionId as string;
 
   if (!executionId) {
@@ -167,7 +167,7 @@ export async function taskDiff(ctx: Context) {
   }
 
   try {
-    const diffs = await Service.getTaskDiff(taskId, executionId);
+    const diffs = await Service.getStepDiff(stepId, executionId);
     ctx.body = { diffs };
   } catch (err: any) {
     if (err.message?.includes('not found')) {
@@ -179,8 +179,8 @@ export async function taskDiff(ctx: Context) {
   }
 }
 
-export async function taskMessages(ctx: Context) {
-  const { taskId } = ctx.params;
+export async function stepMessages(ctx: Context) {
+  const { stepId } = ctx.params;
   const executionId = ctx.query.executionId as string;
 
   if (!executionId) {
@@ -190,7 +190,7 @@ export async function taskMessages(ctx: Context) {
   }
 
   try {
-    const result = await Service.getTaskMessages(taskId, executionId);
+    const result = await Service.getStepMessages(stepId, executionId);
     ctx.body = result;
   } catch (err: any) {
     if (err.message?.includes('not found')) {

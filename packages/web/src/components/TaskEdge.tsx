@@ -1,10 +1,10 @@
 import { useCallback } from 'react';
 import { BaseEdge, getBezierPath, EdgeLabelRenderer } from '@xyflow/react';
 import type { EdgeProps } from '@xyflow/react';
-import { taskApi } from '@/api/task';
+import { stepApi } from '@/api/step';
 import { log } from '@/utils/log';
 
-const S = 'TaskEdge';
+const S = 'StepEdge';
 
 export default function TaskEdge({
   id,
@@ -40,7 +40,7 @@ export default function TaskEdge({
     log.info(S, 'handleDelete', { source: source as string, target: target as string });
     d?.onDeleteClick?.();
     try {
-      await taskApi.removeDependency(target as string, source as string);
+      await stepApi.removeDependency(target as string, source as string);
       log.info(S, 'handleDelete success');
       onDeleted?.();
     } catch (err: any) {

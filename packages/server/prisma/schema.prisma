@@ -17,8 +17,8 @@ model Project {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
+  steps       Step[]
   tasks       Task[]
-  topics      TaskTopic[]
   executions  TaskExecution[]
 }
 
@@ -28,7 +28,8 @@ enum ProjectStatus {
   ERROR
 }
 
-model TaskTopic {
+/// 任务：原「主题(Topic)」，功能模块划分，一个任务下包含多个步骤。
+model Task {
   id          String   @id @default(cuid())
   projectId   String
   name        String   @db.VarChar(200)
@@ -37,54 +38,60 @@ model TaskTopic {
   updatedAt   DateTime @updatedAt
 
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks       Task[]
+  steps       Step[]
   executions  TaskExecution[]
 
   @@index([projectId])
+  @@map("Task")
 }
 
-model Task {
+/// 步骤：原「任务(Task)」，具体的执行单元，有状态和依赖关系。
+model Step {
   id            String     @id @default(cuid())
   projectId     String
   title         String     @db.VarChar(200)
   description   String     @default("") @db.Text
-  status        TaskStatus @default(PENDING)
+  status        StepStatus @default(PENDING)
   blockedReason String?
-  topicId       String?
-  /// 该任务执行期间 AI 引擎消耗的 input token 总数（累加）
+  taskId        String?
+  /// 该步骤执行期间 AI 引擎消耗的 input token 总数（累加）
   tokenInput    Int        @default(0)
-  /// 该任务执行期间 AI 引擎消耗的 output token 总数（累加）
+  /// 该步骤执行期间 AI 引擎消耗的 output token 总数（累加）
   tokenOutput   Int        @default(0)
-  /// 该任务执行期间 AI 引擎的缓存命中 token 数
+  /// 该步骤执行期间 AI 引擎的缓存命中 token 数
   cacheRead     Int        @default(0)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
   project     Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  topic       TaskTopic?     @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  fromDeps    TaskDependency[] @relation("DependsOn")
-  toDeps      TaskDependency[] @relation("RequiredBy")
-  commits     TaskCommit[]
+  task        Task?          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fromDeps    StepDependency[] @relation("DependsOn")
+  toDeps      StepDependency[] @relation("RequiredBy")
+  commits     StepCommit[]
 
   @@index([projectId])
   @@index([status])
-  @@index([topicId])
+  @@index([taskId])
+  @@map("Step")
 }
 
-model TaskDependency {
+/// 步骤依赖关系：原「任务依赖(TaskDependency)」。
+model StepDependency {
   id          String  @id @default(cuid())
-  taskId      String
+  stepId      String
   dependsOnId String
 
-  task        Task    @relation("DependsOn", fields: [taskId], references: [id], onDelete: Cascade)
-  dependsOn   Task    @relation("RequiredBy", fields: [dependsOnId], references: [id], onDelete: Cascade)
+  step        Step    @relation("DependsOn", fields: [stepId], references: [id], onDelete: Cascade)
+  dependsOn   Step    @relation("RequiredBy", fields: [dependsOnId], references: [id], onDelete: Cascade)
 
-  @@unique([taskId, dependsOnId])
-  @@index([taskId])
+  @@unique([stepId, dependsOnId])
+  @@index([stepId])
   @@index([dependsOnId])
+  @@map("StepDependency")
 }
 
-enum TaskStatus {
+/// 步骤状态枚举：原「任务状态(TaskStatus)」。
+enum StepStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
@@ -95,9 +102,9 @@ model PlanImport {
   id            String   @id @default(cuid())
   chatSessionId String   @db.VarChar(200)
   planHash      String   @db.VarChar(64)
-  topicName     String   @db.VarChar(200)
+  taskName      String   @db.VarChar(200)
   projectId     String
-  topicId       String?
+  taskId        String?
   createdAt     DateTime @default(now())
 
   @@unique([chatSessionId, planHash])
@@ -113,14 +120,14 @@ model EngineConfig {
 
 /// 任务链执行记录。
 /// 每条记录对应一次任务链执行：创建 worktree 隔离环境 → 在其中创建 AI 会话 →
-/// 按 DAG 拓扑顺序逐个执行任务（串行，每个任务完成后 commit）。
+/// 按 DAG 拓扑顺序逐个执行步骤（串行，每个步骤完成后 commit）。
 /// 执行状态通过 status 字段流转：
 ///   CREATING_WORKTREE → RUNNING → COMPLETED / FAILED / STOPPED → MERGED
-/// 前端通过轮询该表获取执行进度（completedTasks / totalTasks），
+/// 前端通过轮询该表获取执行进度（completedSteps / totalSteps），
 /// 完成后弹出合并对话框让用户选择目标分支。
 model TaskExecution {
   id               String              @id @default(cuid())
-  topicId          String
+  taskId           String
   projectId        String
   status           ExecutionStatus     @default(CREATING_WORKTREE)
   worktreeId       String?
@@ -131,25 +138,26 @@ model TaskExecution {
   targetBranch     String?
   maxConcurrency   Int                 @default(2)
   initialCommitHash String?            @db.VarChar(40)
-  completedTasks   Int                 @default(0)
-  totalTasks       Int                 @default(0)
+  completedSteps   Int                 @default(0)
+  totalSteps       Int                 @default(0)
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
 
-  topic            TaskTopic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  task             Task                @relation(fields: [taskId], references: [id], onDelete: Cascade)
   project          Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  commits          TaskCommit[]
+  commits          StepCommit[]
 
-  @@index([topicId])
+  @@index([taskId])
   @@index([status])
+  @@map("TaskExecution")
 }
 
 /// 任务链执行状态枚举。
 /// CREATING_WORKTREE: 正在为本次执行创建 git worktree 隔离环境
-/// RUNNING: worktree 已就绪，AI 会话正在按 DAG 顺序执行任务
-/// COMPLETED: 所有任务执行完毕，等待用户确认合并
+/// RUNNING: worktree 已就绪，AI 会话正在按 DAG 顺序执行步骤
+/// COMPLETED: 所有步骤执行完毕，等待用户确认合并
 /// MERGED: 用户已选择目标分支完成合并
-/// STOPPED: 用户手动中止执行，IN_PROGRESS 的任务被重置为 PENDING
+/// STOPPED: 用户手动中止执行，IN_PROGRESS 的步骤被重置为 PENDING
 /// FAILED: 执行过程中出现不可恢复的错误
 enum ExecutionStatus {
   CREATING_WORKTREE
@@ -160,12 +168,12 @@ enum ExecutionStatus {
   FAILED
 }
 
-/// 任务提交记录 — 每个任务完成执行后在 worktree 中创建的 git commit。
-/// 通过 parentCommitHash → commitHash 可以计算单个任务的文件变更 (diff)。
+/// 步骤提交记录 — 每个步骤完成执行后在 worktree 中创建的 git commit。
+/// 通过 parentCommitHash → commitHash 可以计算单个步骤的文件变更 (diff)。
 /// userMessage / assistantMessage 持久化 AI 对话，使 worktree 删除后仍可查看。
-model TaskCommit {
+model StepCommit {
   id               String        @id @default(cuid())
-  taskId           String
+  stepId           String
   executionId      String
   commitHash       String        @db.VarChar(40)
   parentCommitHash String        @db.VarChar(40)
@@ -174,9 +182,10 @@ model TaskCommit {
   assistantMessage Json?
   createdAt        DateTime      @default(now())
 
-  task             Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  step             Step          @relation(fields: [stepId], references: [id], onDelete: Cascade)
   execution        TaskExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
-  @@unique([taskId, executionId])
+  @@unique([stepId, executionId])
   @@index([executionId])
+  @@map("StepCommit")
 }

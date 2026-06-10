@@ -5,8 +5,8 @@ import { log } from '@/utils/log';
 import { chatDebug } from '@/utils/chatDebug';
 import { unwrap } from '@/api/lib';
 import type { ChatMessage, ChatPart, ChatMode } from '@/types/chat';
-import type { TaskPlan, Task } from '@/types/task';
-import TaskPlanPreview from './TaskPlanPreview';
+import type { StepPlan, Step } from '@/types/step';
+import StepPlanPreview from './StepPlanPreview';
 
 const S = 'AIChatWidget';
 
@@ -14,7 +14,7 @@ interface Props {
   directory?: string;
   engineStatus: EngineStatus;
   projectId?: string;
-  topicId?: string;
+  taskId?: string;
   pageContext?: string;
   /**
    * 多模式配置列表。
@@ -23,8 +23,8 @@ interface Props {
    */
   chatModes?: ChatMode[];
   onPlanImported?: () => void;
-  /** 当前主题的已有任务列表，用于 TaskPlanPreview diff 比对与更新 */
-  existingTasks?: Task[];
+  /** 当前任务的已有步骤列表，用于 StepPlanPreview diff 比对与更新 */
+  existingSteps?: Step[];
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -129,20 +129,20 @@ function repairJson(str: string): string {
   return result;
 }
 
-function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTopics, onPlanImported, existingTasks }: {
+function PartRenderer({ part, projectId, taskId, chatSessionId, importedPlanTopics, onPlanImported, existingSteps }: {
   part: ChatPart;
   projectId?: string;
-  topicId?: string;
+  taskId?: string;
   chatSessionId?: string;
   importedPlanTopics: Set<string>;
   onPlanImported: (topicName: string) => void;
-  /** 当前主题已有任务，用于 diff 比对 */
-  existingTasks?: Task[];
+  /** 当前任务已有步骤，用于 diff 比对 */
+  existingSteps?: Step[];
 }) {
   if (part.type === 'text' && part.text) {
     const text = part.text;
     const taskPlanRegex = /<task-plan>\n?([\s\S]*?)\n?<\/task-plan>/g;
-    const segments: Array<{ type: 'text' | 'plan'; content: string | TaskPlan }> = [];
+    const segments: Array<{ type: 'text' | 'plan'; content: string | StepPlan }> = [];
     let lastIndex = 0;
     let match;
 
@@ -153,11 +153,19 @@ function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTop
       try {
         let jsonStr = match[1].trim();
         jsonStr = jsonStr.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/,'');
-        let plan: TaskPlan;
+        let plan: StepPlan;
         try {
           plan = JSON.parse(jsonStr);
         } catch {
           plan = JSON.parse(repairJson(jsonStr));
+        }
+        // 兼容 AI 旧格式输出：AI 可能输出 tasks 字段而非 steps
+        if (!plan.steps && (plan as any).tasks) {
+          plan.steps = (plan as any).tasks;
+        }
+        // 兼容 AI 旧格式输出：AI 可能输出 topic 字段而非 task
+        if (!plan.task && (plan as any).topic) {
+          plan.task = (plan as any).topic;
         }
         segments.push({ type: 'plan', content: plan });
       } catch {
@@ -179,15 +187,15 @@ function PartRenderer({ part, projectId, topicId, chatSessionId, importedPlanTop
           seg.type === 'text' ? (
             <p key={i} className="whitespace-pre-wrap break-words">{seg.content as string}</p>
           ) : (
-            <TaskPlanPreview
+            <StepPlanPreview
               key={i}
-              plan={seg.content as TaskPlan}
+              plan={seg.content as StepPlan}
               projectId={projectId}
-              topicId={topicId}
+              taskId={taskId}
               chatSessionId={chatSessionId}
-              imported={importedPlanTopics.has((seg.content as TaskPlan).topic)}
+              imported={importedPlanTopics.has((seg.content as StepPlan).task)}
               onPlanImported={onPlanImported}
-              existingTasks={existingTasks}
+              existingSteps={existingSteps}
             />
           )
         )}
@@ -285,7 +293,7 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, topicId, pageContext, chatModes, onPlanImported, existingTasks }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, taskId, pageContext, chatModes, onPlanImported, existingSteps }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
@@ -474,9 +482,12 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
   const handleDeleteSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
+    const session = sessions.find((s) => s.id === sessionId);
+    const title = session?.title || '该会话';
+    if (!confirm(`确定要删除「${title}」吗？此操作不可恢复。`)) return;
     log.info(S, 'handleDeleteSession', { sessionId });
     await deleteSession(sessionId);
-  }, [deleteSession]);
+  }, [deleteSession, sessions]);
 
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
@@ -905,11 +916,11 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                         key={part.id}
                         part={part}
                         projectId={projectId}
-                        topicId={topicId}
+                        taskId={taskId}
                         chatSessionId={currentSessionId ?? undefined}
                         importedPlanTopics={importedPlanTopics}
                         onPlanImported={handlePlanImported}
-                        existingTasks={existingTasks}
+                        existingSteps={existingSteps}
                       />
                     ))}
                     <div className="flex items-center justify-between gap-2">

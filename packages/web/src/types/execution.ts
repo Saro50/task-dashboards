@@ -3,7 +3,7 @@
  *
  * 与后端 Prisma schema 中的 ExecutionStatus 枚举和 TaskExecution 模型一一对应。
  * 前端通过这些类型与后端 API 交互，useTaskExecution hook 中使用 TaskExecution
- * 跟踪执行状态、进度（completedTasks/totalTasks）和 worktree 信息。
+ * 跟踪执行状态、进度（completedSteps/totalSteps）和 worktree 信息。
  */
 export type ExecutionStatus =
   | 'CREATING_WORKTREE'
@@ -15,7 +15,7 @@ export type ExecutionStatus =
 
 export interface TaskExecution {
   id: string;
-  topicId: string;
+  taskId: string;
   projectId: string;
   status: ExecutionStatus;
   worktreeId: string | null;
@@ -25,11 +25,11 @@ export interface TaskExecution {
   sessionId: string | null;
   targetBranch: string | null;
   maxConcurrency: number;
-  completedTasks: number;
-  totalTasks: number;
+  completedSteps: number;
+  totalSteps: number;
   createdAt: string;
   updatedAt: string;
-  topic?: { id: string; name: string };
+  task?: { id: string; name: string };
 }
 
 export interface FileDiff {

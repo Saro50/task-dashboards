@@ -3,8 +3,8 @@ import { BrowserRouter, Routes, Route } from 'react-router';
 import Layout from './components/Layout';
 import type { EngineStatus } from './components/Layout';
 import ProjectListPage from './pages/ProjectListPage';
-import TopicGraphPage from './pages/TopicGraphPage';
 import TaskGraphPage from './pages/TaskGraphPage';
+import StepGraphPage from './pages/StepGraphPage';
 import EngineConfigModal from './components/EngineConfigModal';
 import { ToastProvider, useToast } from './components/Toast';
 import { engineApi } from './api/engine';
@@ -43,8 +43,8 @@ function AppContent() {
     >
       <Routes>
         <Route path="/" element={<ProjectListPage onOpenEngineConfig={() => setEngineConfigOpen(true)} engineStatus={engineStatus} onEngineStatusChange={checkEngineStatus} />} />
-        <Route path="/project/:projectId" element={<TopicGraphPage engineStatus={engineStatus} />} />
-        <Route path="/project/:projectId/topic/:topicId" element={<TaskGraphPage engineStatus={engineStatus} maxConcurrency={maxConcurrency} />} />
+        <Route path="/project/:projectId" element={<TaskGraphPage engineStatus={engineStatus} />} />
+        <Route path="/project/:projectId/task/:taskId" element={<StepGraphPage engineStatus={engineStatus} maxConcurrency={maxConcurrency} />} />
       </Routes>
 
       <EngineConfigModal

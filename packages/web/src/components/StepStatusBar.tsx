@@ -1,36 +1,36 @@
-import type { Task, TaskStatus } from '@/types/task';
+import type { Step, StepStatus } from '@/types/step';
 
 interface Props {
-  tasks: Task[];
+  steps: Step[];
 }
 
-const statusConfig: Record<TaskStatus, { label: string; color: string; bg: string }> = {
+const statusConfig: Record<StepStatus, { label: string; color: string; bg: string }> = {
   PENDING: { label: '待办', color: 'text-gray-600', bg: 'bg-gray-400' },
   IN_PROGRESS: { label: '进行中', color: 'text-sky-600', bg: 'bg-sky-500' },
   COMPLETED: { label: '已完成', color: 'text-green-600', bg: 'bg-green-500' },
   BLOCKED: { label: '已阻塞', color: 'text-red-600', bg: 'bg-red-500' },
 };
 
-export default function TaskStatusBar({ tasks }: Props) {
-  const counts: Record<TaskStatus, number> = {
+export default function StepStatusBar({ steps }: Props) {
+  const counts: Record<StepStatus, number> = {
     PENDING: 0,
     IN_PROGRESS: 0,
     COMPLETED: 0,
     BLOCKED: 0,
   };
-  for (const t of tasks) {
+  for (const t of steps) {
     counts[t.status]++;
   }
 
-  const total = tasks.length;
+  const total = steps.length;
   const completed = counts.COMPLETED;
   const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
     <div className="h-10 bg-white border-t border-gray-200 flex items-center px-4 gap-6 text-xs shrink-0">
-      <span className="text-gray-500">共 {total} 个任务</span>
+      <span className="text-gray-500">共 {total} 个步骤</span>
       <div className="flex items-center gap-3">
-        {(Object.keys(statusConfig) as TaskStatus[]).map((status) => (
+        {(Object.keys(statusConfig) as StepStatus[]).map((status) => (
           <span key={status} className={`flex items-center gap-1 ${statusConfig[status].color}`}>
             <span className={`w-2 h-2 rounded-full ${statusConfig[status].bg}`} />
             {statusConfig[status].label} {counts[status]}

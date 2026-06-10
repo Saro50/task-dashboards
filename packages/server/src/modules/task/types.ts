@@ -1,32 +1,22 @@
-export interface ImportTaskPlanRequest {
-  topic: string;
-  summary: string;
-  tasks: {
-    ref: string;
-    title: string;
-    description: string;
-    dependencies: string[];
-  }[];
-  chatSessionId?: string;
-  topicId?: string;
-}
-
-export interface ImportTaskPlanResponse {
-  topicId: string;
-  imported: number;
-  tasks: {
-    id: string;
-    ref: string;
-    title: string;
-    status: string;
-  }[];
-  dependencies: number;
-  planHash?: string;
-}
-
-export interface ImportedPlanItem {
-  planHash: string;
-  topicName: string;
+export interface TaskWithStats {
+  id: string;
   projectId: string;
-  topicId: string | null;
+  name: string;
+  summary: string;
+  stepCount: number;
+  completedStepCount: number;
+  aggregatedStatus: 'COMPLETED' | 'IN_PROGRESS' | 'BLOCKED' | 'PENDING';
+  /** 任务下所有步骤的 input token 累计 */
+  tokenInput: number;
+  /** 任务下所有步骤的 output token 累计 */
+  tokenOutput: number;
+  /** 任务下所有步骤的缓存命中 token 累计 */
+  cacheRead: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskDependency {
+  sourceId: string;
+  targetId: string;
 }

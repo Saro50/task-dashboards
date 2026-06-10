@@ -5,9 +5,9 @@
  * - start: 启动任务链执行（创建 worktree + AI 会话）
  * - stop: 停止正在运行的执行
  * - merge: 将已完成的执行合并到目标分支
- * - getLatest: 获取主题下最新的执行状态（前端轮询用）
- * - list: 列出主题下所有执行历史
- * - getTaskDiff: 获取单个任务的文件变更（per-task diff）
+ * - getLatest: 获取任务下最新的执行状态（前端轮询用）
+ * - list: 列出任务下所有执行历史
+ * - getStepDiff: 获取单个步骤的文件变更（per-step diff）
  */
 import { apiRequest } from '@/api/lib';
 import type { TaskExecution, FileDiff } from '@/types/execution';
@@ -17,8 +17,8 @@ const BASE = '/api';
 const S = 'executionApi';
 
 export const executionApi = {
-  start(topicId: string, projectId: string, maxConcurrency?: number): Promise<TaskExecution> {
-    return apiRequest<TaskExecution>(S, `${BASE}/topics/${topicId}/executions`, {
+  start(taskId: string, projectId: string, maxConcurrency?: number): Promise<TaskExecution> {
+    return apiRequest<TaskExecution>(S, `${BASE}/tasks/${taskId}/executions`, {
       method: 'POST',
       body: JSON.stringify({ projectId, maxConcurrency }),
     });
@@ -37,12 +37,12 @@ export const executionApi = {
     });
   },
 
-  getLatest(topicId: string): Promise<TaskExecution | null> {
-    return apiRequest<TaskExecution | null>(S, `${BASE}/topics/${topicId}/executions/latest`);
+  getLatest(taskId: string): Promise<TaskExecution | null> {
+    return apiRequest<TaskExecution | null>(S, `${BASE}/tasks/${taskId}/executions/latest`);
   },
 
-  list(topicId: string): Promise<TaskExecution[]> {
-    return apiRequest<TaskExecution[]>(S, `${BASE}/topics/${topicId}/executions`);
+  list(taskId: string): Promise<TaskExecution[]> {
+    return apiRequest<TaskExecution[]>(S, `${BASE}/tasks/${taskId}/executions`);
   },
 
   getMessages(executionId: string): Promise<{ messages: any[] }> {
@@ -61,11 +61,11 @@ export const executionApi = {
     return apiRequest<TaskExecution[]>(S, `${BASE}/projects/${projectId}/executions/active`);
   },
 
-  getTaskDiff(taskId: string, executionId: string): Promise<{ diffs: FileDiff[] }> {
-    return apiRequest<{ diffs: FileDiff[] }>(S, `${BASE}/tasks/${taskId}/diff?executionId=${executionId}`);
+  getStepDiff(stepId: string, executionId: string): Promise<{ diffs: FileDiff[] }> {
+    return apiRequest<{ diffs: FileDiff[] }>(S, `${BASE}/steps/${stepId}/diff?executionId=${executionId}`);
   },
 
-  getTaskMessages(taskId: string, executionId: string): Promise<{ messages: SessionMessage[]; unavailable?: boolean }> {
-    return apiRequest<{ messages: SessionMessage[]; unavailable?: boolean }>(S, `${BASE}/tasks/${taskId}/messages?executionId=${executionId}`);
+  getStepMessages(stepId: string, executionId: string): Promise<{ messages: SessionMessage[]; unavailable?: boolean }> {
+    return apiRequest<{ messages: SessionMessage[]; unavailable?: boolean }>(S, `${BASE}/steps/${stepId}/messages?executionId=${executionId}`);
   },
 };

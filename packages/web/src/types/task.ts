@@ -1,54 +1,30 @@
-export type TaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED';
+export type AggregatedStatus = 'COMPLETED' | 'IN_PROGRESS' | 'BLOCKED' | 'PENDING';
 
 export interface Task {
   id: string;
   projectId: string;
-  title: string;
-  description: string;
-  status: TaskStatus;
-  blockedReason: string | null;
-  topicId: string | null;
+  name: string;
+  summary: string;
+  stepCount: number;
+  completedStepCount: number;
+  aggregatedStatus: AggregatedStatus;
+  /** 任务下所有步骤的 input token 累计 */
+  tokenInput: number;
+  /** 任务下所有步骤的 output token 累计 */
+  tokenOutput: number;
+  /** 任务下所有步骤的缓存命中 token 累计 */
+  cacheRead: number;
   createdAt: string;
   updatedAt: string;
-  dependencies: string[];
 }
 
-export interface CreateTaskInput {
-  /** 预分配 ID（cuid 格式），不传则由后端自动生成 */
-  id?: string;
-  title: string;
-  description?: string;
+export interface TaskDependency {
+  sourceId: string;
+  targetId: string;
 }
 
-export interface UpdateTaskInput {
-  title?: string;
-  description?: string;
-  status?: TaskStatus;
-  topicId?: string | null;
-}
-
-export interface TaskPlanItem {
-  ref: string;
-  title: string;
-  description: string;
-  dependencies: string[];
-}
-
-export interface TaskPlan {
-  version: '1.0';
-  topic: string;
-  summary: string;
-  tasks: TaskPlanItem[];
-}
-
-export interface ImportTaskPlanResponse {
-  topicId: string;
-  imported: number;
-  tasks: {
-    id: string;
-    ref: string;
-    title: string;
-    status: string;
-  }[];
-  dependencies: number;
+export interface TasksResponse {
+  tasks: Task[];
+  dependencies: TaskDependency[];
+  orphanSteps: import('./step').Step[];
 }

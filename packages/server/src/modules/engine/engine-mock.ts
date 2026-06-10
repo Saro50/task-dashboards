@@ -8,9 +8,9 @@
  * 配置参数：
  *   MOCK_WT_DELAY=500         worktree 创建延迟 (ms)
  *   MOCK_SESSION_DELAY=300    session 创建延迟 (ms)
- *   MOCK_TASK_DELAY=2000      每批任务 AI 处理延迟 (ms)
- *   MOCK_FAILURE_RATE=0       0-1，随机任务失败概率（不生成 assistant 消息）
- *   MOCK_FAIL_AFTER=0         每个会话内，在 N 个成功任务后开始失败（0=不限）
+ *   MOCK_TASK_DELAY=2000      每批步骤 AI 处理延迟 (ms)
+ *   MOCK_FAILURE_RATE=0       0-1，随机步骤失败概率（不生成 assistant 消息）
+ *   MOCK_FAIL_AFTER=0         每个会话内，在 N 个成功步骤后开始失败（0=不限）
  *
  * 原理：所有状态保存在内存中（worktrees / sessions / messages），
  * execution.service.ts 调用 opencode-v2.ts 的函数 → mock 拦截 → 返回模拟数据。
@@ -362,7 +362,7 @@ export class MockEngine {
           id: cuid(),
           agent: 'build',
           model: { id: 'mock-model', providerID: 'mock', variant: 'mock' },
-          content: [{ type: 'text', text: `[Mock AI] 任务已完成。` }],
+          content: [{ type: 'text', text: `[Mock AI] 步骤已完成。` }],
           finish: 'stop',
           time: { created: Date.now(), completed: Date.now() },
         });

@@ -10,7 +10,7 @@ interface Props {
   onOpenEngineConfig: () => void;
   engineStatus: EngineStatus;
   /**
-   * 项目级最大并发主题数，由 App 顶层 useConcurrencySetting 提供。
+   * 项目级最大并发任务数，由 App 顶层 useConcurrencySetting 提供。
    * 上下游影响：Layout 顶部菜单展示并修改；调用 executionApi.start 时透传给后端，
    * 限制同项目下可并行运行的任务链条数。
    */
@@ -31,7 +31,7 @@ const statusDot: Record<EngineStatus, { color: string; title: string }> = {
  * （含响应里的 requestId，用于在 packages/server/log/ 下 grep 定位后端日志）。
  * 上下游影响：新增 api 模块时需同步把 scope 字符串加进这里。
  */
-const API_SCOPES = ['chatApi', 'engineApi', 'executionApi', 'projectApi', 'taskApi', 'topicApi'];
+const API_SCOPES = ['chatApi', 'engineApi', 'executionApi', 'projectApi', 'stepApi', 'taskApi'];
 
 export default function Layout({ children, onOpenEngineConfig, engineStatus, maxConcurrency, onMaxConcurrencyChange }: Props) {
   const dot = statusDot[engineStatus];

@@ -5,7 +5,7 @@
  * - SDK v1 没有 worktree API，无法创建隔离的执行环境
  * - SDK v2 提供了 worktree.create/remove/list 和 v2.session.wait 等关键能力
  * - v2.session.wait 是替代 setTimeout 模拟的核心：它会阻塞直到 AI agent loop 处理完所有消息，
- *   这样我们就能准确知道每个任务何时真正执行完毕
+ *   这样我们就能准确知道每个步骤何时真正执行完毕
  *
  * Mock 模式：设置环境变量 MOCK_ENGINE=true 时，adapter 切换为 MockEngine，
  * 无需运行 opencode engine 即可测试完整的任务链执行流程。
@@ -224,7 +224,7 @@ const realEngine: EngineAdapter = {
   /**
    * 轮询 assistant 消息，等待出现包含指定子串的文本。
    *
-   * 这是一个通用能力——调用方决定搜什么文本（比如任务完成 marker），
+   * 这是一个通用能力——调用方决定搜什么文本（比如步骤完成 marker），
    * 适配器只负责"在 opencode 消息格式中搜索文本"这个与 SDK 强耦合的操作。
    *
    * 搜索范围：所有 assistant 消息的 content[].type === 'text' 的 text 字段。

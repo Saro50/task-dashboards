@@ -5,7 +5,7 @@ vi.mock('../modules/execution/execution.service.js', () => ({
   stop: vi.fn(),
   merge: vi.fn(),
   getStatus: vi.fn(),
-  getByTopic: vi.fn(),
+  getByTask: vi.fn(),
 }));
 
 vi.mock('../logger.js', () => ({
@@ -28,7 +28,7 @@ function mockCtx(overrides?: { params?: any; body?: any }) {
 
 const mockExecution = {
   id: 'exec-1',
-  topicId: 'topic-1',
+  taskId: 'topic-1',
   projectId: 'proj-1',
   status: 'CREATING_WORKTREE',
   worktreeName: null,
@@ -36,8 +36,8 @@ const mockExecution = {
   sessionId: null,
   targetBranch: null,
   maxConcurrency: 2,
-  completedTasks: 0,
-  totalTasks: 3,
+  completedSteps: 0,
+  totalSteps: 3,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -51,7 +51,7 @@ describe('execution.controller', () => {
     it('C7.1: should return 201 on success', async () => {
       (Service.start as any).mockResolvedValue(mockExecution);
       const ctx = mockCtx({
-        params: { topicId: 'topic-1' },
+        params: { taskId: 'topic-1' },
         body: { projectId: 'proj-1', maxConcurrency: 2 },
       });
 
@@ -65,7 +65,7 @@ describe('execution.controller', () => {
     it('C7.2: should return 409 when already running', async () => {
       (Service.start as any).mockRejectedValue(new Error('An execution is already running for this topic'));
       const ctx = mockCtx({
-        params: { topicId: 'topic-1' },
+        params: { taskId: 'topic-1' },
         body: { projectId: 'proj-1' },
       });
 
@@ -78,7 +78,7 @@ describe('execution.controller', () => {
     it('C7.3: should return 400 when no pending tasks', async () => {
       (Service.start as any).mockRejectedValue(new Error('No pending tasks to execute'));
       const ctx = mockCtx({
-        params: { topicId: 'topic-1' },
+        params: { taskId: 'topic-1' },
         body: { projectId: 'proj-1' },
       });
 
@@ -91,7 +91,7 @@ describe('execution.controller', () => {
     it('C7.4: should throw on other errors', async () => {
       (Service.start as any).mockRejectedValue(new Error('Topic not found'));
       const ctx = mockCtx({
-        params: { topicId: 'bad' },
+        params: { taskId: 'bad' },
         body: { projectId: 'proj-1' },
       });
 
@@ -100,7 +100,7 @@ describe('execution.controller', () => {
 
     it('C7.5: should handle missing body gracefully', async () => {
       (Service.start as any).mockRejectedValue(new Error('Project not found'));
-      const ctx = mockCtx({ params: { topicId: 'topic-1' } });
+      const ctx = mockCtx({ params: { taskId: 'topic-1' } });
 
       await expect(start(ctx)).rejects.toThrow();
     });
@@ -204,7 +204,7 @@ describe('execution.controller', () => {
   describe('status', () => {
     it('C7.14: should return latest execution', async () => {
       (Service.getStatus as any).mockResolvedValue(mockExecution);
-      const ctx = mockCtx({ params: { topicId: 'topic-1' } });
+      const ctx = mockCtx({ params: { taskId: 'topic-1' } });
 
       await status(ctx);
 
@@ -214,7 +214,7 @@ describe('execution.controller', () => {
 
     it('C7.15: should return null when no executions', async () => {
       (Service.getStatus as any).mockResolvedValue(null);
-      const ctx = mockCtx({ params: { topicId: 'topic-1' } });
+      const ctx = mockCtx({ params: { taskId: 'topic-1' } });
 
       await status(ctx);
 
@@ -225,13 +225,13 @@ describe('execution.controller', () => {
   describe('list', () => {
     it('C7.16: should return all executions', async () => {
       const execs = [mockExecution];
-      (Service.getByTopic as any).mockResolvedValue(execs);
-      const ctx = mockCtx({ params: { topicId: 'topic-1' } });
+      (Service.getByTask as any).mockResolvedValue(execs);
+      const ctx = mockCtx({ params: { taskId: 'task-1' } });
 
       await list(ctx);
 
       expect(ctx.body).toEqual({ data: execs });
-      expect(Service.getByTopic).toHaveBeenCalledWith('topic-1');
+      expect(Service.getByTask).toHaveBeenCalledWith('task-1');
     });
   });
 });

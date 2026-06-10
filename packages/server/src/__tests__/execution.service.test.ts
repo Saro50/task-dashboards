@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const executionRecord: Record<string, any> = {};
-  const taskRecords: Record<string, any> = {};
+  const stepRecords: Record<string, any> = {};
 
   const prisma = {
-    taskTopic: { findUnique: vi.fn() },
+    task: { findUnique: vi.fn() },
     project: { findUnique: vi.fn() },
     taskExecution: {
       create: vi.fn(),
@@ -14,11 +14,13 @@ const mocks = vi.hoisted(() => {
       updateMany: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
+      count: vi.fn().mockResolvedValue(0),
+      deleteMany: vi.fn(),
     },
   };
 
-  const taskService = {
-    listByTopic: vi.fn(),
+  const stepService = {
+    listByTask: vi.fn(),
     update: vi.fn(),
   };
 
@@ -26,7 +28,7 @@ const mocks = vi.hoisted(() => {
     getBaseUrl: vi.fn(),
   };
 
-  return { prisma, taskService, engineService, executionRecord, taskRecords };
+  return { prisma, stepService, engineService, executionRecord, stepRecords };
 });
 
 const { getSessionMessagesMock } = vi.hoisted(() => ({
@@ -37,9 +39,9 @@ const { getSessionMessagesMock } = vi.hoisted(() => ({
 
 vi.mock('../prisma.js', () => ({ default: mocks.prisma }));
 
-vi.mock('../modules/task/task.service.js', () => ({
-  listByTopic: mocks.taskService.listByTopic,
-  update: mocks.taskService.update,
+vi.mock('../modules/step/step.service.js', () => ({
+  listByTask: mocks.stepService.listByTask,
+  update: mocks.stepService.update,
 }));
 
 vi.mock('../modules/engine/engine.service.js', () => ({
@@ -81,28 +83,28 @@ vi.mock('simple-git', () => ({
 
 import * as Service from '../modules/execution/execution.service.js';
 
-const TOPIC_ID = 'topic-1';
+const TASK_ID = 'task-1';
 const PROJECT_ID = 'proj-1';
-const TOPIC_NAME = 'Test Topic';
+const TASK_NAME = 'Test Task';
 const PROJECT_PATH = '/tmp/test-project';
 
 let execCounter = 0;
-let taskCounter = 0;
+let stepCounter = 0;
 
-function makeTopic() {
-  return { id: TOPIC_ID, name: TOPIC_NAME, projectId: PROJECT_ID };
+function makeTask() {
+  return { id: TASK_ID, name: TASK_NAME, projectId: PROJECT_ID };
 }
 
 function makeProject() {
   return { id: PROJECT_ID, name: 'Test', path: PROJECT_PATH };
 }
 
-function makeTask(overrides: { title: string; status?: string; dependencies?: string[] }) {
-  const id = `task-${++taskCounter}`;
+function makeStep(overrides: { title: string; status?: string; dependencies?: string[] }) {
+  const id = `task-${++stepCounter}`;
   return {
     id,
     projectId: PROJECT_ID,
-    topicId: TOPIC_ID,
+    taskId: TASK_ID,
     title: overrides.title,
     description: '',
     status: overrides.status ?? 'PENDING',
@@ -116,7 +118,7 @@ function makeExecution(overrides: Record<string, any> = {}) {
   const id = `exec-${++execCounter}`;
   return {
     id,
-    topicId: TOPIC_ID,
+    taskId: TASK_ID,
     projectId: PROJECT_ID,
     status: 'CREATING_WORKTREE',
     worktreeId: null,
@@ -126,8 +128,8 @@ function makeExecution(overrides: Record<string, any> = {}) {
     sessionId: null,
     targetBranch: null,
     maxConcurrency: 2,
-    completedTasks: 0,
-    totalTasks: 0,
+    completedSteps: 0,
+    totalSteps: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -154,8 +156,8 @@ describe('execution.service', () => {
     latestExecution = null;
     taskUpdates = {};
 
-    mocks.prisma.taskTopic.findUnique.mockImplementation(({ where }: any) => {
-      if (where.id === TOPIC_ID) return Promise.resolve(makeTopic());
+    mocks.prisma.task.findUnique.mockImplementation(({ where }: any) => {
+      if (where.id === TASK_ID) return Promise.resolve(makeTask());
       return Promise.resolve(null);
     });
 
@@ -192,7 +194,7 @@ describe('execution.service', () => {
       return Promise.resolve({ count: 1 });
     });
 
-    mocks.taskService.update.mockImplementation((id: string, data: any) => {
+    mocks.stepService.update.mockImplementation((id: string, data: any) => {
       taskUpdates[id] = data;
       return Promise.resolve({ id });
     });
@@ -208,119 +210,119 @@ describe('execution.service', () => {
     mockGit.status.mockResolvedValue({ isClean: () => true, staged: [] });
     mockGit.raw.mockResolvedValue(undefined);
     execCounter = 0;
-    taskCounter = 0;
+    stepCounter = 0;
     setupExecutionStubs();
   });
 
   describe('S1: startup validation', () => {
     it('S1.1: should throw when topic not found', async () => {
-      mocks.prisma.taskTopic.findUnique.mockResolvedValue(null);
-      await expect(Service.start('bad-topic', PROJECT_ID)).rejects.toThrow('Topic not found');
+      mocks.prisma.task.findUnique.mockResolvedValue(null);
+      await expect(Service.start('bad-task', PROJECT_ID)).rejects.toThrow('Task not found');
     });
 
     it('S1.2: should throw when project not found', async () => {
       mocks.prisma.project.findUnique.mockResolvedValue(null);
-      await expect(Service.start(TOPIC_ID, 'bad-project')).rejects.toThrow('Project not found');
+      await expect(Service.start(TASK_ID, 'bad-project')).rejects.toThrow('Project not found');
     });
 
     it('S1.3: should throw when no pending tasks', async () => {
-      mocks.taskService.listByTopic.mockResolvedValue([
-        makeTask({ title: 'done', status: 'COMPLETED' }),
+      mocks.stepService.listByTask.mockResolvedValue([
+        makeStep({ title: 'done', status: 'COMPLETED' }),
       ]);
-      await expect(Service.start(TOPIC_ID, PROJECT_ID)).rejects.toThrow('No pending tasks');
+      await expect(Service.start(TASK_ID, PROJECT_ID)).rejects.toThrow('No pending tasks');
     });
 
     it('S1.4: should throw when execution already running', async () => {
       mocks.prisma.taskExecution.findFirst.mockResolvedValue(makeExecution({ status: 'RUNNING' }));
-      mocks.taskService.listByTopic.mockResolvedValue([makeTask({ title: 'A' })]);
+      mocks.stepService.listByTask.mockResolvedValue([makeStep({ title: 'A' })]);
 
-      await expect(Service.start(TOPIC_ID, PROJECT_ID)).rejects.toThrow('already running');
+      await expect(Service.start(TASK_ID, PROJECT_ID)).rejects.toThrow('already running');
     });
   });
 
   describe('S2: happy path', () => {
     it('S2.1: single task completes', async () => {
-      const tasks = [makeTask({ title: 'A' })];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      const tasks = [makeStep({ title: 'A' })];
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
-      const exec = await Service.start(TOPIC_ID, PROJECT_ID);
+      const exec = await Service.start(TASK_ID, PROJECT_ID);
 
       await waitFor(() => latestExecution?.status === 'COMPLETED', 20000);
 
-      expect(latestExecution.completedTasks).toBe(1);
-      expect(latestExecution.totalTasks).toBe(1);
+      expect(latestExecution.completedSteps).toBe(1);
+      expect(latestExecution.totalSteps).toBe(1);
       expect(taskUpdates[tasks[0].id]?.status).toBe('COMPLETED');
     }, 20000);
 
     it('S2.2: 3 tasks linear dependency completes sequentially', async () => {
-      const tA = makeTask({ title: 'A' });
-      const tB = makeTask({ title: 'B', dependencies: [tA.id] });
-      const tC = makeTask({ title: 'C', dependencies: [tB.id] });
+      const tA = makeStep({ title: 'A' });
+      const tB = makeStep({ title: 'B', dependencies: [tA.id] });
+      const tC = makeStep({ title: 'C', dependencies: [tB.id] });
       const tasks = [tA, tB, tC];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
-      await Service.start(TOPIC_ID, PROJECT_ID, 2);
+      await Service.start(TASK_ID, PROJECT_ID, 2);
 
       await waitFor(() => latestExecution?.status === 'COMPLETED', 30000);
 
       expect(taskUpdates[tA.id]?.status).toBe('COMPLETED');
       expect(taskUpdates[tB.id]?.status).toBe('COMPLETED');
       expect(taskUpdates[tC.id]?.status).toBe('COMPLETED');
-      expect(latestExecution.completedTasks).toBe(3);
+      expect(latestExecution.completedSteps).toBe(3);
     }, 30000);
 
     it('S2.3: diamond dependency with concurrency=2', async () => {
-      const tA = makeTask({ title: 'A' });
-      const tB = makeTask({ title: 'B', dependencies: [tA.id] });
-      const tC = makeTask({ title: 'C', dependencies: [tA.id] });
-      const tD = makeTask({ title: 'D', dependencies: [tB.id, tC.id] });
-      const tE = makeTask({ title: 'E', dependencies: [tD.id] });
+      const tA = makeStep({ title: 'A' });
+      const tB = makeStep({ title: 'B', dependencies: [tA.id] });
+      const tC = makeStep({ title: 'C', dependencies: [tA.id] });
+      const tD = makeStep({ title: 'D', dependencies: [tB.id, tC.id] });
+      const tE = makeStep({ title: 'E', dependencies: [tD.id] });
       const tasks = [tA, tB, tC, tD, tE];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
-      await Service.start(TOPIC_ID, PROJECT_ID, 2);
+      await Service.start(TASK_ID, PROJECT_ID, 2);
 
       await waitFor(() => latestExecution?.status === 'COMPLETED', 60000);
 
       for (const t of tasks) {
         expect(taskUpdates[t.id]?.status).toBe('COMPLETED');
       }
-      expect(latestExecution.completedTasks).toBe(5);
+      expect(latestExecution.completedSteps).toBe(5);
     }, 60000);
 
     it('S2.4: progress increments during execution', async () => {
-      const tA = makeTask({ title: 'A' });
-      const tB = makeTask({ title: 'B', dependencies: [tA.id] });
-      const tC = makeTask({ title: 'C', dependencies: [tB.id] });
+      const tA = makeStep({ title: 'A' });
+      const tB = makeStep({ title: 'B', dependencies: [tA.id] });
+      const tC = makeStep({ title: 'C', dependencies: [tB.id] });
       const tasks = [tA, tB, tC];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
-      await Service.start(TOPIC_ID, PROJECT_ID, 1);
+      await Service.start(TASK_ID, PROJECT_ID, 1);
 
       await waitFor(() => latestExecution?.status === 'COMPLETED', 30000);
 
-      expect(latestExecution.completedTasks).toBe(3);
+      expect(latestExecution.completedSteps).toBe(3);
     }, 30000);
   });
 
   describe('S3: stop execution', () => {
     it('S3.1: stop resets IN_PROGRESS tasks to PENDING', async () => {
-      const tA = makeTask({ title: 'A' });
-      const tB = makeTask({ title: 'B', dependencies: [tA.id] });
+      const tA = makeStep({ title: 'A' });
+      const tB = makeStep({ title: 'B', dependencies: [tA.id] });
       const tasks = [tA, tB];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
-      const exec = await Service.start(TOPIC_ID, PROJECT_ID);
+      const exec = await Service.start(TASK_ID, PROJECT_ID);
 
       await waitFor(() => latestExecution?.status === 'RUNNING');
       await waitFor(() => {
@@ -345,10 +347,10 @@ describe('execution.service', () => {
 
   describe('S4: reuse worktree after stop', () => {
     it('S4.1: reuses STOPPED worktree on restart', async () => {
-      const tA = makeTask({ title: 'A' });
-      const tB = makeTask({ title: 'B' });
+      const tA = makeStep({ title: 'A' });
+      const tB = makeStep({ title: 'B' });
       const tasks = [tA, tB];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
@@ -364,7 +366,7 @@ describe('execution.service', () => {
         return Promise.resolve(null);
       });
 
-      await Service.start(TOPIC_ID, PROJECT_ID);
+      await Service.start(TASK_ID, PROJECT_ID);
 
       await waitFor(() => latestExecution?.status === 'COMPLETED', 20000);
 
@@ -374,15 +376,15 @@ describe('execution.service', () => {
     }, 20000);
 
     it('S4.2: creates new worktree when no STOPPED worktree exists', async () => {
-      const tA = makeTask({ title: 'A' });
+      const tA = makeStep({ title: 'A' });
       const tasks = [tA];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       mocks.prisma.taskExecution.findFirst.mockResolvedValue(null);
 
-      await Service.start(TOPIC_ID, PROJECT_ID);
+      await Service.start(TASK_ID, PROJECT_ID);
 
       await waitFor(() => latestExecution?.status === 'COMPLETED', 20000);
 
@@ -399,7 +401,7 @@ describe('execution.service', () => {
         worktreeDirectory: '/tmp/mock-worktree/test',
       });
       mocks.prisma.taskExecution.findUnique.mockResolvedValue(latestExecution);
-      mocks.prisma.taskTopic.findUnique.mockResolvedValue(makeTopic());
+      mocks.prisma.task.findUnique.mockResolvedValue(makeTask());
 
       // 1st status call: worktree is dirty → triggers add + commit
       // 2nd status call: after squash merge, has staged changes → triggers final commit
@@ -432,11 +434,11 @@ describe('execution.service', () => {
 
   describe('S6: partial failure', () => {
     it('S6.1: fewer assistant messages than tasks causes BLOCKED', async () => {
-      const tA = makeTask({ title: 'A' });
-      const tB = makeTask({ title: 'B' });
-      const tC = makeTask({ title: 'C' });
+      const tA = makeStep({ title: 'A' });
+      const tB = makeStep({ title: 'B' });
+      const tC = makeStep({ title: 'C' });
       const tasks = [tA, tB, tC];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
@@ -444,7 +446,7 @@ describe('execution.service', () => {
         { type: 'assistant', content: [{ type: 'text', text: 'done' }] },
       ]);
 
-      await Service.start(TOPIC_ID, PROJECT_ID, 3);
+      await Service.start(TASK_ID, PROJECT_ID, 3);
 
       await waitFor(() =>
         latestExecution?.status === 'COMPLETED' ||
@@ -463,17 +465,17 @@ describe('execution.service', () => {
     }, 20000);
 
     it('S6.2: dependency chain breaks when upstream BLOCKED', async () => {
-      const tA = makeTask({ title: 'A' });
-      const tB = makeTask({ title: 'B', dependencies: [tA.id] });
-      const tC = makeTask({ title: 'C', dependencies: [tB.id] });
+      const tA = makeStep({ title: 'A' });
+      const tB = makeStep({ title: 'B', dependencies: [tA.id] });
+      const tC = makeStep({ title: 'C', dependencies: [tB.id] });
       const tasks = [tA, tB, tC];
-      mocks.taskService.listByTopic.mockImplementation(async () => {
+      mocks.stepService.listByTask.mockImplementation(async () => {
         return tasks.map((t) => ({ ...t, status: taskUpdates[t.id]?.status || t.status }));
       });
 
       getSessionMessagesMock.mockResolvedValue([]);
 
-      await Service.start(TOPIC_ID, PROJECT_ID, 1);
+      await Service.start(TASK_ID, PROJECT_ID, 1);
 
       await waitFor(() =>
         latestExecution?.status === 'COMPLETED' ||
@@ -490,25 +492,25 @@ describe('execution.service', () => {
       const exec = makeExecution({ status: 'COMPLETED' });
       mocks.prisma.taskExecution.findFirst.mockResolvedValue(exec);
 
-      const result = await Service.getStatus(TOPIC_ID);
+      const result = await Service.getStatus(TASK_ID);
       expect(result).toEqual(exec);
       expect(mocks.prisma.taskExecution.findFirst).toHaveBeenCalledWith({
-        where: { topicId: TOPIC_ID },
+        where: { taskId: TASK_ID },
         orderBy: { createdAt: 'desc' },
       });
     });
 
-    it('S7.2: getByTopic returns all', async () => {
+    it('S7.2: getByTask returns all', async () => {
       const execs = [makeExecution(), makeExecution()];
       mocks.prisma.taskExecution.findMany.mockResolvedValue(execs);
 
-      const result = await Service.getByTopic(TOPIC_ID);
+      const result = await Service.getByTask(TASK_ID);
       expect(result).toEqual(execs);
     });
 
     it('S7.3: getStatus returns null when none', async () => {
       mocks.prisma.taskExecution.findFirst.mockResolvedValue(null);
-      const result = await Service.getStatus(TOPIC_ID);
+      const result = await Service.getStatus(TASK_ID);
       expect(result).toBeNull();
     });
   });

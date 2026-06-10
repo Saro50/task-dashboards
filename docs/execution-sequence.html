@@ -307,7 +307,7 @@ pre code {
  * Markdown PDF CSS
  */
 
- body {
+body {
 	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
 	padding: 0 12px;
 }
@@ -369,30 +369,30 @@ code {
 <h2 id="架构概览">架构概览</h2>
 <pre class="hljs"><code><div>┌─────────────┐     HTTP/REST      ┌──────────────┐    Prisma    ┌──────────┐
 │   前端        │ ←──────────────→  │  后端 Server   │ ←─────────→ │ PostgreSQL│
-│ TaskGraphPage│                    │ execution.    │              │          │
-│ useTaskExec  │                    │ controller    │              │ TaskExec │
-│ MergeDialog  │                    │ execution.    │              │ Task     │
-│ executionApi │                    │ service       │              │ Topic    │
+│ StepGraphPage│                    │ execution.    │              │          │
+│ useStepExec  │                    │ controller    │              │ TaskExec │
+│ MergeDialog  │                    │ execution.    │              │ Step     │
+│ executionApi │                    │ service       │              │ Task     │
 └─────────────┘                    └──────┬───────┘              └──────────┘
      │ 轮询 3s                            │ SDK v2
      │                                    ▼
-                                    ┌──────────────┐
-                                    │ opencode-v2   │
-                                    │ (SDK v2 封装) │
-                                    └──────┬───────┘
-                                           │ HTTP API
-                                           ▼
-                                    ┌──────────────┐
-                                    │ opencode      │
-                                    │ Engine        │
-                                    │ localhost:4096│
-                                    └──────────────┘
+                                     ┌──────────────┐
+                                     │ opencode-v2   │
+                                     │ (SDK v2 封装) │
+                                     └──────┬───────┘
+                                            │ HTTP API
+                                            ▼
+                                     ┌──────────────┐
+                                     │ opencode      │
+                                     │ Engine        │
+                                     │ localhost:4096│
+                                     └──────────────┘
 </div></code></pre>
 <h2 id="完整时序图">完整时序图</h2>
 <pre><code class="language-mermaid"><div class="mermaid">sequenceDiagram
     actor User
-    participant FE as TaskGraphPage<br/>(前端)
-    participant Hook as useTaskExecution<br/>(前端 Hook)
+    participant FE as StepGraphPage<br/>(前端)
+    participant Hook as useStepExecution<br/>(前端 Hook)
     participant API as executionApi<br/>(前端 HTTP)
     participant Ctrl as execution.controller<br/>(后端 Koa)
     participant Svc as execution.service<br/>(后端 Service)
@@ -403,224 +403,224 @@ code {
     %% ═══════════════════════════════════════
     %% Phase 1: 页面加载 / 恢复执行
     %% ═══════════════════════════════════════
-    Note over User, Engine: Phase 1 — 页面加载 & 恢复执行状态
-    User->>FE: 打开 TaskGraphPage
-    FE->>Hook: useEffect → restoreExecution()
-    Hook->>API: executionApi.getLatest(topicId)
-    API->>Ctrl: GET /api/topics/:topicId/executions/latest
-    Ctrl->>Svc: getStatus(topicId)
-    Svc->>DB: taskExecution.findFirst({orderBy: createdAt DESC})
-    DB-->>Svc: latest execution | null
+    Note over User, Engine: Phase 1 — 页面加载 &amp; 恢复执行状态
+    User-&gt;&gt;FE: 打开 StepGraphPage
+    FE-&gt;&gt;Hook: useEffect → restoreExecution()
+    Hook-&gt;&gt;API: executionApi.getLatest(taskId)
+    API-&gt;&gt;Ctrl: GET /api/tasks/:taskId/executions/latest
+    Ctrl-&gt;&gt;Svc: getStatus(taskId)
+    Svc-&gt;&gt;DB: taskExecution.findFirst({orderBy: createdAt DESC})
+    DB--&gt;&gt;Svc: latest execution | null
 
     alt 有 RUNNING/CREATING_WORKTREE 的执行
-        Svc-->>Ctrl: execution (RUNNING)
-        Ctrl-->>API: 200 { execution }
-        API-->>Hook: execution
-        Hook->>Hook: setExecuting(true), setExecution(latest)
-        Hook->>Hook: startPolling(executionId) ◂ 每3秒轮询
+        Svc--&gt;&gt;Ctrl: execution (RUNNING)
+        Ctrl--&gt;&gt;API: 200 { execution }
+        API--&gt;&gt;Hook: execution
+        Hook-&gt;&gt;Hook: setExecuting(true), setExecution(latest)
+        Hook-&gt;&gt;Hook: startPolling(executionId) ◂ 每3秒轮询
     else 无活跃执行
-        Svc-->>Ctrl: null 或已完成
-        Hook->>Hook: 仅 setExecution(latest)，不轮询
+        Svc--&gt;&gt;Ctrl: null 或已完成
+        Hook-&gt;&gt;Hook: 仅 setExecution(latest)，不轮询
     end
 
     %% ═══════════════════════════════════════
     %% Phase 2: 用户启动执行
     %% ═══════════════════════════════════════
     Note over User, Engine: Phase 2 — 用户启动任务链执行
-    User->>FE: 点击「执行任务链」按钮
-    FE->>Hook: executeChain(filteredTasks)
-    Hook->>Hook: setExecuting(true), setExecution(null)
-    Hook->>API: executionApi.start(topicId, projectId, maxConcurrency)
-    API->>Ctrl: POST /api/topics/:topicId/executions<br/>{ projectId, maxConcurrency }
-    Ctrl->>Svc: start(topicId, projectId, maxConcurrency)
-    Svc->>DB: taskTopic.findUnique → project.findUnique
-    Svc->>DB: taskExecution.findFirst({status: CREATING_WORKTREE|RUNNING})
-    Note over Svc: 防止同一主题重复启动
-    Svc->>DB: TaskService.listByTopic → 过滤 PENDING 任务
-    Svc->>DB: taskExecution.create({status: CREATING_WORKTREE, totalTasks})
+    User-&gt;&gt;FE: 点击「执行任务链」按钮
+    FE-&gt;&gt;Hook: executeChain(filteredSteps)
+    Hook-&gt;&gt;Hook: setExecuting(true), setExecution(null)
+    Hook-&gt;&gt;API: executionApi.start(taskId, projectId, maxConcurrency)
+    API-&gt;&gt;Ctrl: POST /api/tasks/:taskId/executions&lt;br/&gt;{ projectId, maxConcurrency }
+    Ctrl-&gt;&gt;Svc: start(taskId, projectId, maxConcurrency)
+    Svc-&gt;&gt;DB: task.findUnique → project.findUnique
+    Svc-&gt;&gt;DB: taskExecution.findFirst({status: CREATING_WORKTREE|RUNNING})
+    Note over Svc: 防止同一任务重复启动
+    Svc-&gt;&gt;DB: StepService.listByTask → 过滤 PENDING 步骤
+    Svc-&gt;&gt;DB: taskExecution.create({status: CREATING_WORKTREE, totalSteps})
 
     Note over Svc: 异步启动，不阻塞 API 响应
-    Svc-->>Ctrl: return execution (CREATING_WORKTREE)
-    Ctrl-->>API: 201 { execution }
-    API-->>Hook: execution
-    Hook->>Hook: setExecution(exec), startPolling(exec.id)
-    Hook-->>FE: Toast「任务链执行已开始」
+    Svc--&gt;&gt;Ctrl: return execution (CREATING_WORKTREE)
+    Ctrl--&gt;&gt;API: 201 { execution }
+    API--&gt;&gt;Hook: execution
+    Hook-&gt;&gt;Hook: setExecution(exec), startPolling(exec.id)
+    Hook--&gt;&gt;FE: Toast「任务链执行已开始」
 
     %% ═══════════════════════════════════════
     %% Phase 3: 后端创建 Worktree + Session
     %% ═══════════════════════════════════════
-    Note over User, Engine: Phase 3 — 后台创建 Worktree & AI 会话 (异步)
-    Note over Svc: worktree 名称加时间戳后缀防碰撞：exec-{topic}-{timestamp}
-    Svc->>V2: createWorktree(baseUrl, projectPath, worktreeName)
-    V2->>Engine: POST /worktree/create { directory, name }
-    Engine-->>V2: { name, directory }
-    V2-->>Svc: WorktreeInfo
-    Svc->>DB: taskExecution.update({status: RUNNING, worktreeName, worktreeDirectory})
+    Note over User, Engine: Phase 3 — 后台创建 Worktree &amp; AI 会话 (异步)
+    Note over Svc: worktree 名称加时间戳后缀防碰撞：exec-{task}-{timestamp}
+    Svc-&gt;&gt;V2: createWorktree(baseUrl, projectPath, worktreeName)
+    V2-&gt;&gt;Engine: POST /worktree/create { directory, name }
+    Engine--&gt;&gt;V2: { name, directory }
+    V2--&gt;&gt;Svc: WorktreeInfo
+    Svc-&gt;&gt;DB: taskExecution.update({status: RUNNING, worktreeName, worktreeDirectory})
 
-    Note over Svc: Session 使用 worktree 目录创建（非主分支路径）<br/>确保 AI 在隔离环境中操作
-    Svc->>V2: createSessionInWorkspace(baseUrl, worktree.directory, {title, agent: "build"})
-    V2->>Engine: POST /session/create { directory=worktree.dir, title, agent }
-    Engine-->>V2: { id, title }
-    V2-->>Svc: SessionInfo
-    Svc->>DB: taskExecution.update({sessionId})
+    Note over Svc: Session 使用 worktree 目录创建（非主分支路径）&lt;br/&gt;确保 AI 在隔离环境中操作
+    Svc-&gt;&gt;V2: createSessionInWorkspace(baseUrl, worktree.directory, {title, agent: "build"})
+    V2-&gt;&gt;Engine: POST /session/create { directory=worktree.dir, title, agent }
+    Engine--&gt;&gt;V2: { id, title }
+    V2--&gt;&gt;Svc: SessionInfo
+    Svc-&gt;&gt;DB: taskExecution.update({sessionId})
 
     %% ═══════════════════════════════════════
     %% Phase 4: 前端轮询 & 后端批量执行
     %% ═══════════════════════════════════════
-    Note over User, Engine: Phase 4 — 轮询 & DAG 批量执行 (循环)
+    Note over User, Engine: Phase 4 — 轮询 &amp; DAG 批量执行 (循环)
 
     loop 每 3 秒轮询
-        Hook->>API: executionApi.getLatest(topicId)
-        API->>Ctrl: GET /api/topics/:topicId/executions/latest
-        Ctrl->>Svc: getStatus(topicId)
-        Svc->>DB: taskExecution.findFirst()
-        DB-->>Svc: latest execution
-        Svc-->>Ctrl: { status, completedTasks, totalTasks, worktreeName... }
-        Ctrl-->>API: 200
-        API-->>Hook: execution
-        Hook->>Hook: setExecution(latest), onTaskUpdated() → refetch tasks
-        Hook-->>FE: UI 更新：进度 X/Y, worktree 名称
+        Hook-&gt;&gt;API: executionApi.getLatest(taskId)
+        API-&gt;&gt;Ctrl: GET /api/tasks/:taskId/executions/latest
+        Ctrl-&gt;&gt;Svc: getStatus(taskId)
+        Svc-&gt;&gt;DB: taskExecution.findFirst()
+        DB--&gt;&gt;Svc: latest execution
+        Svc--&gt;&gt;Ctrl: { status, completedSteps, totalSteps, worktreeName... }
+        Ctrl--&gt;&gt;API: 200
+        API--&gt;&gt;Hook: execution
+        Hook-&gt;&gt;Hook: setExecution(latest), onStepUpdated() → refetch steps
+        Hook--&gt;&gt;FE: UI 更新：进度 X/Y, worktree 名称
     end
 
-    Note over Svc: executeTasks() 递归批量执行
-    Svc->>DB: TaskService.listByTopic() → getNextTasks(DAG 过滤)
-    Svc->>DB: 切取 toStart = available.slice(0, maxConcurrency)
+    Note over Svc: executeSteps() 递归批量执行
+    Svc-&gt;&gt;DB: StepService.listByTask() → getNextSteps(DAG 过滤)
+    Svc-&gt;&gt;DB: 切取 toStart = available.slice(0, maxConcurrency)
 
-    loop 对 toStart 中每个 task
-        Svc->>DB: Task.update(taskId, {status: IN_PROGRESS})
-        Svc->>Svc: buildPrompt(task, deps)
-        Svc->>V2: sendPrompt(baseUrl, sessionId, prompt, worktree.directory)
-        V2->>Engine: POST /session/promptAsync { sessionID, parts }
-        Engine-->>V2: 200 (已入队)
+    loop 对 toStart 中每个 step
+        Svc-&gt;&gt;DB: Step.update(stepId, {status: IN_PROGRESS})
+        Svc-&gt;&gt;Svc: buildPrompt(step, deps)
+        Svc-&gt;&gt;V2: sendPrompt(baseUrl, sessionId, prompt, worktree.directory)
+        V2-&gt;&gt;Engine: POST /session/promptAsync { sessionID, parts }
+        Engine--&gt;&gt;V2: 200 (已入队)
     end
 
     Note over Svc: 等待 1s 让 agent loop 拾取消息，避免 false idle
-    Svc->>V2: waitForSessionIdle(baseUrl, sessionId, worktree.directory)
-    V2->>Engine: POST /v2/session/wait { sessionID, directory }
-    Note over Engine: AI agent loop 逐个处理入队 prompt...<br/>可能耗时几分钟到几十分钟
-    Engine-->>V2: 200 (idle)
-    V2-->>Svc: resolve
+    Svc-&gt;&gt;V2: waitForSessionIdle(baseUrl, sessionId, worktree.directory)
+    V2-&gt;&gt;Engine: POST /v2/session/wait { sessionID, directory }
+    Note over Engine: AI agent loop 逐个处理入队 prompt...&lt;br/&gt;可能耗时几分钟到几十分钟
+    Engine--&gt;&gt;V2: 200 (idle)
+    V2--&gt;&gt;Svc: resolve
 
-    Note over Svc: 竞态保护：检查 execution.status === 'RUNNING'<br/>若已被 stop() 改为 STOPPED 则放弃本批
-    Svc->>DB: taskExecution.findUnique → 校验 status === RUNNING
+    Note over Svc: 竞态保护：检查 execution.status === 'RUNNING'&lt;br/&gt;若已被 stop() 改为 STOPPED 则放弃本批
+    Svc-&gt;&gt;DB: taskExecution.findUnique → 校验 status === RUNNING
 
-    Note over Svc: 逐任务验证：检查 assistant 消息数量<br/>不足时尾部任务标记为 BLOCKED
-    Svc->>V2: getSessionMessages(baseUrl, sessionId, directory)
-    V2->>Engine: GET /session/messages { sessionID }
-    Engine-->>V2: messages[]
-    V2-->>Svc: 统计 assistant 消息数
+    Note over Svc: 逐步骤验证：检查 assistant 消息数量&lt;br/&gt;不足时尾部步骤标记为 BLOCKED
+    Svc-&gt;&gt;V2: getSessionMessages(baseUrl, sessionId, directory)
+    V2-&gt;&gt;Engine: GET /session/messages { sessionID }
+    Engine--&gt;&gt;V2: messages[]
+    V2--&gt;&gt;Svc: 统计 assistant 消息数
 
-    loop 对 toStart 中每个 task
-        alt i < assistantCount
-            Svc->>DB: Task.update({status: COMPLETED})
+    loop 对 toStart 中每个 step
+        alt i &lt; assistantCount
+            Svc-&gt;&gt;DB: Step.update({status: COMPLETED})
         else AI 未响应
-            Svc->>DB: Task.update({status: BLOCKED})
+            Svc-&gt;&gt;DB: Step.update({status: BLOCKED})
         end
     end
 
     Note over Svc: 只在仍是 RUNNING 时更新进度（防 stop 竞态）
-    Svc->>DB: taskExecution.updateMany({status: RUNNING}, {completedTasks})
-    Note over Svc: 递归调用 executeTasks() 处理下一批
+    Svc-&gt;&gt;DB: taskExecution.updateMany({status: RUNNING}, {completedSteps})
+    Note over Svc: 递归调用 executeSteps() 处理下一批
 
     %% ═══════════════════════════════════════
     %% Phase 5: 执行完成 → 弹出合并对话框
     %% ═══════════════════════════════════════
     Note over User, Engine: Phase 5 — 执行完成 → 合并对话框
-    Note over Svc: 无更多任务 → taskExecution.update({status: COMPLETED})
+    Note over Svc: 无更多步骤 → taskExecution.update({status: COMPLETED})
 
-    Svc-->>DB: status = COMPLETED
-    Hook->>API: 轮询 getLatest
-    API-->>Hook: { status: "COMPLETED", completedTasks, totalTasks }
-    Hook->>Hook: stopPolling(), setExecuting(false)
-    Hook->>Hook: showToast('所有任务已执行完毕')
-    Hook-->>FE: execution.status === 'COMPLETED'
-    Note over FE: useEffect 检测 COMPLETED 且 execution.id !== dismissedExecId<br/>同一 execution 只弹一次合并对话框
-    FE->>FE: setShowMerge(true)
-    FE-->>User: 弹出 MergeDialog 合并对话框
+    Svc--&gt;&gt;DB: status = COMPLETED
+    Hook-&gt;&gt;API: 轮询 getLatest
+    API--&gt;&gt;Hook: { status: "COMPLETED", completedSteps, totalSteps }
+    Hook-&gt;&gt;Hook: stopPolling(), setExecuting(false)
+    Hook-&gt;&gt;Hook: showToast('所有步骤已执行完毕')
+    Hook--&gt;&gt;FE: execution.status === 'COMPLETED'
+    Note over FE: useEffect 检测 COMPLETED 且 execution.id !== dismissedExecId&lt;br/&gt;同一 execution 只弹一次合并对话框
+    FE-&gt;&gt;FE: setShowMerge(true)
+    FE--&gt;&gt;User: 弹出 MergeDialog 合并对话框
 
     %% ═══════════════════════════════════════
     %% Phase 6: 用户确认合并
     %% ═══════════════════════════════════════
     Note over User, Engine: Phase 6 — 用户确认合并
-    User->>FE: 输入目标分支 (如 main) → 点击「合并」
-    FE->>Hook: handleMerge("main")
-    Hook->>Hook: dismissedExecId.current = execution.id
-    Hook->>API: executionApi.merge(executionId, "main")
-    API->>Ctrl: POST /api/executions/:executionId/merge<br/>{ targetBranch: "main" }
-    Ctrl->>Svc: merge(executionId, "main")
-    Svc->>DB: taskExecution.update({status: MERGED, targetBranch: "main"})
-    Svc-->>Ctrl: execution (MERGED)
-    Ctrl-->>API: 200
-    API-->>Hook: execution (MERGED)
-    Hook->>Hook: setExecution(updated), setShowMerge(false)
-    Hook-->>FE: Toast「已合并到 main」
+    User-&gt;&gt;FE: 输入目标分支 (如 main) → 点击「合并」
+    FE-&gt;&gt;Hook: handleMerge("main")
+    Hook-&gt;&gt;Hook: dismissedExecId.current = execution.id
+    Hook-&gt;&gt;API: executionApi.merge(executionId, "main")
+    API-&gt;&gt;Ctrl: POST /api/executions/:executionId/merge&lt;br/&gt;{ targetBranch: "main" }
+    Ctrl-&gt;&gt;Svc: merge(executionId, "main")
+    Svc-&gt;&gt;DB: taskExecution.update({status: MERGED, targetBranch: "main"})
+    Svc--&gt;&gt;Ctrl: execution (MERGED)
+    Ctrl--&gt;&gt;API: 200
+    API--&gt;&gt;Hook: execution (MERGED)
+    Hook-&gt;&gt;Hook: setExecution(updated), setShowMerge(false)
+    Hook--&gt;&gt;FE: Toast「已合并到 main」
 
     %% ═══════════════════════════════════════
     %% Alt: 用户中止执行
     %% ═══════════════════════════════════════
     Note over User, Engine: Alt — 用户中止执行
-    User->>FE: 点击「停止执行」
-    FE->>Hook: cancelExecution()
-    Hook->>API: executionApi.stop(executionId)
-    API->>Ctrl: POST /api/executions/:executionId/stop
-    Ctrl->>Svc: stop(executionId)
+    User-&gt;&gt;FE: 点击「停止执行」
+    FE-&gt;&gt;Hook: cancelExecution()
+    Hook-&gt;&gt;API: executionApi.stop(executionId)
+    API-&gt;&gt;Ctrl: POST /api/executions/:executionId/stop
+    Ctrl-&gt;&gt;Svc: stop(executionId)
     Note over Svc: 使用 worktree 目录 abort（session 绑定在 worktree 中）
-    Svc->>V2: abortSession(baseUrl, sessionId, worktreeDirectory)
-    V2->>Engine: POST /session/abort { sessionID, directory }
-    Svc->>DB: taskExecution.update({status: STOPPED})
-    Svc->>DB: IN_PROGRESS 任务重置为 PENDING
-    Note over Svc: executeTasks 检测到 STOPPED 后放弃本批<br/>不会覆盖已重置的 PENDING 状态
-    Svc-->>Ctrl: execution (STOPPED)
-    Ctrl-->>API: 200
-    API-->>Hook: execution
-    Hook->>Hook: stopPolling(), setExecuting(false)
-    Hook-->>FE: Toast「正在停止执行...」
+    Svc-&gt;&gt;V2: abortSession(baseUrl, sessionId, worktreeDirectory)
+    V2-&gt;&gt;Engine: POST /session/abort { sessionID, directory }
+    Svc-&gt;&gt;DB: taskExecution.update({status: STOPPED})
+    Svc-&gt;&gt;DB: IN_PROGRESS 步骤重置为 PENDING
+    Note over Svc: executeSteps 检测到 STOPPED 后放弃本批&lt;br/&gt;不会覆盖已重置的 PENDING 状态
+    Svc--&gt;&gt;Ctrl: execution (STOPPED)
+    Ctrl--&gt;&gt;API: 200
+    API--&gt;&gt;Hook: execution
+    Hook-&gt;&gt;Hook: stopPolling(), setExecuting(false)
+    Hook--&gt;&gt;FE: Toast「正在停止执行...」
 </div></code></pre>
 <h2 id="状态流转">状态流转</h2>
 <pre class="hljs"><code><div>                          ┌──────────────────┐
-                          │                  │
-                          │  CREATING_WORKTREE│
-                          │                  │
-                          └────────┬─────────┘
-                                   │
-                     worktree + session 创建成功
-                     (session 使用 worktree 目录)
-                                   │
-                          ┌────────▼─────────┐
-                          │                  │
-                     ┌───►│     RUNNING      │◄──┐
-                     │    │                  │   │
-                     │    └────────┬─────────┘   │
-                     │             │              │
-                     │  所有任务完成│    用户点击停止 │
-                     │  (逐任务验证 │              │
-                     │   AI 响应)  │              │
-                     │             │              │
-                     │    ┌────────▼─────────┐   │
-                     │    │                  │   │
-                     │    │    COMPLETED     │   │
-                     │    │                  │   │
-                     │    └────────┬─────────┘   │
-                     │             │              │
-                     │  用户确认合并│              │
-                     │  (同一 execution 只弹一次)  │
-                     │             │              │
-                     │    ┌────────▼─────────┐   │
-                     │    │                  │   │
-                     │    │     MERGED       │   │  用户点击停止
-                     │    │                  │   │        │
-                     │    └──────────────────┘   │        │
-                     │                           │        ▼
-                     │                  ┌──────────────────┐
-                     │                  │                  │
-                     │                  │     STOPPED      │
-                     │                  │                  │
-                     │                  └──────────────────┘
-                     │                           │
-                     │  IN_PROGRESS 任务          │
-                     │  重置为 PENDING            │
-                     │                           │
-                     └─────────用户重新执行────────┘
+                           │                  │
+                           │  CREATING_WORKTREE│
+                           │                  │
+                           └────────┬─────────┘
+                                    │
+                      worktree + session 创建成功
+                      (session 使用 worktree 目录)
+                                    │
+                           ┌────────▼─────────┐
+                           │                  │
+                      ┌───►│     RUNNING      │◄──┐
+                      │    │                  │   │
+                      │    └────────┬─────────┘   │
+                      │             │              │
+                      │  所有步骤完成│    用户点击停止 │
+                      │  (逐步骤验证 │              │
+                      │   AI 响应)  │              │
+                      │             │              │
+                      │    ┌────────▼─────────┐   │
+                      │    │                  │   │
+                      │    │    COMPLETED     │   │
+                      │    │                  │   │
+                      │    └────────┬─────────┘   │
+                      │             │              │
+                      │  用户确认合并│              │
+                      │  (同一 execution 只弹一次)  │
+                      │             │              │
+                      │    ┌────────▼─────────┐   │
+                      │    │                  │   │
+                      │    │     MERGED       │   │  用户点击停止
+                      │    │                  │   │        │
+                      │    └──────────────────┘   │        │
+                      │                           │        ▼
+                      │                  ┌──────────────────┐
+                      │                  │                  │
+                      │                  │     STOPPED      │
+                      │                  │                  │
+                      │                  └──────────────────┘
+                      │                           │
+                      │  IN_PROGRESS 步骤          │
+                      │  重置为 PENDING            │
+                      │                           │
+                      └─────────用户重新执行────────┘
 
     任何阶段出现不可恢复错误：
     ┌──────────────────┐
@@ -629,10 +629,10 @@ code {
     │                  │
     └──────────────────┘
 
-    AI 未响应的个别任务：
+    AI 未响应的个别步骤：
     ┌──────────────────┐
     │                  │
-    │     BLOCKED      │  (非执行状态，是任务级别状态)
+    │     BLOCKED      │  (非执行状态，是步骤级别状态)
     │                  │
     └──────────────────┘
 </div></code></pre>
@@ -654,8 +654,8 @@ code {
 <td>执行是长时间后台任务（分钟级），3s 轮询开销极小，避免 SSE 断线重连复杂度</td>
 </tr>
 <tr>
-<td><strong>批量模式 executeTasks</strong></td>
-<td>所有任务共享一个 AI 会话，<code>v2.session.wait</code> 是全局等待。多个并发 wait 会同时 resolve 导致竞态，批量模式确保每批只一次 wait</td>
+<td><strong>批量模式 executeSteps</strong></td>
+<td>所有步骤共享一个 AI 会话，<code>v2.session.wait</code> 是全局等待。多个并发 wait 会同时 resolve 导致竞态，批量模式确保每批只一次 wait</td>
 </tr>
 <tr>
 <td><strong>page restore</strong></td>
@@ -667,19 +667,19 @@ code {
 </tr>
 <tr>
 <td><strong>STOPPED 时重置 IN_PROGRESS → PENDING</strong></td>
-<td>允许用户重新执行被中止的任务</td>
+<td>允许用户重新执行被中止的步骤</td>
 </tr>
 <tr>
 <td><strong>Session 绑定 worktree 目录</strong></td>
 <td>AI 在 worktree 隔离环境中操作，不影响主分支代码。worktree 目录同时用于 sendPrompt、waitForSessionIdle、abortSession</td>
 </tr>
 <tr>
-<td><strong>逐任务 AI 响应验证</strong></td>
-<td>批量完成后检查 session messages 中 assistant 数量，不足时将尾部任务标记 BLOCKED 而非 COMPLETED，防止虚假完成</td>
+<td><strong>逐步骤 AI 响应验证</strong></td>
+<td>批量完成后检查 session messages 中 assistant 数量，不足时将尾部步骤标记 BLOCKED 而非 COMPLETED，防止虚假完成</td>
 </tr>
 <tr>
-<td><strong>stop/executeTasks 竞态保护</strong></td>
-<td>标记任务前检查 <code>status === 'RUNNING'</code>（非仅 <code>!== STOPPED</code>），进度更新使用 <code>updateMany</code> 限定 RUNNING 条件</td>
+<td><strong>stop/executeSteps 竞态保护</strong></td>
+<td>标记步骤前检查 <code>status === 'RUNNING'</code>（非仅 <code>!== STOPPED</code>），进度更新使用 <code>updateMany</code> 限定 RUNNING 条件</td>
 </tr>
 <tr>
 <td><strong>MergeDialog dismissedExecId</strong></td>
@@ -687,7 +687,7 @@ code {
 </tr>
 <tr>
 <td><strong>worktree 名称加时间戳</strong></td>
-<td><code>exec-{topic}-{timestamp}</code> 防止同一主题重复执行时 worktree 名称碰撞</td>
+<td><code>exec-{task}-{timestamp}</code> 防止同一任务重复执行时 worktree 名称碰撞</td>
 </tr>
 <tr>
 <td><strong>waitForSessionIdle 前延迟 1s</strong></td>
@@ -711,17 +711,17 @@ code {
 <td>改用 <code>worktree.directory</code> 创建 session</td>
 </tr>
 <tr>
-<td>批量内所有任务无差别标记 COMPLETED</td>
+<td>批量内所有步骤无差别标记 COMPLETED</td>
 <td>P0</td>
-<td>检查 session messages 中 assistant 数量，尾部未响应任务标 BLOCKED</td>
+<td>检查 session messages 中 assistant 数量，尾部未响应步骤标 BLOCKED</td>
 </tr>
 <tr>
-<td>TaskExecution 缺少外键，删除 Topic/Project 不清理</td>
+<td>TaskExecution 缺少外键，删除 Task/Project 不清理</td>
 <td>P1</td>
 <td>加 <code>@relation</code> + <code>onDelete: Cascade</code></td>
 </tr>
 <tr>
-<td>stop() 和 executeTasks() 并发竞态</td>
+<td>stop() 和 executeSteps() 并发竞态</td>
 <td>P1</td>
 <td>状态检查改为 <code>=== RUNNING</code>，进度更新用 <code>updateMany</code></td>
 </tr>
@@ -741,7 +741,7 @@ code {
 <td>发送后等 1s 再调用 wait</td>
 </tr>
 <tr>
-<td>未使用的 TaskStatus import</td>
+<td>未使用的 StepStatus import</td>
 <td>P3</td>
 <td>删除</td>
 </tr>
@@ -758,7 +758,7 @@ code {
 <tbody>
 <tr>
 <td><code>packages/server/prisma/schema.prisma</code></td>
-<td><code>TaskExecution</code> 模型（含外键关联 Topic/Project）+ <code>ExecutionStatus</code> 枚举</td>
+<td><code>TaskExecution</code> 模型（含外键关联 Task/Project）+ <code>ExecutionStatus</code> 枚举</td>
 </tr>
 <tr>
 <td><code>packages/server/src/modules/engine/opencode-v2.ts</code></td>
@@ -766,7 +766,7 @@ code {
 </tr>
 <tr>
 <td><code>packages/server/src/modules/execution/execution.service.ts</code></td>
-<td>核心业务逻辑：start → runExecution → executeTasks（递归批量 + 逐任务验证 + 竞态保护）</td>
+<td>核心业务逻辑：start → runExecution → executeSteps（递归批量 + 逐步骤验证 + 竞态保护）</td>
 </tr>
 <tr>
 <td><code>packages/server/src/modules/execution/execution.controller.ts</code></td>
@@ -789,11 +789,11 @@ code {
 <td>前端 HTTP API 客户端</td>
 </tr>
 <tr>
-<td><code>packages/web/src/hooks/useTaskExecution.ts</code></td>
+<td><code>packages/web/src/hooks/useStepExecution.ts</code></td>
 <td>前端 hook：executeChain / cancelExecution / mergeExecution / restoreExecution + 轮询</td>
 </tr>
 <tr>
-<td><code>packages/web/src/pages/TaskGraphPage.tsx</code></td>
+<td><code>packages/web/src/pages/StepGraphPage.tsx</code></td>
 <td>页面集成：执行按钮 + 进度条 + MergeDialog（dismissedExecId 防重复弹出）</td>
 </tr>
 </tbody>

@@ -57,15 +57,15 @@ export interface ChatPart {
 /**
  * AIChatWidget 多模式配置。
  * 每种模式对应不同的 pageContext，用于在同一页面的不同视角间切换
- * （如「主题视图」与「详情任务视图」）。
+ * （如「任务视图」与「详情步骤视图」）。
  *
  * 上游：由页面组件（如 TaskGraphPage）构造并传入 AIChatWidget。
  * 下游：AIChatWidget 根据当前激活的 ChatMode 选取对应 context 注入会话。
  */
 export interface ChatMode {
   key: string;          // 唯一标识，如 'topic'、'task'
-  label: string;        // 显示文本，如「主题」「详情任务」
-  description?: string; // 可选说明，如「查看项目所有主题」
+  label: string;        // 显示文本，如「任务」「详情步骤」
+  description?: string; // 可选说明，如「查看项目所有任务」
   context: string;      // 该模式的 pageContext 文本
 }
 

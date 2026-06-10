@@ -6,7 +6,7 @@
 
 | # | 操作 | 触发方式 | 涉及链路 |
 |---|------|---------|---------|
-| O1 | 创建任务 + 添加依赖关系 | 前端 TaskNode/TaskDetailPanel | task.service → DB |
+| O1 | 创建步骤 + 添加依赖关系 | 前端 StepNode/StepDetailPanel | step.service → DB |
 | O2 | 启动执行 | 点击"执行任务链"按钮 | controller → service → engine → DB |
 | O3 | 轮询执行进度 | 前端每 3s 自动轮询 | controller.getStatus → DB |
 | O4 | 中途停止执行 | 点击"停止执行"按钮 | controller.stop → service.stop → abort |
@@ -15,7 +15,7 @@
 | O7 | 执行中刷新页面 | 浏览器 F5 | restoreExecution → 轮询恢复 |
 | O8 | 执行失败后重新执行 | 再次点"执行任务链" | 新一轮 start |
 | O9 | 重复点击执行 | 运行中再点执行按钮 | 409 冲突 |
-| O10 | 删除正在执行的任务 | 任务节点上的删除按钮 | 任务在执行中删除 |
+| O10 | 删除正在执行的步骤 | 步骤节点上的删除按钮 | 步骤在执行中删除 |
 
 ---
 
@@ -41,32 +41,32 @@ execution.service.ts 的核心复杂度在于 DAG 排序、批量并发、stop �
 
 | ID | 用例 | 操作 | 预期 | 为什么这样测试 |
 |----|------|------|------|-------------|
-| S1.1 | topic 不存在 | `start('bad-topic', projectId)` | 抛 "Topic not found" | 防止传入非法 topicId 创建孤儿执行记录 |
-| S1.2 | project 不存在 | `start(topicId, 'bad-project')` | 抛 "Project not found or no path configured" | project.path 是 worktree 创建的前提，缺失到 SDK 层才报错，提前校验 |
-| S1.3 | 所有任务已 COMPLETED | 所有任务 status=COMPLETED | 抛 "No pending tasks to execute" | 防止对已完成的任务重复执行 |
-| S1.4 | 同一 topic 已有 RUNNING 执行 | 连续调用两次 start | 第二次抛 "An execution is already running" | 核心防并发保护：两个执行同时跑会争抢同一个 session |
+| S1.1 | task 不存在 | `start('bad-task', projectId)` | 抛 "Task not found" | 防止传入非法 taskId 创建孤儿执行记录 |
+| S1.2 | project 不存在 | `start(taskId, 'bad-project')` | 抛 "Project not found or no path configured" | project.path 是 worktree 创建的前提，缺失到 SDK 层才报错，提前校验 |
+| S1.3 | 所有步骤已 COMPLETED | 所有步骤 status=COMPLETED | 抛 "No pending steps to execute" | 防止对已完成的步骤重复执行 |
+| S1.4 | 同一 task 已有 RUNNING 执行 | 连续调用两次 start | 第二次抛 "An execution is already running" | 核心防并发保护：两个执行同时跑会争抢同一个 session |
 
 #### 组 2：正常执行流程（Happy Path）
 
 | ID | 用例 | DAG 结构 | maxConcurrency | 预期 | 为什么这样测试 |
 |----|------|---------|---------------|------|-------------|
-| S2.1 | 单任务无依赖 | [A] | 2 | A→COMPLETED，执行→COMPLETED，completedTasks=1/1 | 最简路径，验证完整生命周期 |
-| S2.2 | 3 任务线性依赖 | A→B→C | 2 | 分 3 批完成，A→B→C 依次 COMPLETED | 验证 DAG 拓扑排序正确：B 等 A 完成，C 等 B 完成 |
-| S2.3 | 5 任务菱形依赖 | A→{B,C}→D→E | 2 | 第一批 A，第二批 B+C 并发，第三批 D，第四批 E | 验证并发控制：B 和 C 在同一批发送给 AI |
-| S2.4 | 进度统计准确 | A→B→C，maxConcurrency=1 | 1 | 每批完成后 completedTasks 递增：1→2→3 | 前端进度条依赖 completedTasks/totalTasks，必须准确 |
+| S2.1 | 单步骤无依赖 | [A] | 2 | A→COMPLETED，执行→COMPLETED，completedSteps=1/1 | 最简路径，验证完整生命周期 |
+| S2.2 | 3 步骤线性依赖 | A→B→C | 2 | 分 3 批完成，A→B→C 依次 COMPLETED | 验证 DAG 拓扑排序正确：B 等 A 完成，C 等 B 完成 |
+| S2.3 | 5 步骤菱形依赖 | A→{B,C}→D→E | 2 | 第一批 A，第二批 B+C 并发，第三批 D，第四批 E | 验证并发控制：B 和 C 在同一批发送给 AI |
+| S2.4 | 进度统计准确 | A→B→C，maxConcurrency=1 | 1 | 每批完成后 completedSteps 递增：1→2→3 | 前端进度条依赖 completedSteps/totalSteps，必须准确 |
 
-**测试方法：** 启动执行后，轮询等待 `status === 'COMPLETED'`（超时 10s），然后检查所有任务状态和执行记录。
+**测试方法：** 启动执行后，轮询等待 `status === 'COMPLETED'`（超时 10s），然后检查所有步骤状态和执行记录。
 
 #### 组 3：中途停止
 
 | ID | 用例 | 触发时机 | 预期 | 为什么这样测试 |
 |----|------|---------|------|-------------|
-| S3.1 | 执行中 stop | RUNNING 状态 | IN_PROGRESS 任务重置为 PENDING，执行→STOPPED | 用户停止后应该能重新执行，不留下僵尸 IN_PROGRESS |
+| S3.1 | 执行中 stop | RUNNING 状态 | IN_PROGRESS 步骤重置为 PENDING，执行→STOPPED | 用户停止后应该能重新执行，不留下僵尸 IN_PROGRESS |
 | S3.2 | CREATING_WORKTREE 阶段 stop | worktree 创建中 | 执行→STOPPED | worktree 创建是异步的，stop 必须能中断创建阶段 |
 | S3.3 | stop 已停止的执行 | status=STOPPED | 抛 "Execution is not running" | 防止对已停止的执行重复 stop |
 | S3.4 | stop 不存在的执行 | 随机 executionId | 抛 "Execution not found" | 基本 404 校验 |
 
-**S3.1 测试方法：** 启动 5 个任务的执行（`MOCK_TASK_DELAY=200`），等待 300ms 确保第一批已进入 `waitForSessionIdle`，然后调用 stop，检查任务状态。
+**S3.1 测试方法：** 启动 5 个步骤的执行（`MOCK_TASK_DELAY=200`），等待 300ms 确保第一批已进入 `waitForSessionIdle`，然后调用 stop，检查步骤状态。
 
 **S3.2 测试方法：** 启动执行后立即（不等 worktree 创建完成）调用 stop，设置 `MOCK_WT_DELAY=500` 给 stop 窗口。
 
@@ -83,17 +83,17 @@ execution.service.ts 的核心复杂度在于 DAG 排序、批量并发、stop �
 
 | ID | 用例 | Mock 配置 | 预期 | 为什么这样测试 |
 |----|------|----------|------|-------------|
-| S5.1 | 首个任务成功后续全失败 | `MOCK_FAIL_AFTER=1` | 第 1 个 COMPLETED，其余 BLOCKED，执行→FAILED | 验证部分失败不会导致系统卡死 |
+| S5.1 | 首个步骤成功后续全失败 | `MOCK_FAIL_AFTER=1` | 第 1 个 COMPLETED，其余 BLOCKED，执行→FAILED | 验证部分失败不会导致系统卡死 |
 | S5.2 | 依赖链中断 | A→B→C，`MOCK_FAIL_AFTER=1` | A=COMPLETED，B=BLOCKED，C=PENDING，执行→FAILED | 验证上游失败时下游不启动，执行最终 FAILED |
 
-**为什么重要：** 这是最容易出问题的场景——部分任务失败后 executeTasks 的递归是否正确处理 "无可启动任务 + 有 PENDING 任务" → FAILED 的终态判定。
+**为什么重要：** 这是最容易出问题的场景——部分步骤失败后 executeSteps 的递归是否正确处理 "无可启动步骤 + 有 PENDING 步骤" → FAILED 的终态判定。
 
 #### 组 6：查询
 
 | ID | 用例 | 预期 | 为什么这样测试 |
 |----|------|------|-------------|
 | S6.1 | getStatus 返回最新执行 | 返回按 createdAt DESC 第一条 | 前端轮询依赖此接口 |
-| S6.2 | getByTopic 返回全部执行历史 | 返回所有执行，按时间倒序 | 用户可能查看历史 |
+| S6.2 | getByTask 返回全部执行历史 | 返回所有执行，按时间倒序 | 用户可能查看历史 |
 | S6.3 | 无执行记录时 getStatus | 返回 null | 页面首次加载的正常情况 |
 | S6.4 | 多次执行后 getStatus | 返回最近一次 | 验证排序正确 |
 
@@ -110,7 +110,7 @@ execution.service.ts 的核心复杂度在于 DAG 排序、批量并发、stop �
 | C7.1 | start 正常 | `{ projectId, maxConcurrency: 2 }` | 201 + execution body | 正常路径基准 |
 | C7.2 | start 缺少 projectId | `{}` | 500（service 层抛错） | projectId 在 body 中，容易漏传 |
 | C7.3 | start 重复执行 | service 抛 "already running" | 409 | 前端需要根据 409 显示"已在执行中" |
-| C7.4 | start 无待执行任务 | service 抛 "No pending" | 400 | 前端需要根据 400 显示"无待执行任务" |
+| C7.4 | start 无待执行步骤 | service 抛 "No pending" | 400 | 前端需要根据 400 显示"无待执行步骤" |
 | C7.5 | stop 正常 | — | 200 + execution body | 正常路径基准 |
 | C7.6 | stop 不存在 | service 抛 "not found" | 404 | controller 区分 404 和 400 |
 | C7.7 | stop 非运行中 | service 抛 "not running" | 400 | 防止前端重复点停止 |
@@ -133,7 +133,7 @@ execution.service.ts 的核心复杂度在于 DAG 排序、批量并发、stop �
 | M1 | createWorktree 返回结构 | `{ name, branch: 'opencode/...', directory: '/tmp/mock-worktree/...' }` | 上层代码依赖 branch 字段 |
 | M2 | sendPrompt + waitForSessionIdle 生成消息对 | 每条 prompt 生成 1 user + 1 assistant 消息 | execution.service 的消息验证依赖此行为 |
 | M3 | abortSession 中断 waitForSessionIdle | waitForSessionIdle 抛 "Session aborted by user" | 核心：stop 操作必须能中断正在等待的 mock |
-| M4 | MOCK_FAIL_AFTER=2 | 前 2 个任务生成 assistant，之后不生成 | 验证 per-session 计数器 |
+| M4 | MOCK_FAIL_AFTER=2 | 前 2 个步骤生成 assistant，之后不生成 | 验证 per-session 计数器 |
 | M5 | 两个 session 的 failAfter 互不影响 | session A 成功 2 个后开始失败，session B 从 0 开始计数 | 验证 per-session 计数独立（Bug 3 修复） |
 | M6 | MOCK_TASK_DELAY=0 | waitForSessionIdle 立即 resolve，不报错 | 验证 0 值不被 `\|\|` 吞掉（Bug 2 修复） |
 | M7 | abortCallbacks 清理 | waitForSessionIdle 正常完成后，session.abortCallbacks 为空 | 验证回调正确删除（Bug 1 修复） |
@@ -158,7 +158,7 @@ packages/server/src/__tests__/
 
 ```typescript
 const mockPrisma = {
-  taskTopic: { findUnique: vi.fn() },
+  task: { findUnique: vi.fn() },
   project: { findUnique: vi.fn() },
   taskExecution: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findFirst: vi.fn(), findMany: vi.fn() },
 };
@@ -195,7 +195,7 @@ function waitFor(predicate: () => boolean, timeout = 10000): Promise<void> {
 
 | 操作 | 覆盖用例 |
 |------|---------|
-| O1 创建任务+依赖 | S2.2, S2.3（DAG 构造） |
+| O1 创建步骤+依赖 | S2.2, S2.3（DAG 构造） |
 | O2 启动执行 | S1.1-S1.4, S2.1-S2.4, S5.1-S5.2 |
 | O3 轮询进度 | S2.4, S6.1-S6.4 |
 | O4 中途停止 | S3.1-S3.4 |
@@ -204,4 +204,4 @@ function waitFor(predicate: () => boolean, timeout = 10000): Promise<void> {
 | O7 刷新页面 | S6.1（getStatus 恢复轮询） |
 | O8 重新执行 | S4.4（合并后重新执行） |
 | O9 重复点击执行 | S1.4, C7.3 |
-| O10 删除执行中任务 | S5.2（依赖链中断的等价场景） |
+| O10 删除执行中步骤 | S5.2（依赖链中断的等价场景） |
