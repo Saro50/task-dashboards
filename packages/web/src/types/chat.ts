@@ -63,7 +63,7 @@ export interface ChatPart {
  * 下游：AIChatWidget 根据当前激活的 ChatMode 选取对应 context 注入会话。
  */
 export interface ChatMode {
-  key: string;          // 唯一标识，如 'topic'、'task'
+  key: string;          // 唯一标识，如 'step'、'task'
   label: string;        // 显示文本，如「任务」「详情步骤」
   description?: string; // 可选说明，如「查看项目所有任务」
   context: string;      // 该模式的 pageContext 文本

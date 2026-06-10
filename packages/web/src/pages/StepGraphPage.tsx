@@ -587,7 +587,7 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} taskId={taskId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingSteps={steps} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} taskId={taskId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingSteps={steps} currentTaskName={taskName} />
 
       {showDiffPreview && execution && execution.status === 'COMPLETED' && (
         <DiffPreview

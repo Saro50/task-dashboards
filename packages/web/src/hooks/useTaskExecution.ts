@@ -116,7 +116,7 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
           showToast('任务链执行已开始', 'success');
           startPolling(exec.id);
           // 通知 ExecutionPanel 立即刷新（避免 5s 轮询延迟）
-          emitExecutionEvent({ type: 'started', executionId: exec.id, topicId: taskId });
+          emitExecutionEvent({ type: 'started', executionId: exec.id, taskId: taskId });
         })
         .catch((err: any) => {
           log.error(S, 'executeChain error', err);
@@ -138,7 +138,7 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
       stopPolling();
       onStepUpdated();
       // 通知 ExecutionPanel 立即把卡片移到"最近"区
-      emitExecutionEvent({ type: 'stopped', executionId: execution.id, topicId: execution.taskId });
+      emitExecutionEvent({ type: 'stopped', executionId: execution.id, taskId: execution.taskId });
     } catch (err: any) {
       log.error(S, 'cancelExecution error', err);
       showToast(err.message, 'error');
@@ -162,7 +162,7 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
       setExecution(updated);
       showToast(`已合并到 ${targetBranch}`, 'success');
       // 通知 ExecutionPanel：MERGED 状态不在面板显示，触发后卡片会从列表移除
-      emitExecutionEvent({ type: 'merged', executionId: execution.id, topicId: execution.taskId });
+      emitExecutionEvent({ type: 'merged', executionId: execution.id, taskId: execution.taskId });
     } catch (err: any) {
       log.error(S, 'mergeExecution error', err);
       showToast(err.message, 'error');
@@ -218,7 +218,7 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
   useEffect(() => {
     if (!taskId) return;
     return onExecutionEvent((event) => {
-      if (event.topicId !== taskId) return;
+      if (event.taskId !== taskId) return;
       log.info(S, 'event received, restoring', { type: event.type, executionId: event.executionId });
       restoreExecution();
     });

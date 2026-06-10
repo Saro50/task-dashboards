@@ -10,7 +10,7 @@
  * 解决方式：
  *   任意 hook 在用户动作（stop/start/merge）成功后 emit 事件；
  *   所有相关 hook 通过 onExecutionEvent 订阅，收到事件后立即触发自身的状态刷新。
- *   事件载荷 { type, executionId, topicId }，订阅方按 topicId 过滤。
+ *   事件载荷 { type, executionId, taskId }，订阅方按 taskId 过滤。
  *
  * 不发什么：
  *   轮询被动检测到的状态变化不发事件——这些由各 hook 自己的轮询覆盖，
@@ -22,7 +22,7 @@ export type ExecutionEventType = 'started' | 'stopped' | 'merged';
 export interface ExecutionEvent {
   type: ExecutionEventType;
   executionId: string;
-  topicId: string;
+  taskId: string;
 }
 
 const listeners = new Set<(e: ExecutionEvent) => void>();

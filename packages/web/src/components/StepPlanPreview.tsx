@@ -23,6 +23,12 @@ interface Props {
   onPlanImported: (taskName: string) => void;
   /** 当前任务已有步骤，存在时进入 diff 更新模式 */
   existingSteps?: Step[];
+  /**
+   * 当前任务名称，用于判断计划是否属于当前任务。
+   * 若提供且 plan.task !== currentTaskName，面板渲染为灰色只读状态（不显示操作按钮）。
+   * 若不提供则保持原有行为（向后兼容）。
+   */
+  currentTaskName?: string;
 }
 
 /**
@@ -90,7 +96,7 @@ function DescriptionDiff({ oldDesc, newDesc }: { oldDesc: string; newDesc: strin
   );
 }
 
-export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId, imported, onPlanImported, existingSteps }: Props) {
+export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId, imported, onPlanImported, existingSteps, currentTaskName }: Props) {
   const { showToast } = useToast();
   const [importing, setImporting] = useState(false);
   /** 已应用的 plan step ref 集合 */
@@ -102,6 +108,13 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
 
   /** 是否有已有步骤（决定展示模式：导入 vs 更新） */
   const hasExisting = !!(existingSteps && existingSteps.length > 0);
+
+  /**
+   * 是否为当前任务的计划面板。
+   * currentTaskName 不传时默认为 true（向后兼容）；
+   * 传入时需要 plan.task 与之精确匹配才视为当前任务。
+   */
+  const isCurrentTask = !currentTaskName || plan.task === currentTaskName;
 
   /** diff 结果 */
   const diffItems = useMemo(() => {
@@ -289,14 +302,24 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
   const hasPending = stats ? stats.pendingChanges > 0 : false;
 
   // 卡片颜色
-  const headerBg = updateMode ? 'bg-amber-50 border-amber-200' : 'bg-sky-50 border-sky-200';
-  const headerText = updateMode ? 'text-amber-700' : 'text-sky-700';
-  const headerIcon = updateMode ? 'text-amber-500' : 'text-sky-500';
-  const borderColor = updateMode ? 'border-amber-200' : 'border-sky-200';
-  const cardBorder = updateMode ? 'border-amber-200' : 'border-sky-200';
+  const headerBg = isCurrentTask
+    ? (updateMode ? 'bg-amber-50 border-amber-200' : 'bg-sky-50 border-sky-200')
+    : 'bg-gray-100 border-gray-200';
+  const headerText = isCurrentTask
+    ? (updateMode ? 'text-amber-700' : 'text-sky-700')
+    : 'text-gray-400';
+  const headerIcon = isCurrentTask
+    ? (updateMode ? 'text-amber-500' : 'text-sky-500')
+    : 'text-gray-300';
+  const borderColor = isCurrentTask
+    ? (updateMode ? 'border-amber-200' : 'border-sky-200')
+    : 'border-gray-200';
+  const cardBorder = isCurrentTask
+    ? (updateMode ? 'border-amber-200' : 'border-sky-200')
+    : 'border-gray-200';
 
   return (
-    <div className={`rounded-lg border ${cardBorder} bg-sky-50/50 overflow-hidden my-2`}>
+    <div className={`rounded-lg border ${cardBorder} ${isCurrentTask ? 'bg-sky-50/50' : 'bg-gray-50/50 opacity-70'} overflow-hidden my-2`}>
       <div className={`px-3 py-2 ${headerBg} border-b ${borderColor}`}>
         <div className="flex items-center gap-2">
           <svg className={`w-4 h-4 ${headerIcon} shrink-0`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -304,8 +327,17 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
           </svg>
           <span className={`text-sm font-medium ${headerText}`}>{plan.task}</span>
           <span className="text-[10px] text-gray-400">{plan.steps.length} 个步骤</span>
-          {/* diff 统计 */}
-          {updateMode && stats && (
+          {/* 非当前任务标记 */}
+          {!isCurrentTask && (
+            <span className="text-[10px] text-gray-400 ml-1 flex items-center gap-0.5">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              只读
+            </span>
+          )}
+          {/* diff 统计（仅当前任务） */}
+          {isCurrentTask && updateMode && stats && (
             <div className="flex items-center gap-1.5 ml-auto">
               {stats.newCount > 0 && <span className="text-[10px] text-green-600 font-medium">+{stats.newCount} 新增</span>}
               {stats.modifiedCount > 0 && <span className="text-[10px] text-amber-600 font-medium">~{stats.modifiedCount} 修改</span>}
@@ -315,14 +347,14 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
           )}
         </div>
         {plan.summary && (
-          <p className={`text-xs mt-1 ${updateMode ? 'text-amber-600' : 'text-sky-600'}`}>{plan.summary}</p>
+          <p className={`text-xs mt-1 ${isCurrentTask ? (updateMode ? 'text-amber-600' : 'text-sky-600') : 'text-gray-400'}`}>{plan.summary}</p>
         )}
       </div>
 
       {/* 步骤列表 */}
       <div className="px-3 py-2 space-y-1.5 max-h-56 overflow-y-auto">
-        {diffItems ? (
-          // 更新模式：逐条显示 diff + 独立操作按钮
+        {diffItems && isCurrentTask ? (
+          // 更新模式：逐条显示 diff + 独立操作按钮（仅当前任务）
           diffItems.map((item) => {
             const ref = item.planStep.ref;
             const applied = appliedRefs.has(ref);
@@ -380,18 +412,19 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
             );
           })
         ) : (
-          // 导入模式：原始渲染
+          // 导入模式 / 非当前任务只读：原始渲染
           plan.steps.map((step) => (
             <div key={step.ref} className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-              <span className="text-xs text-gray-700 truncate flex-1">{step.title}</span>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isCurrentTask ? 'bg-sky-400' : 'bg-gray-300'}`} />
+              <span className={`text-xs truncate flex-1 ${isCurrentTask ? 'text-gray-700' : 'text-gray-400'}`}>{step.title}</span>
               <DepBadge deps={step.dependencies || []} />
             </div>
           ))
         )}
       </div>
 
-      {/* 底部操作区 */}
+      {/* 底部操作区（仅当前任务显示操作按钮） */}
+      {isCurrentTask && (
       <div className={`px-3 py-2 border-t ${borderColor}`}>
         {/* 更新模式 + 还有未应用的变更 → 批量应用按钮 */}
         {updateMode && hasPending && stats ? (
@@ -437,6 +470,7 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
           </button>
         )}
       </div>
+      )}
     </div>
   );
 }

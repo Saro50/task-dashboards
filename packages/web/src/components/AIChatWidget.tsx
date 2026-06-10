@@ -25,6 +25,11 @@ interface Props {
   onPlanImported?: () => void;
   /** 当前任务的已有步骤列表，用于 StepPlanPreview diff 比对与更新 */
   existingSteps?: Step[];
+  /**
+   * 当前任务名称，用于 StepPlanPreview 判断计划是否属于当前任务。
+   * 若提供，非当前任务的计划面板渲染为灰色只读状态（不显示操作按钮）。
+   */
+  currentTaskName?: string;
 }
 
 function ChevronIcon({ open }: { open: boolean }) {
@@ -129,15 +134,17 @@ function repairJson(str: string): string {
   return result;
 }
 
-function PartRenderer({ part, projectId, taskId, chatSessionId, importedPlanTopics, onPlanImported, existingSteps }: {
+function PartRenderer({ part, projectId, taskId, chatSessionId, importedPlanTasks, onPlanImported, existingSteps, currentTaskName }: {
   part: ChatPart;
   projectId?: string;
   taskId?: string;
   chatSessionId?: string;
-  importedPlanTopics: Set<string>;
-  onPlanImported: (topicName: string) => void;
+  importedPlanTasks: Set<string>;
+  onPlanImported: (taskName: string) => void;
   /** 当前任务已有步骤，用于 diff 比对 */
   existingSteps?: Step[];
+  /** 当前任务名称，用于判断计划是否属于当前任务 */
+  currentTaskName?: string;
 }) {
   if (part.type === 'text' && part.text) {
     const text = part.text;
@@ -193,9 +200,10 @@ function PartRenderer({ part, projectId, taskId, chatSessionId, importedPlanTopi
               projectId={projectId}
               taskId={taskId}
               chatSessionId={chatSessionId}
-              imported={importedPlanTopics.has((seg.content as StepPlan).task)}
+              imported={importedPlanTasks.has((seg.content as StepPlan).task)}
               onPlanImported={onPlanImported}
               existingSteps={existingSteps}
+              currentTaskName={currentTaskName}
             />
           )
         )}
@@ -293,7 +301,7 @@ export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, taskId, pageContext, chatModes, onPlanImported, existingSteps }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, taskId, pageContext, chatModes, onPlanImported, existingSteps, currentTaskName }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [showSessionList, setShowSessionList] = useState(false);
@@ -363,14 +371,14 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     retryInNewSession,
     dismissSessionBroken,
     renameSession,
-    importedPlanTopics,
-    addImportedPlanTopic,
+    importedPlanTasks,
+    addImportedPlanTask,
   } = useChat(directory);
 
-  const handlePlanImported = useCallback((topicName: string) => {
-    addImportedPlanTopic(topicName);
+  const handlePlanImported = useCallback((taskName: string) => {
+    addImportedPlanTask(taskName);
     onPlanImported?.();
-  }, [addImportedPlanTopic, onPlanImported]);
+  }, [addImportedPlanTask, onPlanImported]);
 
   useImperativeHandle(ref, () => ({
     async openWithMessage(msg: string, options?: { newSession?: boolean; agent?: string }) {
@@ -918,9 +926,10 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                         projectId={projectId}
                         taskId={taskId}
                         chatSessionId={currentSessionId ?? undefined}
-                        importedPlanTopics={importedPlanTopics}
+                        importedPlanTasks={importedPlanTasks}
                         onPlanImported={handlePlanImported}
                         existingSteps={existingSteps}
+                        currentTaskName={currentTaskName}
                       />
                     ))}
                     <div className="flex items-center justify-between gap-2">

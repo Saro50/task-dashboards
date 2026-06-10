@@ -39,7 +39,7 @@ export function useChat(directory?: string) {
   const mountedRef = useRef(true);
   const lastSentTextRef = useRef<string | null>(null);
   const [sessionBroken, setSessionBroken] = useState(false);
-  const [importedPlanTopics, setImportedPlanTopics] = useState<Set<string>>(new Set());
+  const [importedPlanTasks, setImportedPlanTasks] = useState<Set<string>>(new Set());
   const [lastSent, setLastSent] = useState<LastSentSnapshot | null>(null);
   const [compacted, setCompacted] = useState(false);
 
@@ -82,7 +82,7 @@ export function useChat(directory?: string) {
       ]);
       log.info(S, 'loadMessages result', { count: msgs?.length, importedCount: imported.length , imported});
       setMessages(msgs);
-      setImportedPlanTopics(new Set(imported.map((p) => p.taskName)));
+      setImportedPlanTasks(new Set(imported.map((p) => p.taskName)));
 
       /** chatDebug — 消息加载后输出 Token 统计和历史消息 */
       chatDebug.tokens(msgs);
@@ -381,8 +381,8 @@ export function useChat(directory?: string) {
     }
   }, [directory]);
 
-  const addImportedPlanTopic = useCallback((topicName: string) => {
-    setImportedPlanTopics((prev) => new Set(prev).add(topicName));
+  const addImportedPlanTask = useCallback((taskName: string) => {
+    setImportedPlanTasks((prev) => new Set(prev).add(taskName));
   }, []);
 
   return {
@@ -395,7 +395,7 @@ export function useChat(directory?: string) {
     isConnected,
     loadingTimedOut,
     sessionBroken,
-    importedPlanTopics,
+    importedPlanTasks,
     lastSent,
     compacted,
     selectedAgent,
@@ -411,6 +411,6 @@ export function useChat(directory?: string) {
     retryInNewSession,
     dismissSessionBroken,
     renameSession,
-    addImportedPlanTopic,
+    addImportedPlanTask,
   };
 }

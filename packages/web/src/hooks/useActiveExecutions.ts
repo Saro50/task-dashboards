@@ -135,7 +135,7 @@ export function useActiveExecutions(projectId: string | undefined, maxConcurrenc
     }
     // 仅在确实停止成功时 emit；失败时不发，避免触发无意义的全量刷新
     if (stoppedTaskId) {
-      emitExecutionEvent({ type: 'stopped', executionId, topicId: stoppedTaskId });
+      emitExecutionEvent({ type: 'stopped', executionId, taskId: stoppedTaskId });
     }
     refresh();
     refreshTasks();
@@ -151,7 +151,7 @@ export function useActiveExecutions(projectId: string | undefined, maxConcurrenc
       log.error(S, 'startExecution error', err);
     }
     if (startedExecId) {
-      emitExecutionEvent({ type: 'started', executionId: startedExecId, topicId: taskId });
+      emitExecutionEvent({ type: 'started', executionId: startedExecId, taskId: taskId });
     }
     refresh();
     refreshTasks();
@@ -174,7 +174,7 @@ export function useActiveExecutions(projectId: string | undefined, maxConcurrenc
       try {
         const exec = await executionApi.start(task.id, projectId, maxConcurrency);
         started++;
-        emitExecutionEvent({ type: 'started', executionId: exec.id, topicId: task.id });
+        emitExecutionEvent({ type: 'started', executionId: exec.id, taskId: task.id });
       } catch (err: any) {
         const msg = err.message || '';
         if (msg.includes('already running') || msg.includes('最大并发')) {
