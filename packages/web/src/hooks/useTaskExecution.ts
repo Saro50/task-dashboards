@@ -10,6 +10,7 @@
  * │ 3. startPolling      每 3s 轮询 getLatest(taskId) 同步状态       │
  * │ 4. cancelExecution   中止执行，IN_PROGRESS 步骤重置为 PENDING     │
  * │ 5. mergeExecution    将 worktree 变更 squash merge 到目标分支     │
+ * │ 6. restartExecution  重新执行（停止旧 execution、清理后重新开始）  │
  * └─────────────────────────────────────────────────────────────────┘
  *
  * 设计决策：为什么用 taskId 而非 projectId 查询执行状态
@@ -145,6 +146,40 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
       showToast(err.message, 'error');
     }
   }, [execution, showToast, stopPolling, onStepUpdated]);
+
+  /**
+   * 重新执行 — 停止旧 execution、清理 worktree、重置所有步骤为 PENDING，
+   * 然后创建全新 execution + worktree + AI 会话从头执行。
+   *
+   * restart 内部已完成旧 execution 的清理（abortSession + removeWorktree + stop），
+   * 外部无需先调用 cancelExecution。
+   *
+   * 上游影响：
+   *   - 前端「重新执行」按钮 → restartExecution
+   *   - 旧 execution 被标记为 STOPPED，新 execution 接管执行
+   *   - 所有步骤（含 COMPLETED/BLOCKED）被重置为 PENDING
+   */
+  const restartExecution = useCallback(async () => {
+    if (!taskId || !projectId) {
+      log.warn(S, 'restartExecution skipped: missing taskId or projectId');
+      return;
+    }
+    log.info(S, 'restartExecution', { taskId, projectId, maxConcurrency });
+    setExecuting(true);
+
+    try {
+      const exec = await executionApi.restart(taskId, projectId, maxConcurrency);
+      log.info(S, 'execution restarted', { id: exec.id, status: exec.status });
+      setExecution(exec);
+      startPolling(exec.id);
+      showToast('任务链重新执行已开始', 'success');
+      emitExecutionEvent({ type: 'started', executionId: exec.id, taskId });
+    } catch (err: any) {
+      log.error(S, 'restartExecution error', err);
+      showToast(err.message, 'error');
+      setExecuting(false);
+    }
+  }, [taskId, projectId, maxConcurrency, showToast, startPolling]);
 
   /**
    * 合并操作 — 将 worktree 中的代码变更 squash merge 到用户选择的目标分支。
@@ -316,6 +351,7 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
   return {
     executeChain,
     cancelExecution,
+    restartExecution,
     mergeExecution,
     mergeForce,
     resolveConflict,
