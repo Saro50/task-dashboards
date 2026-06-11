@@ -548,6 +548,96 @@ export async function stop(executionId: string) {
   return prisma.taskExecution.findUnique({ where: { id: executionId } });
 }
 
+/**
+ * 重新执行 — 清理旧 execution 的 worktree 和 AI 会话，重置所有步骤状态，
+ * 然后调用 start() 创建全新 execution 开始执行。
+ *
+ * 流程：
+ *   1. 查找该 taskId 下最新有 worktree 的 execution
+ *   2. 若 execution 正在运行（CREATING_WORKTREE / RUNNING），先中止 AI 会话
+ *   3. 若有 worktreeDirectory，从磁盘删除 worktree
+ *   4. 将旧 execution 状态设为 STOPPED，清空 worktree/session 相关字段
+ *   5. 将所有步骤重置为 PENDING
+ *   6. 删除该 execution 下所有 StepCommit 记录
+ *   7. 调用 start() 创建全新 execution 并开始执行
+ *
+ * 上游影响：
+ *   - 前端「重新执行」按钮 → restart API → 此方法
+ *   - 旧 execution 被标记为 STOPPED（不再活跃），新 execution 接管执行
+ *   - 所有步骤（含 COMPLETED/BLOCKED）被重置为 PENDING，AI 将从头重新执行
+ */
+export async function restart(taskId: string, projectId: string, maxConcurrency: number = 2) {
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
+  if (!task) throw new Error('Task not found');
+
+  // 查找该 taskId 下最新有 worktree 的 execution（worktreeDirectory 非空）
+  const latestExecution = await prisma.taskExecution.findFirst({
+    where: { taskId, worktreeDirectory: { not: null } },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (latestExecution) {
+    const baseUrl = await EngineService.getBaseUrl();
+
+    // 若 execution 正在运行，先中止 AI 会话
+    if (
+      latestExecution.status === 'CREATING_WORKTREE' ||
+      latestExecution.status === 'RUNNING'
+    ) {
+      if (latestExecution.sessionId && latestExecution.worktreeDirectory) {
+        try {
+          await OpencodeV2.abortSession(baseUrl, latestExecution.sessionId, latestExecution.worktreeDirectory);
+          logger.info(S, 'aborted session for restart', { executionId: latestExecution.id, sessionId: latestExecution.sessionId });
+        } catch (err: any) {
+          logger.warn(S, 'abort session error during restart (ignored)', { executionId: latestExecution.id, error: err.message });
+        }
+      }
+    }
+
+    // 若有 worktreeDirectory，从磁盘删除 worktree
+    if (latestExecution.worktreeDirectory) {
+      const project = await prisma.project.findUnique({ where: { id: latestExecution.projectId } });
+      if (project?.path) {
+        try {
+          await OpencodeV2.removeWorktree(baseUrl, project.path, latestExecution.worktreeDirectory);
+          logger.info(S, 'removed worktree for restart', { executionId: latestExecution.id, worktreeDirectory: latestExecution.worktreeDirectory });
+        } catch (err: any) {
+          logger.warn(S, 'removeWorktree error during restart (ignored)', { executionId: latestExecution.id, error: err.message });
+        }
+      }
+    }
+
+    // 将旧 execution 的 status 更新为 STOPPED，清空 worktree/session 相关字段
+    await prisma.taskExecution.update({
+      where: { id: latestExecution.id },
+      data: {
+        status: 'STOPPED' as ExecutionStatus,
+        worktreeDirectory: null,
+        worktreeName: null,
+        worktreeBranch: null,
+        sessionId: null,
+      },
+    });
+    logger.info(S, 'old execution stopped for restart', { executionId: latestExecution.id });
+
+    // 将所有步骤重置为 PENDING
+    const steps = await StepService.listByTask(taskId);
+    for (const step of steps) {
+      await StepService.update(step.id, { status: 'PENDING' });
+    }
+    logger.info(S, 'all steps reset to PENDING for restart', { taskId, count: steps.length });
+
+    // 删除该 execution 下所有 StepCommit 记录
+    const deleted = await prisma.stepCommit.deleteMany({ where: { executionId: latestExecution.id } });
+    if (deleted.count > 0) {
+      logger.info(S, 'deleted StepCommit records for restart', { executionId: latestExecution.id, count: deleted.count });
+    }
+  }
+
+  // 创建全新 execution + worktree + AI 会话并开始执行
+  return start(taskId, projectId, maxConcurrency);
+}
+
 export async function getBranches(executionId: string) {
   const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
   if (!execution) throw new Error('Execution not found');
