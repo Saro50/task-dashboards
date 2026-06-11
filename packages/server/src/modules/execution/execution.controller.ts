@@ -350,3 +350,38 @@ export async function abortConflict(ctx: Context) {
     throw err;
   }
 }
+
+/**
+ * 手动标记为已合并 — 不执行 git 操作，仅更新 DB 状态为 MERGED。
+ * 用于用户已在本地手动完成合并的场景。
+ */
+export async function markMerged(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  const { executionId } = ctx.params;
+  const { targetBranch } = ctx.request.body as any || {};
+
+  log.info('execution.ctrl', 'markMerged', { executionId, targetBranch });
+
+  if (!targetBranch || typeof targetBranch !== 'string') {
+    ctx.status = 400;
+    ctx.body = { error: 'targetBranch is required' };
+    return;
+  }
+
+  try {
+    const execution = await Service.markMerged(executionId, targetBranch);
+    ctx.body = formatExecution(execution);
+  } catch (err: any) {
+    if (err.message?.includes('not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('must be COMPLETED')) {
+      ctx.status = 400;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}

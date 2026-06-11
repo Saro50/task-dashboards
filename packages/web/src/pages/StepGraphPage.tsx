@@ -305,6 +305,7 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
     mergeForce,
     resolveConflict,
     abortConflict,
+    markMerged,
     restoreExecution,
     executing,
     execution,
@@ -685,15 +686,33 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
             )}
           </div>
           {execution.status === 'COMPLETED' && (
-            <button
-              onClick={() => setShowDiffPreview(true)}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              合并到分支
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const branch = execution.worktreeBranch ?? '当前分支';
+                  if (!confirm(`确定要将此执行标记为「已合并」到 ${branch} 吗？\n\n此操作仅更新平台状态，不会执行实际的 git 合并操作。`)) return;
+                  markMerged(branch);
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-gray-200 bg-white hover:bg-gray-50"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                已合并
+              </button>
+              <button
+                onClick={() => {
+                  if (!confirm('确定要合并变更到分支吗？\n\n此操作将执行 squash merge，将 worktree 中的代码变更合并到目标分支。')) return;
+                  setShowDiffPreview(true);
+                }}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                合并到分支
+              </button>
+            </div>
           )}
         </div>
       )}

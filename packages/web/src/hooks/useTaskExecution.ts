@@ -336,6 +336,29 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
   }, [execution, showToast]);
 
   /**
+   * 手动标记为已合并 — 不执行 git 操作，仅将 DB 状态从 COMPLETED 更新为 MERGED。
+   * 用于用户已在本地手动完成合并（不通过平台）的场景。
+   *
+   * 上游影响：
+   *   - 底部状态栏「已合并」按钮 → 此方法
+   *   - 将 execution.status 从 COMPLETED 推进到 MERGED
+   *   - 尝试清理 worktree（忽略失败，用户可能已手动处理）
+   */
+  const markMerged = useCallback(async (targetBranch: string) => {
+    if (!execution) return;
+    log.info(S, 'markMerged', { executionId: execution.id, targetBranch });
+    try {
+      const updated = await executionApi.markMerged(execution.id, targetBranch);
+      setExecution(updated);
+      showToast(`已标记为合并到 ${targetBranch}`, 'success');
+      emitExecutionEvent({ type: 'merged', executionId: execution.id, taskId: execution.taskId });
+    } catch (err: any) {
+      log.error(S, 'markMerged error', err);
+      showToast(err.message, 'error');
+    }
+  }, [execution, showToast]);
+
+  /**
    * 订阅事件总线：当 ExecutionPanel（或其他位置）对该 task 发起 stop/start/merge 时，
    * 立即调用 restoreExecution 同步本地状态。
    *
@@ -361,6 +384,7 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
     mergeForce,
     resolveConflict,
     abortConflict,
+    markMerged,
     restoreExecution,
     executing,
     execution,

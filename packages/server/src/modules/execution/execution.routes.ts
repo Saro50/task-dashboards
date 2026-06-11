@@ -25,6 +25,7 @@ executionRouter.post('/merge', Controller.merge);
 executionRouter.post('/merge-force', Controller.mergeForce);
 executionRouter.post('/resolve-conflict', Controller.resolveConflict);
 executionRouter.post('/abort-conflict', Controller.abortConflict);
+executionRouter.post('/mark-merged', Controller.markMerged);
 executionRouter.get('/branches', Controller.branches);
 executionRouter.get('/diff', Controller.diff);
 executionRouter.get('/messages', Controller.messages);

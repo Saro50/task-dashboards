@@ -915,6 +915,41 @@ export async function abortConflict(executionId: string) {
   return prisma.taskExecution.findUnique({ where: { id: executionId } });
 }
 
+/**
+ * 手动标记为已合并 — 不执行任何 git 操作，仅将 DB 状态从 COMPLETED 更新为 MERGED。
+ * 用于用户已在本地手动完成合并（不通过平台）的场景。
+ *
+ * 上游影响：
+ *   - 前端「已合并」按钮 → markMerged API → 此方法
+ *   - 将 execution.status 从 COMPLETED 推进到 MERGED
+ *   - 会清理 worktree（如果仍存在）
+ */
+export async function markMerged(executionId: string, targetBranch: string) {
+  const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
+  if (!execution) throw new Error('Execution not found');
+  if (execution.status !== 'COMPLETED') throw new Error('Execution must be COMPLETED to mark as merged');
+
+  // 尝试清理 worktree（忽略失败，用户可能已手动处理）
+  if (execution.worktreeDirectory) {
+    try {
+      const project = await prisma.project.findUnique({ where: { id: execution.projectId } });
+      if (project?.path) {
+        const baseUrl = await EngineService.getBaseUrl();
+        await OpencodeV2.removeWorktree(baseUrl, project.path, execution.worktreeDirectory);
+      }
+    } catch (err: any) {
+      logger.warn(S, 'worktree cleanup during markMerged failed (ignored)', { executionId, error: err.message });
+    }
+  }
+
+  await prisma.taskExecution.update({
+    where: { id: executionId },
+    data: { status: 'MERGED' as ExecutionStatus, targetBranch },
+  });
+
+  return prisma.taskExecution.findUnique({ where: { id: executionId } });
+}
+
 export async function getStatus(taskId: string) {
   return prisma.taskExecution.findFirst({
     where: { taskId },

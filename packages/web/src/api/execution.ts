@@ -9,6 +9,7 @@
  * - mergeForce: 强制合并，冲突时进入 CONFLICTING 状态（不 abort）
  * - resolveConflict: 确认冲突已解决 → 完成合并
  * - abortConflict: 放弃冲突解决 → 回退到 COMPLETED
+ * - markMerged: 手动标记为已合并（不做 git 操作，仅更新 DB 状态）
  * - getLatest: 获取任务下最新的执行状态（前端轮询用）
  * - list: 列出任务下所有执行历史
  * - getStepDiff: 获取单个步骤的文件变更（per-step diff）
@@ -79,6 +80,17 @@ export const executionApi = {
   abortConflict(executionId: string): Promise<TaskExecution> {
     return apiRequest<TaskExecution>(S, `${BASE}/executions/${executionId}/abort-conflict`, {
       method: 'POST',
+    });
+  },
+
+  /**
+   * 手动标记为已合并 — 不执行 git 操作，仅将 DB 状态从 COMPLETED 更新为 MERGED。
+   * 用于用户已在本地手动完成合并的场景。
+   */
+  markMerged(executionId: string, targetBranch: string): Promise<TaskExecution> {
+    return apiRequest<TaskExecution>(S, `${BASE}/executions/${executionId}/mark-merged`, {
+      method: 'POST',
+      body: JSON.stringify({ targetBranch }),
     });
   },
 
