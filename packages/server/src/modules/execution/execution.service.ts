@@ -621,8 +621,16 @@ export async function merge(executionId: string, targetBranch: string) {
   try {
     await git.merge(['--squash', execution.worktreeBranch]);
   } catch (err: any) {
+    // ── 冲突检测：收集冲突文件列表后 abort ──
+    let conflictFiles: string[] = [];
+    try {
+      const mergeStatus = await git.status();
+      conflictFiles = mergeStatus.conflicted ?? [];
+    } catch {}
     await git.merge(['--abort']).catch(() => {});
-    throw new Error(`合并冲突: ${err.message}`);
+    const errWithFiles: any = new Error(`合并冲突: ${err.message}`);
+    errWithFiles.conflictFiles = conflictFiles;
+    throw errWithFiles;
   }
 
   // 检查 squash merge 后是否有实际变更
@@ -648,6 +656,175 @@ export async function merge(executionId: string, targetBranch: string) {
   return prisma.taskExecution.findUnique({ where: { id: executionId } });
 }
 
+/**
+ * 强制合并 — 重新执行 squash merge 但不 abort，将执行状态设为 CONFLICTING。
+ * 用于用户选择「手动解决冲突」的场景：git 留在半合并状态，用户在 IDE 中解决冲突后
+ * 调用 resolveConflict() 完成合并。
+ *
+ * 上游影响：
+ *   - 前端 mergeConflict dialog → mergeForce API → 此方法
+ *   - 将 execution.status 从 COMPLETED 推进到 CONFLICTING
+ *   - 记录 conflictFiles 到 DB 供前端展示
+ */
+export async function mergeForce(executionId: string, targetBranch: string) {
+  const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
+  if (!execution) throw new Error('Execution not found');
+  if (execution.status !== 'COMPLETED') throw new Error('Execution must be COMPLETED to force merge');
+  if (!execution.worktreeBranch) throw new Error('No worktree branch for this execution');
+  if (!execution.worktreeDirectory) throw new Error('No worktree directory for this execution');
+
+  const project = await prisma.project.findUnique({ where: { id: execution.projectId } });
+  if (!project?.path) throw new Error('Project not found or no path configured');
+
+  const baseUrl = await EngineService.getBaseUrl();
+
+  // 先在 worktree 目录中 commit 残留变更
+  const worktreeGit = simpleGit(execution.worktreeDirectory);
+  const status = await worktreeGit.status();
+  if (!status.isClean()) {
+    await worktreeGit.raw(['add', '-A']);
+    await worktreeGit.commit('chore: residual worktree changes');
+    logger.info(S, 'committed residual worktree changes (mergeForce)', { executionId, branch: execution.worktreeBranch });
+  }
+
+  const git = simpleGit(project.path);
+  await git.checkout(targetBranch);
+
+  try {
+    await git.merge(['--squash', execution.worktreeBranch]);
+    // 无冲突 — 直接走正常 merge 流程
+    const mergeStatus = await git.status();
+    if (mergeStatus.staged.length > 0 || !mergeStatus.isClean()) {
+      const task = await prisma.task.findUnique({ where: { id: execution.taskId } });
+      await git.commit(`feat: ${task?.name ?? '任务链'} 执行完成`);
+    }
+
+    try {
+      await OpencodeV2.removeWorktree(baseUrl, project.path, execution.worktreeDirectory);
+    } catch (err: any) {
+      logger.warn(S, 'worktree removal error after mergeForce (no conflict)', { executionId, error: err.message });
+    }
+
+    await prisma.taskExecution.update({
+      where: { id: executionId },
+      data: { status: 'MERGED' as ExecutionStatus, targetBranch, conflictFiles: null },
+    });
+
+    return { status: 'MERGED', conflictFiles: [] };
+  } catch (err: any) {
+    // 有冲突 — 不 abort，保留半合并状态
+    let conflictFiles: string[] = [];
+    try {
+      const mergeStatus = await git.status();
+      conflictFiles = mergeStatus.conflicted ?? [];
+    } catch {}
+
+    logger.info(S, 'mergeForce: conflicts detected, staying in CONFLICTING state', {
+      executionId,
+      conflictCount: conflictFiles.length,
+    });
+
+    await prisma.taskExecution.update({
+      where: { id: executionId },
+      data: {
+        status: 'CONFLICTING' as ExecutionStatus,
+        targetBranch,
+        conflictFiles: JSON.stringify(conflictFiles),
+      },
+    });
+
+    return { status: 'CONFLICTING', conflictFiles };
+  }
+}
+
+/**
+ * 确认冲突已解决 — 检查 git index 是否还有未解决的冲突文件。
+ * 若已解决 → commit + 删除 worktree + status → MERGED。
+ * 若仍有冲突 → 返回剩余冲突文件列表。
+ *
+ * 上游影响：
+ *   - 前端冲突解决面板「冲突已解决」按钮 → resolveConflict API → 此方法
+ *   - 将 execution.status 从 CONFLICTING 推进到 MERGED（或保持 CONFLICTING）
+ */
+export async function resolveConflict(executionId: string) {
+  const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
+  if (!execution) throw new Error('Execution not found');
+  if (execution.status !== 'CONFLICTING') throw new Error('Execution must be CONFLICTING to resolve');
+  if (!execution.worktreeBranch) throw new Error('No worktree branch for this execution');
+  if (!execution.targetBranch) throw new Error('No target branch for this execution');
+
+  const project = await prisma.project.findUnique({ where: { id: execution.projectId } });
+  if (!project?.path) throw new Error('Project not found or no path configured');
+
+  const git = simpleGit(project.path);
+
+  // 确保在正确的分支上
+  await git.checkout(execution.targetBranch);
+
+  const mergeStatus = await git.status();
+  const remainingConflicts = mergeStatus.conflicted ?? [];
+
+  if (remainingConflicts.length > 0) {
+    // 尚有未解决的冲突
+    await prisma.taskExecution.update({
+      where: { id: executionId },
+      data: { conflictFiles: JSON.stringify(remainingConflicts) },
+    });
+    return { resolved: false, remainingFiles: remainingConflicts };
+  }
+
+  // 冲突已全部解决 → 提交
+  await git.raw(['add', '-A']);
+  const hasStaged = (await git.status()).staged.length > 0;
+  if (hasStaged) {
+    const task = await prisma.task.findUnique({ where: { id: execution.taskId } });
+    await git.commit(`feat: ${task?.name ?? '任务链'} 执行完成（手动解决冲突）`);
+  }
+
+  const baseUrl = await EngineService.getBaseUrl();
+  try {
+    await OpencodeV2.removeWorktree(baseUrl, project.path, execution.worktreeDirectory!);
+  } catch (err: any) {
+    logger.warn(S, 'worktree removal error after conflict resolution', { executionId, error: err.message });
+  }
+
+  await prisma.taskExecution.update({
+    where: { id: executionId },
+    data: { status: 'MERGED' as ExecutionStatus, conflictFiles: null },
+  });
+
+  return { resolved: true };
+}
+
+/**
+ * 放弃冲突解决 — abort 当前 merge，将状态回退到 COMPLETED。
+ * 用户可以在之后重新选择目标分支进行合并。
+ *
+ * 上游影响：
+ *   - 前端冲突解决面板「放弃解决」按钮 → abortConflict API → 此方法
+ *   - 将 execution.status 从 CONFLICTING 回退到 COMPLETED
+ */
+export async function abortConflict(executionId: string) {
+  const execution = await prisma.taskExecution.findUnique({ where: { id: executionId } });
+  if (!execution) throw new Error('Execution not found');
+  if (execution.status !== 'CONFLICTING') throw new Error('Execution must be CONFLICTING to abort');
+  if (!execution.targetBranch) throw new Error('No target branch for this execution');
+
+  const project = await prisma.project.findUnique({ where: { id: execution.projectId } });
+  if (!project?.path) throw new Error('Project not found or no path configured');
+
+  const git = simpleGit(project.path);
+  await git.checkout(execution.targetBranch);
+  await git.merge(['--abort']).catch(() => {});
+
+  await prisma.taskExecution.update({
+    where: { id: executionId },
+    data: { status: 'COMPLETED' as ExecutionStatus, conflictFiles: null },
+  });
+
+  return prisma.taskExecution.findUnique({ where: { id: executionId } });
+}
+
 export async function getStatus(taskId: string) {
   return prisma.taskExecution.findFirst({
     where: { taskId },
@@ -665,13 +842,13 @@ export async function getByTask(taskId: string) {
 /**
  * 获取项目下的执行列表（供 ExecutionPanel 全局面板使用）。
  *
- * 返回 CREATING_WORKTREE / RUNNING / COMPLETED / STOPPED 状态的执行。
+ * 返回 CREATING_WORKTREE / RUNNING / COMPLETED / CONFLICTING / STOPPED 状态的执行。
  * FAILED / MERGED 状态不返回（失败和已合并的执行不展示在面板中）。
  * 按 taskId 精确查询应使用 getStatus(taskId)。
  */
 export async function getActiveByProject(projectId: string) {
   return prisma.taskExecution.findMany({
-    where: { projectId, status: { in: ['CREATING_WORKTREE', 'RUNNING', 'COMPLETED', 'STOPPED'] } },
+    where: { projectId, status: { in: ['CREATING_WORKTREE', 'RUNNING', 'COMPLETED', 'CONFLICTING', 'STOPPED'] } },
     include: { task: { select: { id: true, name: true } } },
     orderBy: { createdAt: 'desc' },
   });

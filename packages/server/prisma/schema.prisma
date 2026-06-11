@@ -122,7 +122,7 @@ model EngineConfig {
 /// 每条记录对应一次任务链执行：创建 worktree 隔离环境 → 在其中创建 AI 会话 →
 /// 按 DAG 拓扑顺序逐个执行步骤（串行，每个步骤完成后 commit）。
 /// 执行状态通过 status 字段流转：
-///   CREATING_WORKTREE → RUNNING → COMPLETED / FAILED / STOPPED → MERGED
+///   CREATING_WORKTREE → RUNNING → COMPLETED / FAILED / STOPPED → MERGED (或 CONFLICTING → MERGED)
 /// 前端通过轮询该表获取执行进度（completedSteps / totalSteps），
 /// 完成后弹出合并对话框让用户选择目标分支。
 model TaskExecution {
@@ -136,6 +136,7 @@ model TaskExecution {
   worktreeDirectory String?
   sessionId        String?
   targetBranch     String?
+  conflictFiles    String?             /// JSON 字符串数组，合并冲突时的冲突文件列表
   maxConcurrency   Int                 @default(2)
   initialCommitHash String?            @db.VarChar(40)
   completedSteps   Int                 @default(0)
@@ -156,6 +157,7 @@ model TaskExecution {
 /// CREATING_WORKTREE: 正在为本次执行创建 git worktree 隔离环境
 /// RUNNING: worktree 已就绪，AI 会话正在按 DAG 顺序执行步骤
 /// COMPLETED: 所有步骤执行完毕，等待用户确认合并
+/// CONFLICTING: 合并时检测到冲突，等待用户手动解决
 /// MERGED: 用户已选择目标分支完成合并
 /// STOPPED: 用户手动中止执行，IN_PROGRESS 的步骤被重置为 PENDING
 /// FAILED: 执行过程中出现不可恢复的错误
@@ -163,6 +165,7 @@ enum ExecutionStatus {
   CREATING_WORKTREE
   RUNNING
   COMPLETED
+  CONFLICTING
   MERGED
   STOPPED
   FAILED

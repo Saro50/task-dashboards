@@ -9,6 +9,7 @@ export type ExecutionStatus =
   | 'CREATING_WORKTREE'
   | 'RUNNING'
   | 'COMPLETED'
+  | 'CONFLICTING'
   | 'MERGED'
   | 'STOPPED'
   | 'FAILED';
@@ -24,6 +25,7 @@ export interface TaskExecution {
   worktreeDirectory: string | null;
   sessionId: string | null;
   targetBranch: string | null;
+  conflictFiles: string[] | null;
   maxConcurrency: number;
   completedSteps: number;
   totalSteps: number;
