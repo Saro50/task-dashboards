@@ -14,6 +14,7 @@ import * as Controller from './execution.controller.js';
 const router = new Router({ prefix: '/api/tasks/:taskId/executions' });
 
 router.post('/', Controller.start);
+router.post('/restart', Controller.restart);
 router.get('/latest', Controller.status);
 router.get('/', Controller.list);
 

@@ -67,6 +67,47 @@ export async function start(ctx: Context) {
   }
 }
 
+/**
+ * 重新执行 — 停止旧 execution、清理 worktree、重置步骤状态，创建全新 execution 重新执行。
+ * projectId 和 maxConcurrency 从 request body 获取（与 start 一致）。
+ * 错误处理与 start 相同：409（重复执行）、429（并发限制）、400（无待执行步骤）。
+ */
+export async function restart(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  const { taskId } = ctx.params;
+  const { projectId, maxConcurrency } = ctx.request.body as any || {};
+
+  log.info('execution.ctrl', 'restart', { taskId, projectId, maxConcurrency });
+
+  try {
+    const execution = await Service.restart(taskId, projectId, maxConcurrency);
+    ctx.status = 201;
+    ctx.body = formatExecution(execution);
+  } catch (err: any) {
+    if (err.message?.includes('already running')) {
+      ctx.status = 409;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('最大并发执行数') || err.message?.includes('max concurrent')) {
+      ctx.status = 429;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('No pending')) {
+      ctx.status = 400;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('not found') || err.message?.includes('Task not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}
+
 export async function stop(ctx: Context) {
   const log = reqLogger(ctx.state.requestId);
   const { executionId } = ctx.params;

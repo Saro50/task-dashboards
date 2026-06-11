@@ -3,6 +3,7 @@
  *
  * 对应后端 execution.controller.ts 中的 REST 端点：
  * - start: 启动任务链执行（创建 worktree + AI 会话）
+ * - restart: 重新执行（停止旧 execution、清理 worktree、重置步骤、创建新 execution）
  * - stop: 停止正在运行的执行
  * - merge: 将已完成的执行合并到目标分支（冲突时返回 409 + conflictFiles）
  * - mergeForce: 强制合并，冲突时进入 CONFLICTING 状态（不 abort）
@@ -22,6 +23,18 @@ const S = 'executionApi';
 export const executionApi = {
   start(taskId: string, projectId: string, maxConcurrency?: number): Promise<TaskExecution> {
     return apiRequest<TaskExecution>(S, `${BASE}/tasks/${taskId}/executions`, {
+      method: 'POST',
+      body: JSON.stringify({ projectId, maxConcurrency }),
+    });
+  },
+
+  /**
+   * 重新执行 — 停止旧 execution、清理 worktree、重置所有步骤为 PENDING，
+   * 然后创建全新 execution + worktree + AI 会话从头执行。
+   * 内部已完成旧 execution 的清理，无需外部先调用 stop。
+   */
+  restart(taskId: string, projectId: string, maxConcurrency?: number): Promise<TaskExecution> {
+    return apiRequest<TaskExecution>(S, `${BASE}/tasks/${taskId}/executions/restart`, {
       method: 'POST',
       body: JSON.stringify({ projectId, maxConcurrency }),
     });
