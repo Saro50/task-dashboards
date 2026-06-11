@@ -1,6 +1,5 @@
 import React, { type FormEvent, type ClipboardEvent } from 'react';
 import type { ImageAttachment } from '@/types/chat';
-import { useToast } from '@/components/Toast';
 
 interface Props {
   input: string;
@@ -35,8 +34,6 @@ interface Props {
   onPasteImage?: (files: File[]) => void;
   /** 是否有附件正在上传中 */
   hasUploadingAttachments?: boolean;
-  /** 当前 agent 的模型是否支持图片输入；false 时禁用上传按钮和粘贴 */
-  supportsImage?: boolean;
 }
 
 /**
@@ -176,7 +173,6 @@ export default function ChatInput({
   onRemoveAttachment,
   onPasteImage,
   hasUploadingAttachments,
-  supportsImage = true,
 }: Props) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -188,8 +184,6 @@ export default function ChatInput({
     // 清空 input value 以便同一文件可重复选择
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
-  const { showToast } = useToast();
 
   const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData?.items;
@@ -204,12 +198,6 @@ export default function ChatInput({
     }
 
     if (imageFiles.length > 0) {
-      if (!supportsImage) {
-        // 当前模型不支持图片输入，阻止粘贴并弹出 Toast 提示
-        e.preventDefault();
-        showToast('当前模型不支持图片输入', 'info');
-        return;
-      }
       if (onPasteImage) {
         // 阻止默认粘贴行为，避免图片以文本形式插入 textarea
         e.preventDefault();
@@ -276,22 +264,14 @@ export default function ChatInput({
         <button
           type="button"
           onClick={() => {
-            if (!supportsImage) {
-              showToast('当前模型不支持图片输入', 'info');
-              return;
-            }
             fileInputRef.current?.click();
           }}
           disabled={isLoading || engineDisabled}
-          title={supportsImage ? '添加图片' : '当前模型不支持图片'}
-          className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-            supportsImage
-              ? 'text-gray-400 hover:text-sky-500 hover:bg-sky-50 cursor-pointer'
-              : 'text-gray-300 cursor-not-allowed'
-          } disabled:opacity-50 disabled:cursor-not-allowed`}
+          title="添加图片"
+          className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors text-gray-400 hover:text-sky-500 hover:bg-sky-50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 5.636a9 9 0 11-12.728 0M12 3v9" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21zM10.5 3v18" />
           </svg>
         </button>
         <input
@@ -310,7 +290,7 @@ export default function ChatInput({
             onChange={(e) => onInputChange(e.target.value, e.target.selectionStart ?? undefined)}
             onKeyDown={onKeyDown}
             onPaste={handlePaste}
-            placeholder={engineDisabled ? '请先配置引擎...' : supportsImage ? '输入消息...（@ 引用文件，可粘贴图片）' : '输入消息...（@ 引用文件）'}
+            placeholder={engineDisabled ? '请先配置引擎...' : '输入消息...（@ 引用文件，可粘贴图片）'}
             disabled={isLoading || engineDisabled}
             rows={1}
             className="w-full px-3 py-2 text-gray-800 bg-white border border-gray-300 shadow-sm rounded-lg text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder-gray-400 resize-none max-h-[120px] disabled:opacity-50"

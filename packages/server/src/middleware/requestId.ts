@@ -1,5 +1,10 @@
 import crypto from 'crypto';
 import { Context, Next } from 'koa';
+import { Readable } from 'stream';
+
+function isStream(body: unknown): body is Readable {
+  return body instanceof Readable;
+}
 
 export async function requestId(ctx: Context, next: Next) {
   const id = crypto.randomUUID();
@@ -12,7 +17,8 @@ export async function requestId(ctx: Context, next: Next) {
     ctx.status === 204 ||
     ctx.res.headersSent ||
     !ctx.body ||
-    ctx.response.get('Content-Type')?.includes('text/event-stream')
+    ctx.response.get('Content-Type')?.includes('text/event-stream') ||
+    isStream(ctx.body)
   ) {
     return;
   }

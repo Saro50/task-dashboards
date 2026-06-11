@@ -6,7 +6,7 @@ import { chatDebug } from '@/utils/chatDebug';
 import { unwrap } from '@/api/lib';
 import type { ChatMode } from '@/types/chat';
 import type { Step } from '@/types/step';
-import type { OpencodeAgent, OpencodeProvider } from '@/types/engine';
+import type { OpencodeAgent } from '@/types/engine';
 import ChatTitleBar from './chat/ChatTitleBar';
 import ChatMessageList from './chat/ChatMessageList';
 import ChatInput from './chat/ChatInput';
@@ -43,8 +43,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [agents, setAgents] = useState<OpencodeAgent[]>([]);
-  /** Provider 列表（含模型能力信息），用于判断当前 agent 是否支持图片 */
-  const [providers, setProviders] = useState<OpencodeProvider[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /** 追踪上次实际注入的 pageContext，用于去重（功能一） */
@@ -282,24 +280,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     } catch {}
   }, []);
 
-  /**
-   * 加载 Provider 列表（含模型能力）。
-   * 上游：调用 /api/engine/providers 获取完整 Provider 数据。
-   * 下游：用于 supportsImage 计算，判断当前 agent 绑定模型是否支持图片输入。
-   */
-  const loadProviders = useCallback(async () => {
-    try {
-      const res = await fetch('/api/engine/providers');
-      if (res.ok) {
-        const raw = await res.json();
-        const data = raw?.data ?? raw;
-        const providerList: OpencodeProvider[] = Array.isArray(data?.providers) ? data.providers : [];
-        log.info(S, 'loadProviders', { count: providerList.length });
-        setProviders(providerList);
-      }
-    } catch {}
-  }, []);
-
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, []);
@@ -314,7 +294,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       resetLoading();
       loadSessions();
       loadAgents();
-      loadProviders();
       connectSSE();
       /** chatDebug.session — 面板打开时输出会话状态概要 */
       chatDebug.session({
@@ -489,50 +468,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     };
   }, [atActive]);
 
-  /**
-   * 判断当前选中 agent 绑定的模型是否支持图片输入。
-   * 逻辑：从 providers 中查找 agent.model 对应的 Model，检查 capabilities.input.image。
-   * 若 agent 无 model 配置或找不到对应 Provider/Model，默认为 true（不阻止用户尝试）。
-   */
-  const supportsImage = useMemo(() => {
-    // 未选择 agent 或未加载 providers 时，默认允许（避免阻断用户）
-    if (!selectedAgent || providers.length === 0) return true;
-
-    const agent = agents.find((a) => a.name === selectedAgent);
-    if (!agent?.model) return true; // agent 未绑定特定模型，允许
-
-    const provider = providers.find((p) => p.id === agent.model!.providerID);
-    if (!provider) return true; // 找不到 provider，允许
-
-    const model = provider.models[agent.model.modelID];
-    if (!model) return true; // 找不到 model，允许
-
-    return model.capabilities.input.image;
-  }, [selectedAgent, agents, providers]);
-
-  /**
-   * 各 agent 是否支持图片输入的映射表（Record<agentName, supportsImage>）。
-   * 上游：基于 agents + providers 数据计算。
-   * 下游：传递给 ChatTitleBar，在下拉菜单中为每个 agent 显示图片能力标识。
-   */
-  const agentImageSupport = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    for (const agent of agents) {
-      if (!agent.model) {
-        map[agent.name] = true; // 无 model 配置，默认允许
-        continue;
-      }
-      const provider = providers.find((p) => p.id === agent.model!.providerID);
-      if (!provider) {
-        map[agent.name] = true;
-        continue;
-      }
-      const model = provider.models[agent.model.modelID];
-      map[agent.name] = model?.capabilities.input.image ?? true;
-    }
-    return map;
-  }, [agents, providers]);
-
   const engineDisabled = engineStatus !== 'connected';
 
   const [chatSize, setChatSize] = useState({ w: 660, h: 640 });
@@ -674,7 +609,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             onRenameSession={renameSession}
             onClose={() => { log.info(S, 'close chat panel'); setOpen(false); }}
             onTitleMouseDown={onTitleMouseDown}
-            agentImageSupport={agentImageSupport}
           />
 
           <ChatMessageList
@@ -718,9 +652,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             attachments={attachments}
             onAddAttachments={addAttachments}
             onRemoveAttachment={removeAttachment}
-            onPasteImage={supportsImage ? addAttachments : undefined}
+            onPasteImage={addAttachments}
             hasUploadingAttachments={hasUploadingAttachments}
-            supportsImage={supportsImage}
           />
 
           <div

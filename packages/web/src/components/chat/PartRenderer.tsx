@@ -17,8 +17,8 @@ import ImageLightbox from './ImageLightbox';
  * 下游：返回浏览器可加载的完整 URL 字符串。
  */
 export function resolveImageUrl(url: string, directory?: string): string {
-  // data URL 或 http(s) URL 直接返回
-  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+  // data URL、blob URL 或 http(s) URL 直接返回
+  if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://') || url.startsWith('https://')) {
     return url;
   }
   // 相对路径 → 后端 serve-image 代理端点

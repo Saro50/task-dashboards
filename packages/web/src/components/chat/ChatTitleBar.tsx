@@ -26,12 +26,6 @@ interface Props {
   onClose: () => void;
   /** 标题栏区域鼠标按下事件，用于拖拽移动面板 */
   onTitleMouseDown: (e: React.MouseEvent) => void;
-  /**
-   * 各 agent 是否支持图片输入的映射表。
-   * 上游：由 AIChatWidget 基于 agents + providers 数据计算。
-   * 下游：用于在下拉菜单中为每个 agent 显示图片能力标识。
-   */
-  agentImageSupport?: Record<string, boolean>;
 }
 
 export default function ChatTitleBar({
@@ -54,7 +48,6 @@ export default function ChatTitleBar({
   onRenameSession,
   onClose,
   onTitleMouseDown,
-  agentImageSupport,
 }: Props) {
   const [showSessionList, setShowSessionList] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -260,7 +253,6 @@ export default function ChatTitleBar({
                   </div>
                   {agents.map((agent) => {
                     const isActive = agent.name === selectedAgent;
-                    const agentSupportsImage = agentImageSupport?.[agent.name] ?? true;
                     return (
                       <button
                         key={agent.name}
@@ -284,17 +276,6 @@ export default function ChatTitleBar({
                             <span className="text-[10px] text-gray-400 mt-0.5 line-clamp-2">{agent.description}</span>
                           )}
                         </span>
-                        {/* 图片能力标识：仅在不支持图片时显示禁用标记 */}
-                        {!agentSupportsImage && (
-                          <span
-                            title="不支持图片输入"
-                            className="shrink-0 self-center w-4 h-4 rounded flex items-center justify-center text-gray-300"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21zM10.5 3v18" />
-                            </svg>
-                          </span>
-                        )}
                       </button>
                     );
                   })}

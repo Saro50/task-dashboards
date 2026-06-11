@@ -121,11 +121,16 @@ export function useChat(directory?: string) {
 
   /**
    * 清理所有附件（释放 previewUrl）。
-   * 在发送成功后、组件卸载时调用。
+   * 发送成功后调用：延迟释放 blob URL，留出时间让乐观消息继续用 blob URL 渲染，
+   * 等服务端消息加载替换乐观消息后 blob 才真正失效。
    */
   const clearAttachments = useCallback(() => {
     setAttachments((prev) => {
-      prev.forEach((att) => URL.revokeObjectURL(att.previewUrl));
+      // 延迟 5s 释放 blob URL，确保乐观 UI 在 loadMessages 替换前不会裂图
+      const urls = prev.map((att) => att.previewUrl);
+      if (urls.length > 0) {
+        setTimeout(() => urls.forEach((u) => URL.revokeObjectURL(u)), 5000);
+      }
       return [];
     });
   }, []);
