@@ -88,8 +88,11 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
           stopPolling();
           setExecuting(false);
           setSessionMessages([]);
+        } else if (latest.status === 'CONFLICTING') {
+          // 冲突待解决：停止轮询，重置 executing 状态（冲突解决由用户手动驱动）
+          stopPolling();
+          setExecuting(false);
         }
-        // CONFLICTING 状态不停止轮询以外的操作，等待用户手动处理
       } catch (err: any) {
         log.error(S, 'polling error', err);
       }
@@ -202,6 +205,8 @@ export function useTaskExecution({ taskId, projectId, onStepUpdated, maxConcurre
         setExecution(latest);
         startPolling(latest.id);
       } else {
+        // COMPLETED / CONFLICTING / STOPPED / FAILED / MERGED 等终态
+        setExecuting(false);
         setExecution(latest);
         log.info(S, 'restoreExecution: execution restored', {
           taskId,

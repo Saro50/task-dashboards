@@ -13,10 +13,10 @@ import executionRoutes from './modules/execution/execution.routes.js';
 
 const router = new Router();
 
-router.use(projectRoutes.routes());
-// 文件搜索路由需注册在 projectRoutes 之后、参数路由（如 /:id）之前，
-// 以确保 /search-files 不被当作 :id 参数匹配
+// 文件搜索路由需注册在 projectRoutes 之前，
+// 以确保 /search-files 不被 /:id 参数路由提前匹配
 router.use(projectFileRoutes.routes());
+router.use(projectRoutes.routes());
 router.use(engineRoutes.routes());
 router.use(chatRoutes.routes());
 /** ID 池接口：AI agent 调用获取预分配的 cuid 格式 ID，用于 step-plan 中的 ref */
