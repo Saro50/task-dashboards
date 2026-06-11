@@ -47,6 +47,17 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   /** 追踪上次实际注入的 pageContext，用于去重（功能一） */
   const lastSentContextRef = useRef<string | null>(null);
 
+  // ─── @mention 文件搜索状态 ─────────────────────────────────
+  const [atQuery, setAtQuery] = useState('');
+  const [atResults, setAtResults] = useState<string[]>([]);
+  const [atActive, setAtActive] = useState(false);
+  const [atSelectedIndex, setAtSelectedIndex] = useState(0);
+  const [atTriggerPos, setAtTriggerPos] = useState(-1);
+  /** 搜索请求是否进行中（防抖等待 + 网络请求中均为 true） */
+  const [atLoading, setAtLoading] = useState(false);
+  /** 防抖 timer 引用，用于清理 */
+  const atTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   /**
    * 多模式：当前激活的 ChatMode key。
    * 默认激活 chatModes[0].key；若无 chatModes 则为 null，此时使用 pageContext prop。
@@ -127,6 +138,127 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       setTimeout(() => inputRef.current?.focus(), 100);
     },
   }), [engineStatus, createSession, setSelectedAgent]);
+
+  // ─── @mention 文件引用逻辑 ─────────────────────────────────
+
+  /**
+   * 解析 textarea 中光标位置前是否存在未闭合的 @mention 标记。
+   * 匹配规则：光标前的文本末尾存在「行首或空白 + @ + 零或多个非空白字符」。
+   * 返回 { query, startPos } 或 null。
+   */
+  const findAtMention = useCallback((text: string, cursorPos: number): { query: string; startPos: number } | null => {
+    const beforeCursor = text.slice(0, cursorPos);
+    const match = beforeCursor.match(/(?:^|\s)@(\S*)$/);
+    if (!match) return null;
+    // match.index 是整个匹配（含前导空白或行首）的起始位置
+    const startPos = (match.index ?? 0) + (match[0].length - match[1].length - 1); // 指向 @ 符号
+    return { query: match[1], startPos };
+  }, []);
+
+  /**
+   * 插入 @mention 选中的文件路径。
+   * 将 input 中从 atTriggerPos 到光标位置的文本替换为 '@filePath '。
+   */
+  const insertAtMention = useCallback((filePath: string) => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+
+    const cursorPos = textarea.selectionStart;
+    const before = input.slice(0, atTriggerPos);
+    const after = input.slice(cursorPos);
+    const newValue = before + '@' + filePath + ' ' + after;
+
+    setInput(newValue);
+    setAtActive(false);
+    setAtResults([]);
+    setAtSelectedIndex(0);
+
+    // 聚焦并设置光标位置到插入文本之后
+    requestAnimationFrame(() => {
+      const newCursorPos = before.length + filePath.length + 2; // '@' + filePath + ' '
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(newCursorPos, newCursorPos);
+    });
+  }, [input, atTriggerPos]);
+
+  /**
+   * @mention 输入变更处理：检测 @ 标记并触发防抖搜索。
+   * 此函数包装了 setInput，在每次输入变化时调用。
+   */
+  const handleInputChange = useCallback((value: string, cursorPos?: number) => {
+    setInput(value);
+
+    // 如果没有传入 cursorPos，尝试从 textarea 获取
+    const pos = cursorPos ?? inputRef.current?.selectionStart ?? value.length;
+
+    const mention = findAtMention(value, pos);
+    if (mention) {
+      setAtQuery(mention.query);
+      setAtTriggerPos(mention.startPos);
+      setAtActive(true);
+      setAtSelectedIndex(0);
+    } else {
+      // 不存在 @mention 标记，关闭下拉菜单
+      if (atActive) {
+        setAtActive(false);
+        setAtResults([]);
+      }
+    }
+  }, [findAtMention, atActive]);
+
+  /**
+   * 防抖搜索：当 atActive 为 true 且 directory 存在时，
+   * 延迟 200ms 调用后端 search-files API。
+   *
+   * atLoading 在防抖等待和请求期间均为 true，
+   * 当 atActive 变为 false 或组件卸载时自动清理 timer 并重置 loading。
+   */
+  useEffect(() => {
+    // 清除上一次 timer
+    if (atTimerRef.current) {
+      clearTimeout(atTimerRef.current);
+      atTimerRef.current = null;
+    }
+
+    if (!atActive || !directory) {
+      setAtResults([]);
+      setAtLoading(false);
+      return;
+    }
+
+    // 防抖等待中即标记 loading
+    setAtLoading(true);
+
+    atTimerRef.current = setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ directory });
+        if (atQuery) params.set('query', atQuery);
+        const res = await fetch(`/api/projects/search-files?${params}`);
+        if (!res.ok) {
+          log.warn(S, 'searchFiles API error', { status: res.status });
+          setAtResults([]);
+          return;
+        }
+        const raw = await res.json();
+        const files: string[] = raw?.data?.files ?? [];
+        setAtResults(files);
+        setAtSelectedIndex(0);
+      } catch (err) {
+        log.warn(S, 'searchFiles fetch error', err);
+        setAtResults([]);
+      } finally {
+        setAtLoading(false);
+      }
+    }, 200);
+
+    return () => {
+      if (atTimerRef.current) {
+        clearTimeout(atTimerRef.current);
+        atTimerRef.current = null;
+      }
+      setAtLoading(false);
+    };
+  }, [atActive, directory, atQuery]);
 
   const loadAgents = useCallback(async () => {
     try {
@@ -238,7 +370,9 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       await switchSession(session.id);
     }
     setInput('');
-
+    // 关闭 @mention 下拉菜单
+    setAtActive(false);
+    setAtResults([]);
     // 功能一：pageContext 去重注入
     // 仅在首条消息或 pageContext 内容变化时注入 system，避免每轮重复发送
     const isFirstMessage = messages.length === 0;
@@ -264,11 +398,65 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, effectivePageContext, messages.length]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // @mention 下拉菜单键盘导航
+    if (atActive && atResults.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAtSelectedIndex((prev) => Math.min(prev + 1, atResults.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAtSelectedIndex((prev) => Math.max(prev - 1, 0));
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        insertAtMention(atResults[atSelectedIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setAtActive(false);
+        setAtResults([]);
+        return;
+      }
+    }
+
+    // 非 @mention 状态下保持原有 Enter 提交行为
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
     }
-  }, [handleSubmit]);
+  }, [atActive, atResults, atSelectedIndex, insertAtMention, handleSubmit]);
+
+  /**
+   * 点击外部关闭 @mention 下拉菜单。
+   * 当 atActive 为 true 时监听全局 mousedown，
+   * 若点击目标不在下拉菜单内则关闭。
+   */
+  useEffect(() => {
+    if (!atActive) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // 如果点击的不是下拉菜单内的元素，则关闭
+      if (!target.closest('[data-at-dropdown]')) {
+        setAtActive(false);
+        setAtResults([]);
+      }
+    };
+
+    // 延迟添加监听，避免触发 @ 的那次点击立即关闭
+    const timer = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 0);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [atActive]);
 
   const engineDisabled = engineStatus !== 'connected';
 
@@ -436,13 +624,20 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
 
           <ChatInput
             input={input}
-            onInputChange={setInput}
+            onInputChange={handleInputChange}
             onSubmit={handleSubmit}
             onKeyDown={handleKeyDown}
             isLoading={isLoading}
             engineDisabled={engineDisabled}
             inputRef={inputRef}
             onAbort={abortGeneration}
+            atActive={atActive}
+            atResults={atResults}
+            atSelectedIndex={atSelectedIndex}
+            atLoading={atLoading}
+            atQuery={atQuery}
+            onAtSelect={insertAtMention}
+            onAtHover={setAtSelectedIndex}
           />
 
           <div
