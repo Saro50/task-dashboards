@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@koa/cors": "^5.0.0",
+    "@koa/multer": "^4.0.0",
     "@opencode-ai/sdk": "^1.15.11",
     "@prisma/client": "^6.9.0",
     "cuid": "^3.0.0",
@@ -24,14 +25,18 @@
     "koa": "^2.16.1",
     "koa-bodyparser": "^4.4.1",
     "koa-router": "^13.0.1",
-    "simple-git": "^3.36.0"
+    "multer": "^2.1.1",
+    "sharp": "^0.35.0",
+    "simple-git": "^3.36.0",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/cuid": "^2.0.4",
     "@types/koa": "^2.15.0",
+    "@types/koa__cors": "^5.0.1",
     "@types/koa-bodyparser": "^4.3.12",
     "@types/koa-router": "^7.4.8",
-    "@types/koa__cors": "^5.0.1",
+    "@types/uuid": "^10.0.0",
     "prisma": "^6.9.0",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",

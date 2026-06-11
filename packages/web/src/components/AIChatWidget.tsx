@@ -6,6 +6,7 @@ import { chatDebug } from '@/utils/chatDebug';
 import { unwrap } from '@/api/lib';
 import type { ChatMode } from '@/types/chat';
 import type { Step } from '@/types/step';
+import type { OpencodeAgent, OpencodeProvider } from '@/types/engine';
 import ChatTitleBar from './chat/ChatTitleBar';
 import ChatMessageList from './chat/ChatMessageList';
 import ChatInput from './chat/ChatInput';
@@ -41,7 +42,9 @@ export interface AIChatWidgetHandle {
 export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, taskId, pageContext, chatModes, onPlanImported, existingSteps, currentTaskName }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
-  const [agents, setAgents] = useState<Array<{ name: string; description?: string }>>([]);
+  const [agents, setAgents] = useState<OpencodeAgent[]>([]);
+  /** Provider 列表（含模型能力信息），用于判断当前 agent 是否支持图片 */
+  const [providers, setProviders] = useState<OpencodeProvider[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   /** 追踪上次实际注入的 pageContext，用于去重（功能一） */
@@ -117,6 +120,12 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     renameSession,
     importedPlanTasks,
     addImportedPlanTask,
+    // 图片附件管理（状态已迁移到 useChat hook）
+    attachments,
+    addAttachments,
+    removeAttachment,
+    clearAttachments,
+    hasUploadingAttachments,
   } = useChat(directory);
 
   const handlePlanImported = useCallback((taskName: string) => {
@@ -265,10 +274,28 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       const res = await fetch('/api/engine/agents');
       if (res.ok) {
         const raw = await res.json();
-        const { data, requestId } = unwrap<any[]>(raw, res.headers.get('X-Request-Id') || undefined);
+        const { data, requestId } = unwrap<OpencodeAgent[]>(raw, res.headers.get('X-Request-Id') || undefined);
         const list = Array.isArray(data) ? data : [];
         log.info(S, 'loadAgents', { requestId, count: list.length });
-        setAgents(list.filter((a: any) => a.mode === 'primary' && !a.hidden && !a.native));
+        setAgents(list.filter((a: OpencodeAgent) => a.mode === 'primary' && !a.hidden && !a.native));
+      }
+    } catch {}
+  }, []);
+
+  /**
+   * 加载 Provider 列表（含模型能力）。
+   * 上游：调用 /api/engine/providers 获取完整 Provider 数据。
+   * 下游：用于 supportsImage 计算，判断当前 agent 绑定模型是否支持图片输入。
+   */
+  const loadProviders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/engine/providers');
+      if (res.ok) {
+        const raw = await res.json();
+        const data = raw?.data ?? raw;
+        const providerList: OpencodeProvider[] = Array.isArray(data?.providers) ? data.providers : [];
+        log.info(S, 'loadProviders', { count: providerList.length });
+        setProviders(providerList);
       }
     } catch {}
   }, []);
@@ -287,6 +314,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       resetLoading();
       loadSessions();
       loadAgents();
+      loadProviders();
       connectSSE();
       /** chatDebug.session — 面板打开时输出会话状态概要 */
       chatDebug.session({
@@ -361,8 +389,10 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const handleSubmit = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     const text = input.trim();
-    log.info(S, 'handleSubmit', { text, isLoading, currentSessionId });
-    if (!text || isLoading) return;
+    const hasAttachments = attachments.length > 0;
+    log.info(S, 'handleSubmit', { text, isLoading, currentSessionId, hasAttachments });
+    // 至少要有文本或附件
+    if ((!text && !hasAttachments) || isLoading || hasUploadingAttachments) return;
     if (!currentSessionId) {
       log.info(S, 'no session, creating new one');
       const session = await createSession('新会话');
@@ -393,9 +423,10 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       reason: isFirstMessage ? 'first-message' : contextChanged ? 'context-changed' : 'unchanged',
     });
 
+    // sendMessage 内部处理附件上传 + 乐观 UI + 发送 + 清理
     await sendMessage(text, contextToSend);
     log.info(S, 'sendMessage returned');
-  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, effectivePageContext, messages.length]);
+  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, effectivePageContext, messages.length, attachments, hasUploadingAttachments]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     // @mention 下拉菜单键盘导航
@@ -457,6 +488,50 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [atActive]);
+
+  /**
+   * 判断当前选中 agent 绑定的模型是否支持图片输入。
+   * 逻辑：从 providers 中查找 agent.model 对应的 Model，检查 capabilities.input.image。
+   * 若 agent 无 model 配置或找不到对应 Provider/Model，默认为 true（不阻止用户尝试）。
+   */
+  const supportsImage = useMemo(() => {
+    // 未选择 agent 或未加载 providers 时，默认允许（避免阻断用户）
+    if (!selectedAgent || providers.length === 0) return true;
+
+    const agent = agents.find((a) => a.name === selectedAgent);
+    if (!agent?.model) return true; // agent 未绑定特定模型，允许
+
+    const provider = providers.find((p) => p.id === agent.model!.providerID);
+    if (!provider) return true; // 找不到 provider，允许
+
+    const model = provider.models[agent.model.modelID];
+    if (!model) return true; // 找不到 model，允许
+
+    return model.capabilities.input.image;
+  }, [selectedAgent, agents, providers]);
+
+  /**
+   * 各 agent 是否支持图片输入的映射表（Record<agentName, supportsImage>）。
+   * 上游：基于 agents + providers 数据计算。
+   * 下游：传递给 ChatTitleBar，在下拉菜单中为每个 agent 显示图片能力标识。
+   */
+  const agentImageSupport = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const agent of agents) {
+      if (!agent.model) {
+        map[agent.name] = true; // 无 model 配置，默认允许
+        continue;
+      }
+      const provider = providers.find((p) => p.id === agent.model!.providerID);
+      if (!provider) {
+        map[agent.name] = true;
+        continue;
+      }
+      const model = provider.models[agent.model.modelID];
+      map[agent.name] = model?.capabilities.input.image ?? true;
+    }
+    return map;
+  }, [agents, providers]);
 
   const engineDisabled = engineStatus !== 'connected';
 
@@ -599,6 +674,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             onRenameSession={renameSession}
             onClose={() => { log.info(S, 'close chat panel'); setOpen(false); }}
             onTitleMouseDown={onTitleMouseDown}
+            agentImageSupport={agentImageSupport}
           />
 
           <ChatMessageList
@@ -620,6 +696,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             onDismissSessionBroken={dismissSessionBroken}
             onResetLoading={resetLoading}
             messagesEndRef={messagesEndRef}
+            directory={directory}
           />
 
           <ChatInput
@@ -638,6 +715,12 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             atQuery={atQuery}
             onAtSelect={insertAtMention}
             onAtHover={setAtSelectedIndex}
+            attachments={attachments}
+            onAddAttachments={addAttachments}
+            onRemoveAttachment={removeAttachment}
+            onPasteImage={supportsImage ? addAttachments : undefined}
+            hasUploadingAttachments={hasUploadingAttachments}
+            supportsImage={supportsImage}
           />
 
           <div

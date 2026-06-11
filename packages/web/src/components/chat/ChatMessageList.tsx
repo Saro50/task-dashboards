@@ -1,6 +1,8 @@
 import type { ChatMessage } from '@/types/chat';
 import type { Step } from '@/types/step';
-import { PartRenderer, hasVisibleParts } from './PartRenderer';
+import { PartRenderer, hasVisibleParts, resolveImageUrl } from './PartRenderer';
+import ImageLightbox from './ImageLightbox';
+import { useState, useCallback } from 'react';
 
 const S = 'ChatMessageList';
 
@@ -23,6 +25,12 @@ interface Props {
   onDismissSessionBroken: () => void;
   onResetLoading: () => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  /**
+   * 项目工作目录，用于构建图片 serve-image URL。
+   * 上游：由 AIChatWidget 传入。
+   * 下游：传递给 PartRenderer 和用户消息气泡中的图片缩略图。
+   */
+  directory?: string;
 }
 
 function formatTime(timestamp: number): string {
@@ -48,7 +56,20 @@ export default function ChatMessageList({
   onDismissSessionBroken,
   onResetLoading,
   messagesEndRef,
+  directory,
 }: Props) {
+  // ─── Lightbox 状态：用户消息气泡中图片缩略图点击打开全屏预览 ───
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [lightboxAlt, setLightboxAlt] = useState('图片预览');
+
+  const openLightbox = useCallback((src: string, alt?: string) => {
+    setLightboxSrc(src);
+    setLightboxAlt(alt || '图片预览');
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    setLightboxSrc(null);
+  }, []);
   return (
     <>
       {/* 功能三：引擎自动压缩提示 */}
@@ -77,15 +98,45 @@ export default function ChatMessageList({
           if (!hasVisibleParts(msg)) return null;
 
           if (isUser) {
-            const text = msg.parts
-              .filter((p) => p.type === 'text')
+            const textParts = msg.parts.filter((p) => p.type === 'text');
+            const fileParts = msg.parts.filter((p) => p.type === 'file');
+            const text = textParts
               .map((p) => ('text' in p ? p.text : ''))
               .join('\n');
-            if (!text) return null;
+            // 用户消息至少需要文本或文件 part 才渲染
+            if (!text && fileParts.length === 0) return null;
             return (
               <div key={msg.info.id} className="flex justify-end">
                 <div className="max-w-[80%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm leading-relaxed bg-sky-500 text-white">
-                  <p className="whitespace-pre-wrap break-words">{text}</p>
+                  {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
+                  {/* 用户消息中的 file parts：图片缩略图列表 */}
+                  {fileParts.length > 0 && (
+                    <div className={`flex flex-wrap gap-1.5 ${text ? 'mt-2' : ''}`}>
+                      {fileParts.map((fp) => {
+                        const url = fp.url as string | undefined;
+                        const mime = fp.mime as string | undefined;
+                        const filename = (fp.filename as string | undefined) || '图片';
+                        if (!url || !mime?.startsWith('image/')) return null;
+                        const resolvedUrl = resolveImageUrl(url, directory);
+                        return (
+                          <button
+                            key={fp.id}
+                            type="button"
+                            onClick={() => openLightbox(resolvedUrl, filename)}
+                            className="block max-w-[120px] max-h-[90px] rounded-lg overflow-hidden border border-white/30 hover:border-white/60 transition-colors cursor-pointer"
+                            title="点击查看大图"
+                          >
+                            <img
+                              src={resolvedUrl}
+                              alt={filename}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                   <p className="text-[10px] mt-1 text-sky-200">{formatTime(msg.info.time.created)}</p>
                 </div>
               </div>
@@ -106,6 +157,7 @@ export default function ChatMessageList({
                     onPlanImported={onPlanImported}
                     existingSteps={existingSteps}
                     currentTaskName={currentTaskName}
+                    directory={directory}
                   />
                 ))}
                 <div className="flex items-center justify-between gap-2">
@@ -209,6 +261,11 @@ export default function ChatMessageList({
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* ─── 全局 Lightbox：用户消息气泡中缩略图点击后打开 ─── */}
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} alt={lightboxAlt} onClose={closeLightbox} />
+      )}
     </>
   );
 }

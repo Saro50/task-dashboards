@@ -1,4 +1,6 @@
-import type { FormEvent } from 'react';
+import React, { type FormEvent, type ClipboardEvent } from 'react';
+import type { ImageAttachment } from '@/types/chat';
+import { useToast } from '@/components/Toast';
 
 interface Props {
   input: string;
@@ -23,6 +25,18 @@ interface Props {
   onAtSelect?: (filePath: string) => void;
   /** @mention 鼠标悬停回调，更新高亮索引 */
   onAtHover?: (index: number) => void;
+  /** 当前图片附件列表 */
+  attachments?: ImageAttachment[];
+  /** 添加图片附件回调 */
+  onAddAttachments?: (files: File[]) => void;
+  /** 删除图片附件回调 */
+  onRemoveAttachment?: (id: string) => void;
+  /** 粘贴图片回调 */
+  onPasteImage?: (files: File[]) => void;
+  /** 是否有附件正在上传中 */
+  hasUploadingAttachments?: boolean;
+  /** 当前 agent 的模型是否支持图片输入；false 时禁用上传按钮和粘贴 */
+  supportsImage?: boolean;
 }
 
 /**
@@ -157,17 +171,146 @@ export default function ChatInput({
   atQuery,
   onAtSelect,
   onAtHover,
+  attachments,
+  onAddAttachments,
+  onRemoveAttachment,
+  onPasteImage,
+  hasUploadingAttachments,
+  supportsImage = true,
 }: Props) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0 && onAddAttachments) {
+      onAddAttachments(Array.from(files));
+    }
+    // 清空 input value 以便同一文件可重复选择
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const { showToast } = useToast();
+
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      if (!supportsImage) {
+        // 当前模型不支持图片输入，阻止粘贴并弹出 Toast 提示
+        e.preventDefault();
+        showToast('当前模型不支持图片输入', 'info');
+        return;
+      }
+      if (onPasteImage) {
+        // 阻止默认粘贴行为，避免图片以文本形式插入 textarea
+        e.preventDefault();
+        onPasteImage(imageFiles);
+      }
+    }
+  };
+
+  const hasAttachments = attachments && attachments.length > 0;
+  // 发送按钮禁用：无文本且无附件、引擎禁用、正在上传附件
+  const submitDisabled = engineDisabled || hasUploadingAttachments || (!input.trim() && !hasAttachments);
+
   return (
     <form onSubmit={onSubmit} className="shrink-0 border-t border-gray-200 p-3">
+      {/* ─── 附件预览区域 ─── */}
+      {hasAttachments && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {attachments.map((att) => (
+            <div
+              key={att.id}
+              className="relative group w-16 h-16 rounded-lg border border-gray-200 overflow-hidden bg-gray-50 shrink-0"
+            >
+              <img
+                src={att.previewUrl}
+                alt={att.filename}
+                className="w-full h-full object-cover"
+              />
+              {/* 上传中遮罩 */}
+              {att.status === 'uploading' && (
+                <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                </div>
+              )}
+              {/* 上传失败遮罩 */}
+              {att.status === 'error' && (
+                <div className="absolute inset-0 bg-red-500/40 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              )}
+              {/* 删除按钮 */}
+              {att.status !== 'uploading' && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveAttachment?.(att.id)}
+                  className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="relative flex items-end gap-2">
+        {/* ─── 图片选择按钮 ─── */}
+        <button
+          type="button"
+          onClick={() => {
+            if (!supportsImage) {
+              showToast('当前模型不支持图片输入', 'info');
+              return;
+            }
+            fileInputRef.current?.click();
+          }}
+          disabled={isLoading || engineDisabled}
+          title={supportsImage ? '添加图片' : '当前模型不支持图片'}
+          className={`shrink-0 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+            supportsImage
+              ? 'text-gray-400 hover:text-sky-500 hover:bg-sky-50 cursor-pointer'
+              : 'text-gray-300 cursor-not-allowed'
+          } disabled:opacity-50 disabled:cursor-not-allowed`}
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M18.364 5.636a9 9 0 11-12.728 0M12 3v9" />
+          </svg>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          multiple
+          className="hidden"
+          onChange={handleFileChange}
+        />
+
         <div className="flex-1 relative">
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => onInputChange(e.target.value, e.target.selectionStart ?? undefined)}
             onKeyDown={onKeyDown}
-            placeholder={engineDisabled ? '请先配置引擎...' : '输入消息...（@ 引用文件）'}
+            onPaste={handlePaste}
+            placeholder={engineDisabled ? '请先配置引擎...' : supportsImage ? '输入消息...（@ 引用文件，可粘贴图片）' : '输入消息...（@ 引用文件）'}
             disabled={isLoading || engineDisabled}
             rows={1}
             className="w-full px-3 py-2 text-gray-800 bg-white border border-gray-300 shadow-sm rounded-lg text-sm outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 transition-all placeholder-gray-400 resize-none min-h-[36px] max-h-[120px] disabled:opacity-50"
@@ -252,7 +395,7 @@ export default function ChatInput({
         ) : (
           <button
             type="submit"
-            disabled={!input.trim() || engineDisabled}
+            disabled={submitDisabled}
             title="发送"
             className="shrink-0 w-9 h-9 bg-sky-500 hover:bg-sky-600 disabled:bg-gray-300 disabled:opacity-50 rounded-lg flex items-center justify-center transition-colors cursor-pointer disabled:cursor-not-allowed"
           >

@@ -1,7 +1,9 @@
 import { Context } from 'koa';
+import fs from 'fs';
+import path from 'path';
 import * as Service from './chat.service.js';
 import { reqLogger } from '../../logger.js';
-import type { CreateSessionBody, SendMessageBody, UpdateSessionBody } from './types.js';
+import type { CreateSessionBody, SendMessageBody, UpdateSessionBody, MessagePartInput } from './types.js';
 
 const S = 'chat.ctrl';
 
@@ -94,14 +96,27 @@ export async function sendMessage(ctx: Context) {
   try {
     const { id } = ctx.params;
     const directory = ctx.query.directory as string | undefined;
-    const { text, agent, context } = ctx.request.body as SendMessageBody;
-    log.info(S, 'sendMessage', { sessionId: id, directory, text: text?.slice(0, 80), agent, hasContext: !!context });
-    if (!text || typeof text !== 'string') {
+    const body = ctx.request.body as SendMessageBody;
+    const { text, parts, agent, context } = body;
+
+    // 向后兼容：若前端只传了 text（旧版），自动包装为 TextPartInput
+    let normalizedParts: MessagePartInput[];
+    if (parts && Array.isArray(parts) && parts.length > 0) {
+      normalizedParts = parts;
+    } else if (text && typeof text === 'string') {
+      normalizedParts = [{ type: 'text', text }];
+    } else {
       ctx.status = 400;
-      ctx.body = { error: 'text is required' };
+      ctx.body = { error: 'text or parts is required' };
       return;
     }
-    await Service.sendMessage(id, text, directory, agent, context);
+
+    const partSummary = normalizedParts.map((p) =>
+      p.type === 'text' ? `text(${(p as { type: 'text'; text: string }).text.slice(0, 40)})` : `file(${(p as { type: 'file'; mime: string; url: string }).mime}, ${(p as { type: 'file'; url: string }).url})`,
+    );
+    log.info(S, 'sendMessage', { sessionId: id, directory, parts: partSummary, agent, hasContext: !!context });
+
+    await Service.sendMessage(id, normalizedParts, directory, agent, context);
     log.info(S, 'sendMessage promptAsync accepted');
     ctx.status = 204;
   } catch (err: any) {
@@ -230,5 +245,138 @@ export async function clientLog(ctx: Context) {
     ctx.status = 204;
   } catch {
     ctx.status = 204;
+  }
+}
+
+/**
+ * POST /api/chat/upload-image
+ *
+ * 接收 multipart/form-data 中的单个图片文件（字段名 "image"），
+ * 调用 Service 进行校验、无损压缩并保存到临时目录。
+ *
+ * @koa/multer 中间件已在路由层将文件解析到 ctx.file，
+ * 由于不使用 @types/koa__multer（避免全局类型侵入），此处通过断言读取。
+ */
+export async function uploadImage(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  try {
+    const file = (ctx as any).file as
+      | { buffer: Buffer; mimetype: string; originalname: string }
+      | undefined;
+    if (!file || !file.buffer) {
+      ctx.status = 400;
+      ctx.body = { error: 'No image file provided. Use field name "image".' };
+      return;
+    }
+
+    const directory = ctx.query.directory as string | undefined;
+    log.info(S, 'uploadImage', {
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.buffer.length,
+      directory,
+    });
+
+    const result = await Service.uploadImage(
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+      directory,
+    );
+
+    log.info(S, 'uploadImage result', { path: result.path, size: result.size });
+    ctx.body = result;
+  } catch (err: any) {
+    log.error(S, 'uploadImage error', err.message);
+    // 区分校验错误（400）与内部错误（500/502）
+    if (
+      err.message.includes('Unsupported') ||
+      err.message.includes('exceeds limit')
+    ) {
+      ctx.status = 400;
+      ctx.body = { error: err.message };
+    } else {
+      ctx.status = 502;
+      ctx.body = { error: 'Failed to upload image', detail: err.message };
+    }
+  }
+}
+
+/**
+ * GET /api/chat/serve-image
+ *
+ * 根据查询参数 path（相对于工作目录的图片路径，如 .opencode/tmp/images/xxx.png）
+ * 读取图片文件并返回二进制流。
+ *
+ * 安全措施：
+ * 1. 路径白名单：仅允许 .opencode/tmp/images/ 下的文件
+ * 2. 路径遍历检测：拒绝包含 .. 的路径
+ * 3. 文件存在性检查
+ *
+ * 上游：前端 PartRenderer 渲染 file part 缩略图时请求此端点。
+ * 下游：直接返回图片二进制流，Content-Type 为对应 MIME。
+ */
+export async function serveImage(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  try {
+    const relativePath = ctx.query.path as string | undefined;
+    const directory = ctx.query.directory as string | undefined;
+
+    if (!relativePath) {
+      ctx.status = 400;
+      ctx.body = { error: 'Missing "path" query parameter' };
+      return;
+    }
+
+    // 安全检查：路径遍历攻击防护
+    if (relativePath.includes('..')) {
+      ctx.status = 403;
+      ctx.body = { error: 'Path traversal not allowed' };
+      return;
+    }
+
+    // 安全检查：仅允许 .opencode/tmp/images/ 前缀
+    const normalized = path.normalize(relativePath);
+    if (!normalized.startsWith('.opencode/tmp/images/') && !normalized.startsWith('.opencode\\tmp\\images\\')) {
+      ctx.status = 403;
+      ctx.body = { error: 'Only images under .opencode/tmp/images/ can be served' };
+      return;
+    }
+
+    const workdir = directory || process.cwd();
+    const fullPath = path.resolve(workdir, normalized);
+
+    // 再次检查 resolve 后的路径确实在 images 目录下
+    const imageDir = path.resolve(workdir, '.opencode', 'tmp', 'images');
+    if (!fullPath.startsWith(imageDir)) {
+      ctx.status = 403;
+      ctx.body = { error: 'Access denied' };
+      return;
+    }
+
+    if (!fs.existsSync(fullPath)) {
+      ctx.status = 404;
+      ctx.body = { error: 'Image not found' };
+      return;
+    }
+
+    // 根据 MIME 类型返回正确的 Content-Type
+    const ext = path.extname(fullPath).toLowerCase();
+    const mimeMap: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+    };
+    const mime = mimeMap[ext] || 'application/octet-stream';
+
+    ctx.set('Content-Type', mime);
+    ctx.set('Cache-Control', 'private, max-age=3600');
+    ctx.body = fs.createReadStream(fullPath);
+  } catch (err: any) {
+    log.error(S, 'serveImage error', err.message);
+    ctx.status = 500;
+    ctx.body = { error: 'Failed to serve image', detail: err.message };
   }
 }

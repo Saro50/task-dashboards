@@ -20,9 +20,18 @@ export async function apiRequest<T>(
   const method = options?.method || 'GET';
   log.info(scope, `${method} ${url}`);
 
+  // FormData 上传时不设置 Content-Type，让浏览器自动添加 multipart boundary
+  const isFormData = options?.body instanceof FormData;
+  const defaultHeaders: Record<string, string> = isFormData
+    ? {}
+    : { 'Content-Type': 'application/json' };
+
   const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: {
+      ...defaultHeaders,
+      ...(options?.headers as Record<string, string> | undefined),
+    },
   });
 
   const reqId = res.headers.get('X-Request-Id') || undefined;

@@ -174,7 +174,7 @@ export default function EngineConfigModal({ open, onClose }: Props) {
               <h4 className="text-sm font-medium text-gray-700 mb-2">可用 Agent（{agents.length}）</h4>
               <div className="flex flex-col gap-1.5">
                 {agents.map((agent, i) => (
-                  <div key={agent.id ?? i} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
+                  <div key={agent.name ?? i} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
                     <span className="text-gray-800 font-medium">{agent.name}</span>
                     {agent.description && <span className="text-gray-500 ml-2">{agent.description}</span>}
                   </div>
@@ -190,8 +190,8 @@ export default function EngineConfigModal({ open, onClose }: Props) {
                 {providers.providers.map((p, i) => (
                   <div key={p.id ?? i} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs">
                     <span className="text-gray-800 font-medium">{p.name}</span>
-                    {p.models.length > 0 && (
-                      <span className="text-gray-500 ml-2">{p.models.join(', ')}</span>
+                    {Object.keys(p.models).length > 0 && (
+                      <span className="text-gray-500 ml-2">{Object.keys(p.models).join(', ')}</span>
                     )}
                   </div>
                 ))}

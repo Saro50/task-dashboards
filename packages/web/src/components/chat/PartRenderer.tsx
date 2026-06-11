@@ -1,7 +1,38 @@
+import { useState, useCallback } from 'react';
 import type { ChatPart, ChatMessage } from '@/types/chat';
 import type { StepPlan, Step } from '@/types/step';
 import StepPlanPreview from '../StepPlanPreview';
 import { Collapsible, ToolStatusLabel } from './Collapsible';
+import ImageLightbox from './ImageLightbox';
+
+/**
+ * 将 file part 的 url 解析为可访问的图片 URL。
+ *
+ * 处理三种情况：
+ * 1. data URL（如 data:image/png;base64,...）— 直接返回
+ * 2. 绝对 URL（如 https://...）— 直接返回
+ * 3. 相对路径（如 .opencode/tmp/images/xxx.png）— 拼接后端 serve-image 端点
+ *
+ * 上游：PartRenderer 中 file part 渲染时调用。
+ * 下游：返回浏览器可加载的完整 URL 字符串。
+ */
+export function resolveImageUrl(url: string, directory?: string): string {
+  // data URL 或 http(s) URL 直接返回
+  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+  // 相对路径 → 后端 serve-image 代理端点
+  const params = new URLSearchParams({ path: url });
+  if (directory) params.set('directory', directory);
+  return `/api/chat/serve-image?${params.toString()}`;
+}
+
+/**
+ * 判断 file part 的 MIME 是否为图片类型。
+ */
+function isImageMime(mime?: string): boolean {
+  return !!mime && mime.startsWith('image/');
+}
 
 export function repairJson(str: string): string {
   let result = '';
@@ -35,7 +66,7 @@ export function repairJson(str: string): string {
   return result;
 }
 
-export function PartRenderer({ part, projectId, taskId, chatSessionId, importedPlanTasks, onPlanImported, existingSteps, currentTaskName }: {
+export function PartRenderer({ part, projectId, taskId, chatSessionId, importedPlanTasks, onPlanImported, existingSteps, currentTaskName, directory }: {
   part: ChatPart;
   projectId?: string;
   taskId?: string;
@@ -46,7 +77,74 @@ export function PartRenderer({ part, projectId, taskId, chatSessionId, importedP
   existingSteps?: Step[];
   /** 当前任务名称，用于判断计划是否属于当前任务 */
   currentTaskName?: string;
+  /**
+   * 项目工作目录，用于构建 serve-image URL。
+   * 上游：由 ChatMessageList 从 AIChatWidget 传入。
+   */
+  directory?: string;
 }) {
+  // ─── Lightbox 状态：点击缩略图打开全屏预览 ───
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  const openLightbox = useCallback((src: string) => {
+    setLightboxSrc(src);
+  }, []);
+
+  const closeLightbox = useCallback(() => {
+    setLightboxSrc(null);
+  }, []);
+
+  // ─── file 类型 part：图片缩略图 / 文件下载链接 ───
+  if (part.type === 'file') {
+    const url = part.url as string | undefined;
+    const mime = part.mime as string | undefined;
+    const filename = (part.filename as string | undefined) || '文件';
+
+    if (!url) return null;
+
+    // 图片类型：渲染缩略图
+    if (isImageMime(mime)) {
+      const resolvedUrl = resolveImageUrl(url, directory);
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => openLightbox(resolvedUrl)}
+            className="block max-w-[200px] max-h-[150px] rounded-lg border border-gray-200 overflow-hidden hover:border-sky-300 hover:shadow-sm transition-all cursor-pointer"
+            title="点击查看大图"
+          >
+            <img
+              src={resolvedUrl}
+              alt={filename}
+              className="w-full h-full object-cover"
+              loading="lazy"
+            />
+          </button>
+          {lightboxSrc && (
+            <ImageLightbox src={lightboxSrc} alt={filename} onClose={closeLightbox} />
+          )}
+        </>
+      );
+    }
+
+    // 非图片文件：显示文件名 + 下载链接
+    const resolvedUrl = resolveImageUrl(url, directory);
+    return (
+      <a
+        href={resolvedUrl}
+        download={filename}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 transition-colors text-xs text-gray-600 max-w-[280px]"
+      >
+        <svg className="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+        </svg>
+        <span className="truncate">{filename}</span>
+      </a>
+    );
+  }
+
   if (part.type === 'text' && part.text) {
     const text = part.text;
     const taskPlanRegex = /<task-plan>\n?([\s\S]*?)\n?<\/task-plan>/g;
@@ -194,6 +292,6 @@ export function PartRenderer({ part, projectId, taskId, chatSessionId, importedP
 
 export function hasVisibleParts(msg: ChatMessage): boolean {
   return msg.parts.some((p) =>
-    p.type === 'text' || p.type === 'reasoning' || p.type === 'tool' || p.type === 'agent'
+    p.type === 'text' || p.type === 'reasoning' || p.type === 'tool' || p.type === 'agent' || p.type === 'file'
   );
 }

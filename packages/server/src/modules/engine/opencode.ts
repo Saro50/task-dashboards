@@ -1,5 +1,6 @@
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
 import { logger } from '../../logger.js';
+import type { MessagePartInput } from '../chat/types.js';
 
 const S = 'opencode';
 
@@ -76,19 +77,29 @@ export async function getSessionMessages(baseUrl: string, sessionId: string, dir
   return result;
 }
 
+/**
+ * 发送消息到 opencode 会话（异步）。
+ *
+ * @param parts    消息 parts 数组，支持 text / file 类型混合。
+ *                 直接透传给 SDK 的 client.session.promptAsync，
+ *                 其中 file part 的 url 应为相对于工作目录的文件路径。
+ */
 export async function sendPromptAsync(
   baseUrl: string,
   sessionId: string,
-  text: string,
+  parts: MessagePartInput[],
   directory?: string,
   agent?: string,
   system?: string,
 ) {
-  logger.info(S, 'sendPromptAsync', { baseUrl, sessionId, directory, agent, system: system?.slice(0, 40), text: text.slice(0, 80) });
+  const partSummary = parts.map((p) =>
+    p.type === 'text' ? `text(${p.text.slice(0, 40)})` : `file(${p.mime}, ${p.url})`,
+  );
+  logger.info(S, 'sendPromptAsync', { baseUrl, sessionId, directory, agent, system: system?.slice(0, 40), parts: partSummary });
   const client = await getClient(baseUrl);
   const result = await client.session.promptAsync({
     path: { id: sessionId },
-    body: { parts: [{ type: 'text' as const, text }], ...(agent ? { agent } : {}), ...(system ? { system } : {}) },
+    body: { parts, ...(agent ? { agent } : {}), ...(system ? { system } : {}) },
     query: { directory },
   });
   logger.info(S, 'sendPromptAsync completed');
