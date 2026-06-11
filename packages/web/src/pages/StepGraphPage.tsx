@@ -535,7 +535,17 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
               <span className="font-mono truncate max-w-48">{execution.worktreeBranch}</span>
             </div>
           )}
-          {execution && execution.status !== 'MERGED' && (
+          {executing ? (
+            <button
+              onClick={cancelExecution}
+              className="inline-flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-red-200 bg-red-50"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+              </svg>
+              停止
+            </button>
+          ) : execution && execution.status === 'FAILED' ? (
             <button
               onClick={handleRestart}
               className="inline-flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-red-200 bg-red-50"
@@ -545,28 +555,18 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
               </svg>
               重新执行
             </button>
-          )}
-          {executing && (
+          ) : !execution || execution.status === 'STOPPED' || execution.status === 'MERGED' ? (
             <button
-              onClick={cancelExecution}
-              className="inline-flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer border border-red-200 bg-red-50"
+              onClick={() => executeChain(steps)}
+              disabled={!steps.some((s) => s.status === 'PENDING')}
+              className="inline-flex items-center gap-1.5 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed bg-sky-500 hover:bg-sky-600 disabled:bg-gray-200 disabled:text-gray-400"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 7.5A2.25 2.25 0 017.5 5.25h9a2.25 2.25 0 012.25 2.25v9a2.25 2.25 0 01-2.25 2.25h-9a2.25 2.25 0 01-2.25-2.25v-9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
               </svg>
-              停止执行
+              执行
             </button>
-          )}
-          <button
-            onClick={() => executeChain(steps)}
-            disabled={executing || !steps.some((s) => s.status === 'PENDING')}
-            className="inline-flex items-center gap-1.5 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer disabled:cursor-not-allowed bg-sky-500 hover:bg-sky-600 disabled:bg-gray-200 disabled:text-gray-400"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-            </svg>
-            执行任务链
-          </button>
+          ) : null}
         </div>
       </div>
 

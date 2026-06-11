@@ -1,5 +1,6 @@
 import Router from 'koa-router';
-import multer, { memoryStorage, type File as MulterFile } from '@koa/multer';
+import multer from '@koa/multer';
+import type { File as MulterFile } from '@koa/multer';
 import * as ChatController from './chat.controller.js';
 
 const router = new Router({ prefix: '/api/chat' });
@@ -7,7 +8,7 @@ const router = new Router({ prefix: '/api/chat' });
 // multer 内存存储：文件保存在 buffer 中，不落盘原始文件
 // 文件大小限制 1MB，仅允许图片格式
 const upload = multer({
-  storage: memoryStorage(),
+  storage: multer.memoryStorage(),
   limits: { fileSize: 1 * 1024 * 1024 },
   fileFilter(
     _req: import('http').IncomingMessage,
