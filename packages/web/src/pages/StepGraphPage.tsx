@@ -65,9 +65,18 @@ function MiniMapNode({ x, y, width, height, color }: MiniMapNodeProps) {
 const nodeTypes = { step: StepNode };
 const edgeTypes = { task: TaskEdge };
 
-function MergeDialog({ execution, onMerge, onClose }: {
+/**
+ * 合并对话框 — 让用户选择目标分支进行合并。
+ *
+ * 支持两种模式：
+ * 1. 正常模式：选择分支 → 点击合并 → 成功则关闭
+ * 2. 冲突模式：合并返回 409 → 显示冲突文件列表 → 用户可选择「手动解决冲突」
+ */
+function MergeDialog({ execution, onMerge, onMergeForce, onClose }: {
   execution: { id: string; completedSteps: number; totalSteps: number; worktreeName: string | null };
-  onMerge: (branch: string) => void;
+  onMerge: (branch: string) => Promise<void>;
+  /** 手动解决冲突回调，用户选择「手动解决冲突」时调用 */
+  onMergeForce: (branch: string) => Promise<void>;
   onClose: () => void;
 }) {
   const [branches, setBranches] = useState<string[]>([]);
@@ -76,6 +85,8 @@ function MergeDialog({ execution, onMerge, onClose }: {
   const [merging, setMerging] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  /** 合并冲突时的冲突文件列表（非 null 表示处于冲突展示模式） */
+  const [conflictFiles, setConflictFiles] = useState<string[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,9 +109,77 @@ function MergeDialog({ execution, onMerge, onClose }: {
 
   const handleMerge = async () => {
     setMerging(true);
-    await onMerge(branch);
-    setMerging(false);
+    setError('');
+    try {
+      await onMerge(branch);
+    } catch (err: any) {
+      // 合并冲突 → 显示冲突文件列表
+      if (err.conflictFiles && err.conflictFiles.length > 0) {
+        setConflictFiles(err.conflictFiles);
+      } else {
+        setError(err.message ?? '合并失败');
+      }
+    } finally {
+      setMerging(false);
+    }
   };
+
+  const handleMergeForce = async () => {
+    setMerging(true);
+    setError('');
+    try {
+      await onMergeForce(branch);
+    } catch (err: any) {
+      setError(err.message ?? '操作失败');
+    } finally {
+      setMerging(false);
+    }
+  };
+
+  // 冲突展示模式
+  if (conflictFiles) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+        <div className="bg-white rounded-xl shadow-2xl w-[440px] p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <h3 className="text-lg font-semibold text-gray-800">合并冲突</h3>
+          </div>
+          <p className="text-sm text-gray-600 mb-3">
+            以下 <strong>{conflictFiles.length}</strong> 个文件存在冲突，无法自动合并：
+          </p>
+          <div className="max-h-40 overflow-y-auto border border-gray-200 rounded-lg mb-4">
+            {conflictFiles.map((f) => (
+              <div key={f} className="px-3 py-1.5 text-xs font-mono text-gray-700 border-b border-gray-100 last:border-b-0 flex items-center gap-1.5">
+                <svg className="w-3 h-3 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+                {f}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => { setConflictFiles(null); setError(''); }}
+              disabled={merging}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 rounded-lg hover:bg-gray-100 cursor-pointer disabled:opacity-50"
+            >
+              选择其他分支
+            </button>
+            <button
+              onClick={handleMergeForce}
+              disabled={merging}
+              className="px-4 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-white rounded-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {merging ? '处理中...' : '手动解决冲突'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
@@ -222,6 +301,9 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
     executeChain,
     cancelExecution,
     mergeExecution,
+    mergeForce,
+    resolveConflict,
+    abortConflict,
     restoreExecution,
     executing,
     execution,
@@ -591,6 +673,65 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
         </div>
       )}
 
+      {/* ── 冲突解决面板 ── */}
+      {execution?.status === 'CONFLICTING' && (
+        <div className="flex items-center justify-between px-4 py-2.5 border-t shrink-0 bg-amber-50 border-amber-200">
+          <div className="flex items-center gap-2 text-xs">
+            <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+            <span className="font-medium text-amber-700">
+              合并冲突待解决 · {execution.targetBranch ?? '目标分支'}
+            </span>
+            {execution.conflictFiles && execution.conflictFiles.length > 0 && (
+              <span className="text-amber-600">
+                ({execution.conflictFiles.length} 个文件)
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {execution.conflictFiles && execution.conflictFiles.length > 0 && (
+              <button
+                onClick={() => {
+                  const files = execution.conflictFiles ?? [];
+                  alert('冲突文件列表：\n\n' + files.join('\n'));
+                }}
+                className="text-xs text-amber-600 hover:text-amber-800 underline cursor-pointer"
+              >
+                查看冲突文件
+              </button>
+            )}
+            <button
+              onClick={async () => {
+                if (!confirm('确定要放弃冲突解决吗？将回退到未合并状态。')) return;
+                await abortConflict();
+              }}
+              className="inline-flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-800 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+            >
+              放弃解决
+            </button>
+            <button
+              onClick={async () => {
+                try {
+                  const result = await resolveConflict();
+                  if (result && !result.resolved) {
+                    showToast(`仍有 ${result.remainingFiles?.length ?? 0} 个文件未解决冲突`, 'info');
+                  }
+                } catch {
+                  // resolveConflict 内部已 showToast
+                }
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-white bg-amber-500 hover:bg-amber-600 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              冲突已解决
+            </button>
+          </div>
+        </div>
+      )}
+
       {selectedStep && (
         <StepDetailPanel
           step={selectedStep}
@@ -622,6 +763,10 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
         <MergeDialog
           execution={execution}
           onMerge={handleMerge}
+          onMergeForce={async (branch: string) => {
+            await mergeForce(branch);
+            setShowMerge(false);
+          }}
           onClose={() => setShowMerge(false)}
         />
       )}

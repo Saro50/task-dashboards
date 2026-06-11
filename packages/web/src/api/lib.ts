@@ -31,7 +31,12 @@ export async function apiRequest<T>(
     const raw = await res.json().catch(() => ({ error: res.statusText }));
     const { requestId } = unwrap(raw, reqId);
     log.error(scope, `${method} ${url} ${res.status}`, { requestId, error: raw.error || `HTTP ${res.status}` });
-    throw new Error(raw.error || raw.detail || `HTTP ${res.status}`);
+    const err = new Error(raw.error || raw.detail || `HTTP ${res.status}`);
+    // 将 HTTP 状态码和完整响应体附加到错误对象，供调用方按需提取额外字段
+    // （如合并冲突时的 conflictFiles 列表）
+    (err as any).status = res.status;
+    (err as any).data = raw;
+    throw err;
   }
 
   if (res.status === 204) {

@@ -21,6 +21,9 @@ const executionRouter = new Router({ prefix: '/api/executions/:executionId' });
 
 executionRouter.post('/stop', Controller.stop);
 executionRouter.post('/merge', Controller.merge);
+executionRouter.post('/merge-force', Controller.mergeForce);
+executionRouter.post('/resolve-conflict', Controller.resolveConflict);
+executionRouter.post('/abort-conflict', Controller.abortConflict);
 executionRouter.get('/branches', Controller.branches);
 executionRouter.get('/diff', Controller.diff);
 executionRouter.get('/messages', Controller.messages);

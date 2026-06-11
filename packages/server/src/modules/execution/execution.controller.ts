@@ -7,6 +7,9 @@
  *   GET    /api/tasks/:taskId/executions              列出所有执行
  *   POST   /api/executions/:executionId/stop          停止执行
  *   POST   /api/executions/:executionId/merge         合并到目标分支
+ *   POST   /api/executions/:executionId/merge-force   强制合并（保留冲突 → CONFLICTING）
+ *   POST   /api/executions/:executionId/resolve-conflict  确认冲突已解决
+ *   POST   /api/executions/:executionId/abort-conflict    放弃冲突解决
  *   GET    /api/steps/:stepId/diff                    获取单个步骤的文件变更
  *
  * 注意：start 端点的 projectId 从 request body 获取（而非 ctx.params），
@@ -16,6 +19,19 @@
 import { Context } from 'koa';
 import * as Service from './execution.service.js';
 import { reqLogger } from '../../logger.js';
+
+/**
+ * 将 Prisma TaskExecution 记录序列化为 API 响应。
+ * conflictFiles 在 DB 中以 JSON 字符串存储（String?），这里解析为 string[] | null。
+ */
+function formatExecution(execution: any) {
+  if (!execution) return execution;
+  const { conflictFiles, ...rest } = execution;
+  return {
+    ...rest,
+    conflictFiles: conflictFiles ? JSON.parse(conflictFiles) : null,
+  };
+}
 
 export async function start(ctx: Context) {
   const log = reqLogger(ctx.state.requestId);
@@ -30,7 +46,7 @@ export async function start(ctx: Context) {
   try {
     const execution = await Service.start(taskId, projectId, maxConcurrency);
     ctx.status = 201;
-    ctx.body = execution;
+    ctx.body = formatExecution(execution);
   } catch (err: any) {
     if (err.message?.includes('already running')) {
       ctx.status = 409;
@@ -59,7 +75,7 @@ export async function stop(ctx: Context) {
 
   try {
     const execution = await Service.stop(executionId);
-    ctx.body = execution;
+    ctx.body = formatExecution(execution);
   } catch (err: any) {
     if (err.message?.includes('not found')) {
       ctx.status = 404;
@@ -90,7 +106,7 @@ export async function merge(ctx: Context) {
 
   try {
     const execution = await Service.merge(executionId, targetBranch);
-    ctx.body = execution;
+    ctx.body = formatExecution(execution);
   } catch (err: any) {
     if (err.message?.includes('not found')) {
       ctx.status = 404;
@@ -104,7 +120,10 @@ export async function merge(ctx: Context) {
     }
     if (err.message?.includes('合并冲突')) {
       ctx.status = 409;
-      ctx.body = { error: err.message };
+      ctx.body = {
+        error: err.message,
+        conflictFiles: err.conflictFiles ?? [],
+      };
       return;
     }
     throw err;
@@ -114,13 +133,13 @@ export async function merge(ctx: Context) {
 export async function status(ctx: Context) {
   const { taskId } = ctx.params;
   const execution = await Service.getStatus(taskId);
-  ctx.body = execution || null;
+  ctx.body = execution ? formatExecution(execution) : null;
 }
 
 export async function list(ctx: Context) {
   const { taskId } = ctx.params;
   const executions = await Service.getByTask(taskId);
-  ctx.body = { data: executions };
+  ctx.body = { data: executions.map(formatExecution) };
 }
 
 export async function messages(ctx: Context) {
@@ -132,7 +151,7 @@ export async function messages(ctx: Context) {
 export async function activeByProject(ctx: Context) {
   const { projectId } = ctx.params;
   const executions = await Service.getActiveByProject(projectId);
-  ctx.body = { data: executions };
+  ctx.body = { data: executions.map(formatExecution) };
 }
 
 export async function diff(ctx: Context) {
@@ -195,6 +214,95 @@ export async function stepMessages(ctx: Context) {
   } catch (err: any) {
     if (err.message?.includes('not found')) {
       ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * 强制合并 — 不在冲突时 abort，将执行推进到 CONFLICTING 状态。
+ * 用于用户选择「手动解决冲突」的场景。
+ */
+export async function mergeForce(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  const { executionId } = ctx.params;
+  const { targetBranch } = ctx.request.body as any || {};
+
+  log.info('execution.ctrl', 'mergeForce', { executionId, targetBranch });
+
+  if (!targetBranch || typeof targetBranch !== 'string') {
+    ctx.status = 400;
+    ctx.body = { error: 'targetBranch is required' };
+    return;
+  }
+
+  try {
+    const result = await Service.mergeForce(executionId, targetBranch);
+    ctx.body = result;
+  } catch (err: any) {
+    if (err.message?.includes('not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('must be COMPLETED')) {
+      ctx.status = 400;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * 确认冲突已解决 — 检查 git index，若已解决则完成合并。
+ */
+export async function resolveConflict(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  const { executionId } = ctx.params;
+
+  log.info('execution.ctrl', 'resolveConflict', { executionId });
+
+  try {
+    const result = await Service.resolveConflict(executionId);
+    ctx.body = result;
+  } catch (err: any) {
+    if (err.message?.includes('not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('must be CONFLICTING')) {
+      ctx.status = 400;
+      ctx.body = { error: err.message };
+      return;
+    }
+    throw err;
+  }
+}
+
+/**
+ * 放弃冲突解决 — abort merge，状态回退到 COMPLETED。
+ */
+export async function abortConflict(ctx: Context) {
+  const log = reqLogger(ctx.state.requestId);
+  const { executionId } = ctx.params;
+
+  log.info('execution.ctrl', 'abortConflict', { executionId });
+
+  try {
+    const execution = await Service.abortConflict(executionId);
+    ctx.body = formatExecution(execution);
+  } catch (err: any) {
+    if (err.message?.includes('not found')) {
+      ctx.status = 404;
+      ctx.body = { error: err.message };
+      return;
+    }
+    if (err.message?.includes('must be CONFLICTING')) {
+      ctx.status = 400;
       ctx.body = { error: err.message };
       return;
     }

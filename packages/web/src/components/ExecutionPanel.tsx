@@ -18,6 +18,7 @@ const statusLabel: Record<string, { text: string; color: string }> = {
   CREATING_WORKTREE: { text: '创建 worktree', color: 'text-amber-600' },
   RUNNING: { text: '执行中', color: 'text-sky-600' },
   COMPLETED: { text: '已完成', color: 'text-green-600' },
+  CONFLICTING: { text: '冲突待解决', color: 'text-amber-500' },
   FAILED: { text: '失败', color: 'text-red-600' },
   STOPPED: { text: '已暂停', color: 'text-amber-600' },
   MERGED: { text: '已合并', color: 'text-gray-400' },
@@ -109,8 +110,8 @@ export default function ExecutionPanel({ maxConcurrency }: { maxConcurrency: num
   const running = executions.filter(
     (e) => e.status === 'RUNNING' || e.status === 'CREATING_WORKTREE',
   );
-  // 待合并：执行完毕（COMPLETED）等待用户合并的任务
-  const pendingMerge = executions.filter((e) => e.status === 'COMPLETED');
+  // 待合并：执行完毕（COMPLETED）或冲突待解决（CONFLICTING）等待用户操作的任务
+  const pendingMerge = executions.filter((e) => e.status === 'COMPLETED' || e.status === 'CONFLICTING');
   // 暂停：用户主动停止（STOPPED），可恢复执行
   const paused = executions.filter((e) => e.status === 'STOPPED');
   // 待执行：从未有执行记录的任务。
@@ -289,6 +290,7 @@ function RunningCard({ name, status, progress, branch, messages, onStop, onExecu
           ) : (
             <span className={`w-2 h-2 rounded-full shrink-0 ${
               status === 'COMPLETED' ? 'bg-green-500' :
+              status === 'CONFLICTING' ? 'bg-amber-500' :
               status === 'STOPPED' ? 'bg-amber-400' :
               status === 'FAILED' ? 'bg-red-500' : 'bg-gray-400'
             }`} />
@@ -382,6 +384,7 @@ function RecentCard({ name, status, progress, onClick, onExecute }: {
       <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full shrink-0 ${
           status === 'COMPLETED' ? 'bg-green-500' :
+          status === 'CONFLICTING' ? 'bg-amber-500' :
           status === 'STOPPED' ? 'bg-amber-400' :
           status === 'FAILED' ? 'bg-red-500' : 'bg-gray-400'
         }`} />
