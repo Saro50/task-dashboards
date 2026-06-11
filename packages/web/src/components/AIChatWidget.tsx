@@ -690,36 +690,9 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
               <svg className="w-5 h-5 text-sky-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z" />
               </svg>
-              <span className="font-semibold text-gray-800 text-sm">AI 助手</span>
-              <div className="flex items-center gap-1.5 ml-2">
-                {directory && (
-                  <span
-                    title={directory}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-gray-100 text-gray-500 border border-gray-200 max-w-[120px]"
-                  >
-                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-                    </svg>
-                    <span className="truncate">{directory.split('/').pop()}</span>
-                  </span>
-                )}
-                {/* 当前 AI 上下文模式标签 */}
-                {activeMode && (
-                  <span
-                    title={activeMode.description ?? activeMode.label}
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-sky-50 text-sky-600 border border-sky-100"
-                  >
-                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-                    </svg>
-                    {activeMode.label}
-                  </span>
-                )}
-               </div>
-            </div>
+              <span className="font-semibold text-gray-800 text-sm">AI助手</span>
 
-            <div className="flex items-center gap-2">
-              {/* ── 会话选择器 ── */}
+              {/* ── 会话选择器（标题旁） ── */}
               <div className="relative">
                 <button
                   onClick={() => { log.info(S, 'toggle session list'); setShowSessionList((prev) => !prev); setShowSettingsMenu(false); setShowMetaInfo(false); }}
@@ -732,7 +705,7 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 </button>
 
                 {showSessionList && (
-                  <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-10">
+                  <div className="absolute left-0 top-full mt-1 w-56 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden z-10">
                     <button
                       onClick={handleNewSession}
                       className="w-full text-left px-3 py-2 text-xs text-sky-500 hover:bg-gray-50 flex items-center gap-2 cursor-pointer border-b border-gray-200"
@@ -809,6 +782,23 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
                 )}
               </div>
 
+              <div className="flex items-center gap-1.5">
+                {/* 当前 AI 上下文模式标签 */}
+                {activeMode && (
+                  <span
+                    title={activeMode.description ?? activeMode.label}
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-sky-50 text-sky-600 border border-sky-100"
+                  >
+                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                    </svg>
+                    {activeMode.label}
+                  </span>
+                )}
+               </div>
+            </div>
+
+            <div className="flex items-center gap-2">
               {/* ── 元信息面板：工作目录 / 上下文模式 ── */}
               <div className="relative" ref={metaInfoRef}>
                 <button
