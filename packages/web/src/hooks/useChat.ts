@@ -139,30 +139,30 @@ export function useChat(directory?: string) {
   const hasUploadingAttachments = attachments.some((a) => a.status === 'uploading');
 
   /**
-   * 上传所有 pending 附件，返回上传成功的 FilePartInput 数组。
+   * 上传给定的附件列表，返回上传成功的 FilePartInput 数组。
    * 状态流转：pending → uploading → done / error
+   *
+   * 调用方（sendMessage）通过闭包快照直接传入待上传附件，
+   * 避免通过 setAttachments 函数式更新重新读取 state 导致的闭包/批处理不一致问题。
    *
    * 上传失败的附件标记为 error，不阻塞其他附件和文本发送。
    */
-  const uploadPendingAttachments = useCallback(async (): Promise<FilePartInput[]> => {
-    // 用函数式读取最新 state，避免闭包问题
-    let currentPending: ImageAttachment[] = [];
-    setAttachments((prev) => {
-      currentPending = prev.filter((a) => a.status === 'pending');
-      return prev;
-    });
-    if (currentPending.length === 0) return [];
+  const uploadPendingAttachments = useCallback(async (items: ImageAttachment[]): Promise<FilePartInput[]> => {
+    log.info(S, 'uploadPendingAttachments', { pendingCount: items.length, pendingIds: items.map(a => a.id) });
+    if (items.length === 0) return [];
 
     const results: FilePartInput[] = [];
 
-    for (const att of currentPending) {
+    for (const att of items) {
       // 标记为上传中
       setAttachments((prev) =>
         prev.map((a) => (a.id === att.id ? { ...a, status: 'uploading' as const } : a)),
       );
 
       try {
+        log.info(S, 'uploadPendingAttachments: uploading', { id: att.id, filename: att.filename, size: att.size, directory: directoryRef.current });
         const resp = await chatApi.uploadImage(att.file, directoryRef.current);
+        log.info(S, 'uploadPendingAttachments: upload success', { id: att.id, remotePath: resp.path, size: resp.size });
         // 标记为上传成功
         setAttachments((prev) =>
           prev.map((a) =>
@@ -178,7 +178,7 @@ export function useChat(directory?: string) {
           filename: att.filename,
         });
       } catch (err: any) {
-        log.error(S, 'uploadPendingAttachments failed', { id: att.id, error: err.message });
+        log.error(S, 'uploadPendingAttachments failed', { id: att.id, filename: att.filename, error: err.message, status: err.status });
         // 标记为上传失败，不抛出异常，允许其他附件和文本继续发送
         setAttachments((prev) =>
           prev.map((a) =>
@@ -190,6 +190,7 @@ export function useChat(directory?: string) {
       }
     }
 
+    log.info(S, 'uploadPendingAttachments: done', { resultsCount: results.length, results: results.map(r => r.url) });
     return results;
   }, []);
 
@@ -437,90 +438,101 @@ export function useChat(directory?: string) {
    * @param context    可选 pageContext（由 AIChatWidget 注入）
    * @param _unused    已弃用的 attachments 参数（保留签名兼容）
    */
-  const sendMessage = useCallback(async (text: string, context?: string, _unused?: FilePartInput[]) => {
-    log.info(S, 'sendMessage', { text: text.slice(0, 80), currentSessionId, directory, hasContext: !!context, attachmentCount: attachments.length });
-    if (!currentSessionId) {
-      log.warn(S, 'sendMessage skipped: no currentSessionId');
-      return;
-    }
+   const sendMessage = useCallback(async (text: string, context?: string, _unused?: FilePartInput[]) => {
+     const sid = currentSessionIdRef.current;
+     log.info(S, 'sendMessage', { text: text.slice(0, 80), currentSessionId: sid, directory, hasContext: !!context, attachmentCount: attachments.length, attachmentStatuses: attachments.map(a => ({ id: a.id, status: a.status })) });
+     if (!sid) {
+       log.warn(S, 'sendMessage skipped: no currentSessionId');
+       return;
+     }
 
-    // ── 1. 构建乐观 UI ──────────────────────────────
-    lastSentTextRef.current = text;
-    setLastSent({ text, agent: selectedAgent, context, timestamp: Date.now() });
+     // ── 1. 构建乐观 UI ──────────────────────────────
+     lastSentTextRef.current = text;
+     setLastSent({ text, agent: selectedAgent, context, timestamp: Date.now() });
 
-    chatDebug.request({ text, agent: selectedAgent, context, directory, sessionId: currentSessionId });
+      chatDebug.request({ text, agent: selectedAgent, context, directory, sessionId: sid });
 
-    // 在临时消息的 parts 中包含文本 + 图片预览信息
-    const optimisticParts: Array<{ id: string; type: string; text?: string; [key: string]: unknown }> = [];
-    if (text.trim()) {
-      optimisticParts.push({ id: `temp-part-${Date.now()}`, type: 'text', text });
-    }
-    // 为每张附件添加一个 file 类型的 part，用 previewUrl 作为临时 URL
-    for (const att of attachments) {
-      optimisticParts.push({
-        id: `temp-part-file-${Date.now()}-${att.id}`,
-        type: 'file',
-        mime: att.mime,
-        url: att.previewUrl,    // 乐观预览：使用本地 blob URL
-        filename: att.filename,
-        _optimistic: true,      // 标记为乐观预览（后续消息刷新时会被服务端数据替换）
-      });
-    }
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        info: { id: `temp-${Date.now()}`, sessionID: currentSessionId, role: 'user', time: { created: Date.now() / 1000 } },
-        parts: optimisticParts,
-      },
-    ]);
-    setStreamingText('');
-    setLoadingTimedOut(false);
-    setIsLoading(true);
-    startLoadingTimer();
-
-    try {
-      // ── 2. 上传所有 pending 附件 ──────────────────
-      const pendingResults = await uploadPendingAttachments();
-
-      // 收集所有已上传成功的 file parts（包括之前已 done 的）
-      const doneParts = attachments
-        .filter((a) => a.status === 'done' && a.remotePath)
-        .map((a): FilePartInput => ({
+      // 在临时消息的 parts 中包含文本 + 图片预览信息
+      const optimisticParts: Array<{ id: string; type: string; text?: string; [key: string]: unknown }> = [];
+      if (text.trim()) {
+        optimisticParts.push({ id: `temp-part-${Date.now()}`, type: 'text', text });
+      }
+      // 为每张附件添加一个 file 类型的 part，用 previewUrl 作为临时 URL
+      for (const att of attachments) {
+        optimisticParts.push({
+          id: `temp-part-file-${Date.now()}-${att.id}`,
           type: 'file',
-          mime: a.mime,
-          url: a.remotePath!,
-          filename: a.filename,
-        }));
-      const fileParts = [...doneParts, ...pendingResults];
-
-      // 如果有附件但全部上传失败且无文本，中止发送
-      if (attachments.length > 0 && fileParts.length === 0 && !text.trim()) {
-        log.warn(S, 'all uploads failed and no text, aborting send');
-        setIsLoading(false);
-        clearLoadingTimer();
-        return;
+          mime: att.mime,
+          url: att.previewUrl,    // 乐观预览：使用本地 blob URL
+          filename: att.filename,
+          _optimistic: true,      // 标记为乐观预览（后续消息刷新时会被服务端数据替换）
+        });
       }
 
-      // ── 3. 发送消息 ──────────────────────────────
-      await chatApi.sendMessage(
-        currentSessionId,
-        text,
-        directory,
-        selectedAgent,
-        context,
-        fileParts.length > 0 ? fileParts : undefined,
-      );
-      log.info(S, 'sendMessage API call completed');
+      setMessages((prev) => [
+        ...prev,
+        {
+          info: { id: `temp-${Date.now()}`, sessionID: sid, role: 'user', time: { created: Date.now() / 1000 } },
+          parts: optimisticParts,
+        },
+      ]);
+      setStreamingText('');
+      setLoadingTimedOut(false);
+      setIsLoading(true);
+      startLoadingTimer();
 
-      // ── 4. 发送成功后清理附件 ─────────────────────
-      clearAttachments();
-    } catch (err) {
-      log.error(S, 'sendMessage error', err);
-      setIsLoading(false);
-      clearLoadingTimer();
-    }
-  }, [currentSessionId, directory, selectedAgent, startLoadingTimer, clearLoadingTimer, attachments, uploadPendingAttachments, clearAttachments]);
+      try {
+        // ── 2. 上传所有 pending 附件 ──────────────────
+        // 直接使用闭包快照中的附件列表，避免 setAttachments 函数式更新读取 state
+        // 导致的闭包/批处理不一致问题
+        const pendingItems = attachments.filter((a) => a.status === 'pending');
+        log.info(S, 'sendMessage: uploading attachments', { count: pendingItems.length, pendingIds: pendingItems.map(a => a.id) });
+        const uploadResults = await uploadPendingAttachments(pendingItems);
+        log.info(S, 'sendMessage: upload complete', { uploadResultsCount: uploadResults.length, uploadResults: uploadResults.map(r => r.url) });
+
+        // 如果有附件但全部上传失败且无文本，中止发送
+        if (attachments.length > 0 && uploadResults.length === 0 && !text.trim()) {
+          log.warn(S, 'all uploads failed and no text, aborting send');
+          // 清除乐观消息，避免用户看到已发送但实际未发送的假象
+          setMessages((prev) => prev.slice(0, -1));
+          setIsLoading(false);
+          clearLoadingTimer();
+          return;
+        }
+
+        // ── 3. 构建发送文本 ──────────────────────────
+        // 当前模型不支持原生图片输入，但可通过 MCP 工具读取文件。
+        // 因此将图片路径以文本形式拼入消息，让 AI 通过 MCP 工具查看图片。
+        let messageText = text;
+        if (uploadResults.length > 0) {
+          const imageRefs = uploadResults
+            .map((f) => `- ${f.filename || '图片'}: ${f.url}`)
+            .join('\n');
+          messageText = messageText
+            ? `${messageText}\n\n[附图]\n${imageRefs}`
+            : `[附图]\n${imageRefs}`;
+          log.info(S, 'sendMessage: appended image refs to text', { imageRefs });
+        }
+
+        // ── 4. 发送消息 ──────────────────────────────
+        // 只发送 text part，不发送 file part（引擎通过 MCP 读取图片文件）
+        await chatApi.sendMessage(
+          sid,
+          messageText,
+          directory,
+          selectedAgent,
+          context,
+        );
+        log.info(S, 'sendMessage API call completed');
+
+        // ── 5. 发送成功后清理附件 ─────────────────────
+        clearAttachments();
+      } catch (err) {
+        log.error(S, 'sendMessage error', err);
+        setIsLoading(false);
+        clearLoadingTimer();
+      }
+    }, [directory, selectedAgent, startLoadingTimer, clearLoadingTimer, attachments, uploadPendingAttachments, clearAttachments]);
 
   const abortGeneration = useCallback(async () => {
     if (!currentSessionId) return;

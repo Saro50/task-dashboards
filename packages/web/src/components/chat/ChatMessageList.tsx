@@ -37,6 +37,37 @@ function formatTime(timestamp: number): string {
   return new Date(timestamp * 1000).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
+/**
+ * 从文本中解析 [附图] 标记，提取图片信息。
+ * 格式：[附图]\n- filename: .opencode/tmp/images/xxx.png
+ *
+ * 返回 { displayText, images }：
+ * - displayText: 去掉 [附图] 段落后的纯文本
+ * - images: { url, filename } 数组，用于渲染缩略图
+ */
+function parseImageRefs(text: string): { displayText: string; images: Array<{ url: string; filename: string }> } {
+  const marker = '[附图]';
+  const markerIdx = text.indexOf(marker);
+  if (markerIdx === -1) return { displayText: text, images: [] };
+
+  const displayText = text.slice(0, markerIdx).trimEnd();
+  const refBlock = text.slice(markerIdx + marker.length);
+  const images: Array<{ url: string; filename: string }> = [];
+
+  for (const line of refBlock.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('- ')) continue;
+    const content = trimmed.slice(2); // 去掉 "- "
+    const colonIdx = content.indexOf(': ');
+    if (colonIdx === -1) continue;
+    const filename = content.slice(0, colonIdx).trim();
+    const url = content.slice(colonIdx + 2).trim();
+    if (url) images.push({ url, filename });
+  }
+
+  return { displayText, images };
+}
+
 export default function ChatMessageList({
   messages,
   streamingText,
@@ -100,35 +131,40 @@ export default function ChatMessageList({
           if (isUser) {
             const textParts = msg.parts.filter((p) => p.type === 'text');
             const fileParts = msg.parts.filter((p) => p.type === 'file');
-            const text = textParts
+            const rawText = textParts
               .map((p) => ('text' in p ? p.text : ''))
               .join('\n');
-            // 用户消息至少需要文本或文件 part 才渲染
-            if (!text && fileParts.length === 0) return null;
+            // 解析文本中的 [附图] 标记，提取图片引用（服务端回传的消息只有文本，图片路径嵌在文本中）
+            const { displayText, images: textImageRefs } = parseImageRefs(rawText);
+            // 合并：file parts（乐观 UI 阶段） + 文本中解析出的图片引用（服务端刷新后）
+            const allImages = [
+              ...fileParts
+                .filter((fp) => (fp.mime as string | undefined)?.startsWith('image/') && fp.url)
+                .map((fp) => ({ url: fp.url as string, filename: (fp.filename as string) || '图片' })),
+              ...textImageRefs,
+            ];
+            // 用户消息至少需要文本或图片才渲染
+            if (!displayText && allImages.length === 0) return null;
             return (
               <div key={msg.info.id} className="flex justify-end">
                 <div className="max-w-[80%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm leading-relaxed bg-sky-500 text-white">
-                  {text && <p className="whitespace-pre-wrap break-words">{text}</p>}
-                  {/* 用户消息中的 file parts：图片缩略图列表 */}
-                  {fileParts.length > 0 && (
-                    <div className={`flex flex-wrap gap-1.5 ${text ? 'mt-2' : ''}`}>
-                      {fileParts.map((fp) => {
-                        const url = fp.url as string | undefined;
-                        const mime = fp.mime as string | undefined;
-                        const filename = (fp.filename as string | undefined) || '图片';
-                        if (!url || !mime?.startsWith('image/')) return null;
-                        const resolvedUrl = resolveImageUrl(url, directory);
+                  {displayText && <p className="whitespace-pre-wrap break-words">{displayText}</p>}
+                  {/* 用户消息中的图片缩略图列表（乐观 UI 的 file parts + 文本中解析出的图片引用） */}
+                  {allImages.length > 0 && (
+                    <div className={`flex flex-wrap gap-1.5 ${displayText ? 'mt-2' : ''}`}>
+                      {allImages.map((img, idx) => {
+                        const resolvedUrl = resolveImageUrl(img.url, directory);
                         return (
                           <button
-                            key={fp.id}
+                            key={`img-${idx}-${img.url}`}
                             type="button"
-                            onClick={() => openLightbox(resolvedUrl, filename)}
+                            onClick={() => openLightbox(resolvedUrl, img.filename)}
                             className="block max-w-[120px] max-h-[90px] rounded-lg overflow-hidden border border-white/30 hover:border-white/60 transition-colors cursor-pointer"
                             title="点击查看大图"
                           >
                             <img
                               src={resolvedUrl}
-                              alt={filename}
+                              alt={img.filename}
                               className="w-full h-full object-cover"
                               loading="lazy"
                             />
