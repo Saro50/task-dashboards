@@ -32,6 +32,10 @@ interface TaskNodeData {
   cacheRead?: number;
   onEdit?: (taskId: string) => void;
   onDelete?: (taskId: string) => void;
+  /** 跳转到步骤页 — 点击卡片右上角箭头按钮时触发 */
+  onNavigate?: (taskId: string) => void;
+  /** 应用层聚焦标记 — 由父组件传入，用于 AI 上下文聚焦 */
+  focused?: boolean;
   editing?: boolean;
   editingName?: string;
   onEditingNameChange?: (name: string) => void;
@@ -61,9 +65,15 @@ export default function TaskNode({ id, data, selected }: NodeProps) {
     }
   }, [d]);
 
+  const isFocused = !!d.focused;
+
   return (
     <div
-      className={`bg-white border ${cfg.border} rounded-lg shadow-sm w-72 overflow-hidden transition-shadow ${selected ? 'shadow-md ring-2 ring-sky-400' : 'hover:shadow-md'}`}
+      className={`bg-white border ${cfg.border} rounded-lg shadow-sm w-72 overflow-hidden transition-shadow ${
+        isFocused
+          ? 'ring-2 ring-sky-400 border-l-[3px] border-l-sky-400 bg-sky-50/30 shadow-md'
+          : selected ? 'shadow-md ring-2 ring-sky-400' : 'hover:shadow-md'
+      }`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
     >
@@ -91,6 +101,15 @@ export default function TaskNode({ id, data, selected }: NodeProps) {
             </span>
             {!d.editing && showActions && (
               <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); d.onNavigate?.(id); }}
+                  className="p-0.5 rounded hover:bg-sky-50 text-gray-400 hover:text-sky-500 cursor-pointer"
+                  title="查看步骤"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                  </svg>
+                </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); d.onEdit?.(id); }}
                   className="p-0.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 cursor-pointer"

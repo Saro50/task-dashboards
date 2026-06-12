@@ -1,5 +1,6 @@
 import React, { type FormEvent, type ClipboardEvent } from 'react';
 import type { ImageAttachment } from '@/types/chat';
+import type { FocusedItem } from '@/components/AIChatWidget';
 
 interface Props {
   input: string;
@@ -34,6 +35,10 @@ interface Props {
   onPasteImage?: (files: File[]) => void;
   /** 是否有附件正在上传中 */
   hasUploadingAttachments?: boolean;
+  /** 当前聚焦的卡片（任务或步骤） */
+  focusedItem?: FocusedItem;
+  /** 取消聚焦回调 */
+  onClearFocus?: () => void;
 }
 
 /**
@@ -173,6 +178,8 @@ export default function ChatInput({
   onRemoveAttachment,
   onPasteImage,
   hasUploadingAttachments,
+  focusedItem,
+  onClearFocus,
 }: Props) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -212,6 +219,31 @@ export default function ChatInput({
 
   return (
     <form onSubmit={onSubmit} className="shrink-0 border-t border-gray-200 p-3">
+      {/* ─── 聚焦卡片提示横条 ─── */}
+      {focusedItem && (
+        <div className="flex items-center gap-2 mb-2 px-2.5 py-1.5 bg-sky-50 border border-sky-200 rounded-lg">
+          <svg className="w-3.5 h-3.5 text-sky-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7.5 3.75H6A2.25 2.25 0 003.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0120.25 6v1.5m0 9V18A2.25 2.25 0 0118 20.25h-1.5m-9 0H6A2.25 2.25 0 013.75 18v-1.5M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span className="text-xs text-sky-700 flex-1 min-w-0">
+            <span className="text-sky-500 font-medium">{focusedItem.type === 'task' ? '任务' : '步骤'}</span>
+            <span className="mx-1 text-sky-300">·</span>
+            <span className="truncate">{focusedItem.name}</span>
+            <span className="text-sky-400 ml-1.5">({focusedItem.status})</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => onClearFocus?.()}
+            className="shrink-0 p-0.5 rounded hover:bg-sky-100 text-sky-400 hover:text-sky-600 transition-colors cursor-pointer"
+            title="取消聚焦"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* ─── 附件预览区域 ─── */}
       {hasAttachments && (
         <div className="flex flex-wrap gap-2 mb-2">

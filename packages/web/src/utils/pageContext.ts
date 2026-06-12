@@ -31,15 +31,55 @@ function truncate(s: string, max: number): string {
 }
 
 /** 获取当前 web server 的 origin，用于拼接 ID 池接口地址 */
-function getIdPoolApiUrl(): string {
-  return `${window.location.origin}/api/id-pool`;
+function getOrigin(): string {
+  return window.location.origin;
+}
+
+/**
+ * 构建 API 接口区块 — 提供项目 ID、ID 池接口和只读查询接口。
+ * AI 在规划阶段可通过这些接口获取任务/步骤详情。
+ */
+function buildApiSection(projectId: string | undefined): string[] {
+  const origin = getOrigin();
+  const parts: string[] = [];
+
+  if (projectId) {
+    parts.push(`\n## 项目ID`);
+    parts.push(projectId);
+  }
+
+  parts.push(`\n## ID池接口`);
+  parts.push(`GET ${origin}/api/id-pool?count=N （返回可用ID列表，用于新步骤ref）`);
+
+  parts.push(`\n## 查询接口`);
+  if (projectId) {
+    parts.push(`GET ${origin}/api/projects/${projectId}/tasks — 查询项目所有任务`);
+    parts.push(`GET ${origin}/api/projects/${projectId}/steps — 查询项目所有步骤`);
+  }
+  parts.push(`GET ${origin}/api/tasks/{taskId}/steps — 查询某个任务的步骤详情`);
+
+  return parts;
 }
 
 export function buildTaskPageContext(
   project: Project | null | undefined,
   tasks: Task[],
+  focusedTask?: Task,
 ): string {
   const parts: string[] = ['[当前上下文: 任务视图]'];
+
+  // 聚焦任务信息 — 当用户选中某个任务卡片时追加，帮助 AI 理解当前讨论焦点
+  if (focusedTask) {
+    const label = statusLabel[focusedTask.aggregatedStatus] || focusedTask.aggregatedStatus;
+    parts.push('## 当前聚焦任务');
+    parts.push(`任务名: ${focusedTask.name}`);
+    parts.push(`任务ID: ${focusedTask.id}`);
+    parts.push(`状态: ${label}`);
+    if (focusedTask.summary) parts.push(`概要: ${truncate(focusedTask.summary, 200)}`);
+    parts.push(`步骤进度: ${focusedTask.completedStepCount}/${focusedTask.stepCount} 完成`);
+    parts.push('说明: 用户当前正在关注此任务，后续对话应围绕此任务展开。');
+    parts.push(`查询该任务步骤详情: GET ${window.location.origin}/api/tasks/${focusedTask.id}/steps`);
+  }
 
   parts.push('\n## 当前页面');
   parts.push('页面类型: 项目任务图谱');
@@ -64,8 +104,7 @@ export function buildTaskPageContext(
     parts.push('当前项目暂无任务');
   }
 
-  parts.push(`\n## ID池接口`);
-  parts.push(`GET ${getIdPoolApiUrl()}?count=N （返回可用ID列表，用于新步骤ref）`);
+  parts.push(...buildApiSection(project?.id));
 
   return parts.join('\n');
 }
@@ -74,8 +113,29 @@ export function buildStepPageContext(
   project: Project | null | undefined,
   task: Task | null | undefined,
   steps: Step[],
+  focusedStep?: Step,
 ): string {
   const parts: string[] = ['[当前上下文: 步骤视图]'];
+
+  // 聚焦步骤信息 — 当用户选中某个步骤卡片时追加，帮助 AI 理解当前讨论焦点
+  if (focusedStep) {
+    const label = statusLabel[focusedStep.status] || focusedStep.status;
+    const stepMap = new Map(steps.map((s) => [s.id, s]));
+    const depNames = focusedStep.dependencies
+      .filter((d) => stepMap.has(d))
+      .map((d) => `${stepMap.get(d)!.title}(${d})`);
+    parts.push('## 当前聚焦步骤');
+    parts.push(`步骤ID: ${focusedStep.id}`);
+    parts.push(`标题: ${focusedStep.title}`);
+    parts.push(`状态: ${label}`);
+    if (focusedStep.description) parts.push(`描述: ${truncate(focusedStep.description, 200)}`);
+    if (depNames.length > 0) parts.push(`依赖: ${depNames.join(', ')}`);
+    if (focusedStep.blockedReason) parts.push(`阻塞原因: ${focusedStep.blockedReason}`);
+    parts.push('说明: 用户当前正在关注此步骤，后续对话应围绕此步骤展开。');
+    if (focusedStep.taskId) {
+      parts.push(`查询所属任务全部步骤: GET ${window.location.origin}/api/tasks/${focusedStep.taskId}/steps`);
+    }
+  }
 
   parts.push('\n## 当前页面');
   parts.push('页面类型: 步骤图谱');
@@ -110,8 +170,7 @@ export function buildStepPageContext(
     parts.push('当前任务暂无步骤');
   }
 
-  parts.push(`\n## ID池接口`);
-  parts.push(`GET ${getIdPoolApiUrl()}?count=N （返回可用ID列表，用于新步骤ref）`);
+  parts.push(...buildApiSection(project?.id));
 
   return parts.join('\n');
 }

@@ -17,7 +17,7 @@ import TaskEdge from '@/components/TaskEdge';
 import StepDetailPanel from '@/components/StepDetailPanel';
 import StepStatusBar from '@/components/StepStatusBar';
 import AIChatWidget from '@/components/AIChatWidget';
-import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
+import type { AIChatWidgetHandle, FocusedItem } from '@/components/AIChatWidget';
 import DiffPreview from '@/components/DiffPreview';
 import { applyDagreLayout } from '@/utils/layout';
 import { buildStepPageContext, buildTaskPageContext } from '@/utils/pageContext';
@@ -280,9 +280,29 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
 
   const refetch = fetchSteps;
 
+  /** 当前选中的步骤对象 — 用于 StepDetailPanel 和 AI 上下文聚焦 */
+  const selectedStep = useMemo(
+    () => steps.find((s) => s.id === selectedStepId) ?? null,
+    [steps, selectedStepId]
+  );
+
+  /** 聚焦卡片信息 — 传入 AIChatWidget 用于输入区视觉提示 */
+  const focusedItem: FocusedItem | undefined = useMemo(() => {
+    if (!selectedStep) return undefined;
+    const statusLabels: Record<string, string> = {
+      PENDING: '待处理', IN_PROGRESS: '进行中', COMPLETED: '已完成', BLOCKED: '阻塞',
+    };
+    return { name: selectedStep.title, status: statusLabels[selectedStep.status] ?? selectedStep.status, type: 'step' };
+  }, [selectedStep]);
+
+  /** 取消聚焦 */
+  const handleClearFocus = useCallback(() => {
+    setSelectedStepId(null);
+  }, []);
+
   const stepContext = useMemo(
-    () => buildStepPageContext(project, currentTask ?? null, steps),
-    [project, currentTask, steps]
+    () => buildStepPageContext(project, currentTask ?? null, steps, selectedStep ?? undefined),
+    [project, currentTask, steps, selectedStep]
   );
 
   const taskContext = useMemo(
@@ -344,11 +364,6 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
       setShowDiffPreview(true);
     }
   }, [execution?.status]);
-
-  const selectedStep = useMemo(
-    () => steps.find((s) => s.id === selectedStepId) ?? null,
-    [steps, selectedStepId]
-  );
 
   const [flowNodes, setFlowNodes, onNodesChange] = useNodesState<Node>([]);
   const [flowEdges, setFlowEdges] = useEdgesState<Edge>([]);
@@ -788,7 +803,7 @@ export default function StepGraphPage({ engineStatus, maxConcurrency }: Props) {
         />
       )}
 
-      <AIChatWidget ref={chatRef} directory={effectiveDirectory} engineStatus={engineStatus} projectId={projectId} taskId={taskId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingSteps={steps} currentTaskName={taskName} />
+      <AIChatWidget ref={chatRef} directory={effectiveDirectory} engineStatus={engineStatus} projectId={projectId} taskId={taskId} pageContext={pageContext} chatModes={chatModes} onPlanImported={refetch} existingSteps={steps} currentTaskName={taskName} focusedItem={focusedItem} onClearFocus={handleClearFocus} />
 
       {showDiffPreview && execution && execution.status === 'COMPLETED' && (
         <DiffPreview

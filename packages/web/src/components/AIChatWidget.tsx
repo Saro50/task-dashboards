@@ -13,6 +13,13 @@ import ChatInput from './chat/ChatInput';
 
 const S = 'AIChatWidget';
 
+/** 聚焦卡片信息 — 用户选中任务/步骤卡片时传入，用于输入区提示和上下文注入 */
+export interface FocusedItem {
+  name: string;
+  status: string;
+  type: 'task' | 'step';
+}
+
 interface Props {
   directory?: string;
   engineStatus: EngineStatus;
@@ -33,13 +40,17 @@ interface Props {
    * 若提供，非当前任务的计划面板渲染为灰色只读状态（不显示操作按钮）。
    */
   currentTaskName?: string;
+  /** 当前聚焦的卡片（任务或步骤），用于输入区视觉提示 */
+  focusedItem?: FocusedItem;
+  /** 取消聚焦回调 — 用户点击聚焦提示横条关闭按钮时触发 */
+  onClearFocus?: () => void;
 }
 
 export interface AIChatWidgetHandle {
   openWithMessage: (msg: string, options?: { newSession?: boolean; agent?: string }) => void;
 }
 
-export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, taskId, pageContext, chatModes, onPlanImported, existingSteps, currentTaskName }, ref) {
+export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ directory, engineStatus, projectId, taskId, pageContext, chatModes, onPlanImported, existingSteps, currentTaskName, focusedItem, onClearFocus }, ref) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [agents, setAgents] = useState<OpencodeAgent[]>([]);
@@ -654,6 +665,8 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
             onRemoveAttachment={removeAttachment}
             onPasteImage={addAttachments}
             hasUploadingAttachments={hasUploadingAttachments}
+            focusedItem={focusedItem}
+            onClearFocus={onClearFocus}
           />
 
           <div

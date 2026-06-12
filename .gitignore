@@ -8,3 +8,4 @@ dist/
 demo/
 ui
 log/
+.opencode/tmp

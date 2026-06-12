@@ -11,7 +11,7 @@ import TaskNode from '@/components/TaskNode';
 import StepNode from '@/components/StepNode';
 import TaskEdge from '@/components/TaskEdge';
 import AIChatWidget from '@/components/AIChatWidget';
-import type { AIChatWidgetHandle } from '@/components/AIChatWidget';
+import type { AIChatWidgetHandle, FocusedItem } from '@/components/AIChatWidget';
 import { applyDagreLayout } from '@/utils/layout';
 import { buildTaskPageContext } from '@/utils/pageContext';
 import { log } from '@/utils/log';
@@ -74,11 +74,33 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  /** 聚焦任务ID — 用户点击任务卡片时设置，用于 AI 上下文聚焦 */
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const chatRef = useRef<AIChatWidgetHandle>(null);
 
+  /** 聚焦任务对象 — 用于 pageContext 注入 */
+  const focusedTask = useMemo(
+    () => tasks.find((t) => t.id === focusedTaskId) ?? undefined,
+    [tasks, focusedTaskId],
+  );
+
+  /** 聚焦卡片信息 — 传入 AIChatWidget 用于输入区视觉提示 */
+  const focusedItem: FocusedItem | undefined = useMemo(() => {
+    if (!focusedTask) return undefined;
+    const statusLabels: Record<string, string> = {
+      PENDING: '待处理', IN_PROGRESS: '进行中', COMPLETED: '已完成', BLOCKED: '阻塞',
+    };
+    return { name: focusedTask.name, status: statusLabels[focusedTask.aggregatedStatus] ?? focusedTask.aggregatedStatus, type: 'task' };
+  }, [focusedTask]);
+
+  /** 取消聚焦 */
+  const handleClearFocus = useCallback(() => {
+    setFocusedTaskId(null);
+  }, []);
+
   const pageContext = useMemo(
-    () => buildTaskPageContext(project, tasks),
-    [project, tasks]
+    () => buildTaskPageContext(project, tasks, focusedTask),
+    [project, tasks, focusedTask]
   );
 
   const handleEditTask = useCallback((taskId: string) => {
@@ -148,6 +170,12 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     }
   }, [orphanSteps, showToast, refetch]);
 
+  /** 跳转到步骤页 — 通过卡片上的箭头按钮触发 */
+  const handleNavigateTask = useCallback((taskId: string) => {
+    log.info(S, 'handleNavigateTask', { taskId });
+    navigate(`/project/${projectId}/task/${taskId}`);
+  }, [navigate, projectId]);
+
   const { nodes: flowNodes, edges: baseEdges } = useMemo(() => {
     const nodes: Node[] = [];
 
@@ -167,6 +195,8 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           cacheRead: task.cacheRead,
           onEdit: handleEditTask,
           onDelete: handleDeleteTask,
+          onNavigate: handleNavigateTask,
+          focused: task.id === focusedTaskId,
           editing: editingTaskId === task.id,
           editingName,
           onEditingNameChange: handleEditingNameChange,
@@ -200,7 +230,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
     }));
 
     return applyDagreLayout(nodes, edges);
-  }, [tasks, dependencies, orphanSteps, refetch, editingTaskId, editingName, handleEditTask, handleDeleteTask, handleDeleteStep, handleEditingNameChange, handleEditingConfirm, handleEditingCancel]);
+  }, [tasks, dependencies, orphanSteps, refetch, editingTaskId, editingName, focusedTaskId, handleEditTask, handleDeleteTask, handleDeleteStep, handleNavigateTask, handleEditingNameChange, handleEditingConfirm, handleEditingCancel]);
 
   const flowEdges = useMemo(
     () => baseEdges.map((e) => ({ ...e, data: { ...e.data, hovered: e.id === hoveredEdgeId } })),
@@ -210,9 +240,15 @@ export default function TaskGraphPage({ engineStatus }: Props) {
   const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     log.info(S, 'onNodeClick', { nodeId: node.id, type: node.type });
     if (node.type === 'task') {
-      navigate(`/project/${projectId}/task/${node.id}`);
+      // 点击任务卡片 → 选中聚焦（不跳转），用于 AI 上下文
+      setFocusedTaskId((prev) => prev === node.id ? null : node.id);
     }
-  }, [navigate, projectId]);
+  }, []);
+
+  /** 点击画布空白区域取消聚焦 */
+  const onPaneClick = useCallback(() => {
+    setFocusedTaskId(null);
+  }, []);
 
   const handleCreateTask = useCallback(() => {
     log.info(S, 'handleCreateTask');
@@ -270,6 +306,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
           nodeTypes={taskNodeTypes}
           edgeTypes={edgeTypes}
           onNodeClick={onNodeClick}
+          onPaneClick={onPaneClick}
           onEdgeMouseEnter={(_: React.MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id)}
           onEdgeMouseLeave={() => setHoveredEdgeId(null)}
           fitView
@@ -318,7 +355,7 @@ export default function TaskGraphPage({ engineStatus }: Props) {
 
       </div>
 
-      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} onPlanImported={refetch} />
+      <AIChatWidget ref={chatRef} directory={project?.path} engineStatus={engineStatus} projectId={projectId} pageContext={pageContext} onPlanImported={refetch} focusedItem={focusedItem} onClearFocus={handleClearFocus} />
     </div>
   );
 }
