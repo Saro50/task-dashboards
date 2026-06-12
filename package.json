@@ -2,7 +2,10 @@
   "name": "task-dashboards",
   "private": true,
   "pnpm": {
-    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "esbuild", "prisma"]
+    "onlyBuiltDependencies": ["@prisma/client", "@prisma/engines", "esbuild", "prisma"],
+    "overrides": {
+      "@myby/log-shared": "file:/Users/finlaywu/MyWork/short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared"
+    }
   },
   "scripts": {
     "dev:server": "pnpm --filter @task-dashboards/server dev",

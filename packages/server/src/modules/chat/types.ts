@@ -47,7 +47,6 @@ export interface SendMessageBody {
   /** 消息 parts 数组，支持 text / file 类型混合 */
   parts?: MessagePartInput[];
   agent?: string;
-  context?: string;
 }
 
 export interface UpdateSessionBody {

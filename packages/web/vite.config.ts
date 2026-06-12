@@ -24,6 +24,10 @@ export default defineConfig({
           });
         },
       },
+      '/api/logs': {
+        target: 'http://localhost:3101',
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,

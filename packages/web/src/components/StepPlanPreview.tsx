@@ -1,17 +1,33 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { StepPlan, Step, StepPlanItem } from '@/types/step';
 import { stepApi } from '@/api/step';
+import { taskApi } from '@/api/task';
 import { useToast } from './Toast';
 import { log } from '@/utils/log';
 
 const S = 'StepPlanPreview';
 
-type DiffStatus = 'new' | 'modified' | 'unchanged';
+type DiffStatus = 'new' | 'modified' | 'unchanged' | 'deleted';
 
+/** plan 步骤与已有步骤的 diff */
 interface DiffItem {
   planStep: StepPlanItem;
   status: DiffStatus;
   existing?: Step;
+}
+
+/** 已有步骤在 plan 中不存在（应删除） */
+interface DeletedDiffItem {
+  existing: Step;
+  status: 'deleted';
+}
+
+/** computeDiff 返回的联合结果 */
+type DiffResult = DiffItem | DeletedDiffItem;
+
+/** 类型守卫：是否为 deleted 类型（无 planStep） */
+function isDeleted(item: DiffResult): item is DeletedDiffItem {
+  return item.status === 'deleted';
 }
 
 interface Props {
@@ -38,10 +54,13 @@ interface Props {
  * - ref 匹配已有 ID + 内容相同 → unchanged
  * - ref 匹配已有 ID + 内容不同 → modified
  * - ref 无匹配 → new
+ * - 已有 ID 不在任何 plan ref 中 → deleted（应删除）
  */
-function computeDiff(planSteps: StepPlanItem[], existingSteps: Step[]): DiffItem[] {
+function computeDiff(planSteps: StepPlanItem[], existingSteps: Step[]): DiffResult[] {
   const existingById = new Map(existingSteps.map((t) => [t.id, t]));
-  return planSteps.map((pt) => {
+  const planRefs = new Set(planSteps.map((pt) => pt.ref));
+
+  const planItems: DiffItem[] = planSteps.map((pt) => {
     const existing = existingById.get(pt.ref);
     if (!existing) {
       return { planStep: pt, status: 'new' as const };
@@ -55,6 +74,13 @@ function computeDiff(planSteps: StepPlanItem[], existingSteps: Step[]): DiffItem
     }
     return { planStep: pt, status: 'unchanged' as const, existing };
   });
+
+  // 检测"应删除"：已有步骤不在 plan ref 集合中
+  const deletedItems: DeletedDiffItem[] = existingSteps
+    .filter((s) => !planRefs.has(s.id))
+    .map((s) => ({ existing: s, status: 'deleted' as const }));
+
+  return [...planItems, ...deletedItems];
 }
 
 /** 依赖数量标记 */
@@ -73,7 +99,7 @@ function DepBadge({ deps }: { deps: string[] }) {
 /** 状态圆点 */
 function StatusDot({ status, applied }: { status: DiffStatus; applied: boolean }) {
   if (applied) return <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-green-500" />;
-  const color = status === 'new' ? 'bg-green-500' : status === 'modified' ? 'bg-amber-500' : 'bg-gray-300';
+  const color = status === 'new' ? 'bg-green-500' : status === 'modified' ? 'bg-amber-500' : status === 'deleted' ? 'bg-red-500' : 'bg-gray-300';
   return <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${color}`} />;
 }
 
@@ -82,6 +108,7 @@ function StatusLabel({ status, applied }: { status: DiffStatus; applied: boolean
   if (applied) return <span className="text-[10px] text-green-600 font-medium">已应用</span>;
   if (status === 'new') return <span className="text-[10px] text-green-600 font-medium">新增</span>;
   if (status === 'modified') return <span className="text-[10px] text-amber-600 font-medium">修改</span>;
+  if (status === 'deleted') return <span className="text-[10px] text-red-600 font-medium">删除</span>;
   return null;
 }
 
@@ -125,12 +152,14 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
   /** 统计（排除已 applied） */
   const stats = useMemo(() => {
     if (!diffItems) return null;
-    const newCount = diffItems.filter((d) => d.status === 'new' && !appliedRefs.has(d.planStep.ref)).length;
-    const modifiedCount = diffItems.filter((d) => d.status === 'modified' && !appliedRefs.has(d.planStep.ref)).length;
+    const newCount = diffItems.filter((d) => !isDeleted(d) && d.status === 'new' && !appliedRefs.has(d.planStep.ref)).length;
+    const modifiedCount = diffItems.filter((d) => !isDeleted(d) && d.status === 'modified' && !appliedRefs.has(d.planStep.ref)).length;
+    const deletedCount = diffItems.filter((d) => isDeleted(d) && !appliedRefs.has(d.existing.id)).length;
     const unchangedCount = diffItems.filter((d) => d.status === 'unchanged').length;
     const appliedCount = appliedRefs.size;
     const totalChanges = diffItems.filter((d) => d.status !== 'unchanged').length;
-    return { newCount, modifiedCount, unchangedCount, appliedCount, totalChanges, pendingChanges: newCount + modifiedCount };
+    const pendingChanges = newCount + modifiedCount + deletedCount;
+    return { newCount, modifiedCount, deletedCount, unchangedCount, appliedCount, totalChanges, pendingChanges };
   }, [diffItems, appliedRefs]);
 
   /**
@@ -169,20 +198,25 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
    * 应用单条变更。
    * ref 即真实 ID：
    * - new: 用 ref 作为 Step.id 创建（CreateStepInput.id）
-   * - modified: ref 就是 existing.id，直接 update
+   * - modified: ref 就是 existing.id，直接 update，同时重置 status 为 PENDING
+   * - deleted: 删除已有步骤
    *
    * 注意：依赖中的新步骤可能尚未创建，addDependency 会因 FK 约束失败，
    * 此处静默跳过（用户可通过批量应用一次性解决）。
    */
-  const handleApplyOne = useCallback(async (item: DiffItem) => {
+  const handleApplyOne = useCallback(async (item: DiffResult) => {
     if (!projectId || !taskId) {
       showToast('未关联项目或任务', 'error');
       return;
     }
-    const ref = item.planStep.ref;
+    const ref = isDeleted(item) ? item.existing.id : item.planStep.ref;
     setApplyingRef(ref);
     try {
-      if (item.status === 'new') {
+      if (isDeleted(item)) {
+        /** 删除不在 plan 中的步骤 */
+        await stepApi.remove(item.existing.id);
+        log.info(S, 'handleApplyOne deleted', { ref, id: item.existing.id });
+      } else if (item.status === 'new') {
         /** 用预分配的 ref 作为 ID 创建步骤 */
         const newStep = await stepApi.create(projectId, {
           id: ref,
@@ -200,10 +234,11 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
         }
         log.info(S, 'handleApplyOne created', { ref, id: newStep.id });
       } else if (item.status === 'modified' && item.existing) {
-        /** ref 就是 existing.id，直接更新 */
+        /** ref 就是 existing.id，直接更新 + 重置状态为 PENDING */
         await stepApi.update(item.existing.id, {
           title: item.planStep.title,
           description: item.planStep.description,
+          status: 'PENDING',
         });
         const oldDeps = item.existing.dependencies ?? [];
         const newDepIds = item.planStep.dependencies ?? [];
@@ -216,7 +251,9 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
         log.info(S, 'handleApplyOne updated', { ref, id: item.existing.id, depsAdded: depsToAdd.length, depsRemoved: depsToRemove.length });
       }
       setAppliedRefs((prev) => new Set(prev).add(ref));
-      showToast(`「${item.planStep.title}」已${item.status === 'new' ? '添加' : '更新'}`, 'success');
+      const title = isDeleted(item) ? item.existing.title : item.planStep.title;
+      const actionLabel = isDeleted(item) ? '已删除' : item.status === 'new' ? '已添加' : '已更新';
+      showToast(`「${title}」${actionLabel}`, 'success');
     } catch (err: any) {
       log.error(S, 'handleApplyOne error', err);
       showToast(err.message || '操作失败', 'error');
@@ -224,10 +261,10 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
       setApplyingRef(null);
     }
   }, [projectId, taskId, showToast]);
-
   /**
    * 批量应用所有未应用的变更。
-   * 先创建所有新步骤（保证依赖目标存在），再统一处理依赖。
+   * 顺序：先删除 → 再创建/更新所有步骤 → 最后统一处理依赖。
+   * 如果 plan 的 task 名称或摘要与当前值不同，同步更新任务信息。
    */
   const handleBatchApply = useCallback(async () => {
     if (!projectId || !taskId || !diffItems || !stats) return;
@@ -236,10 +273,20 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
     try {
       let updated = 0;
       let created = 0;
+      let deleted = 0;
 
-      /** 第一遍：创建/更新所有步骤 */
+      /** 第一遍：删除不在 plan 中的步骤 */
       for (const item of diffItems) {
-        if (item.status === 'unchanged' || appliedRefs.has(item.planStep.ref)) continue;
+        if (!isDeleted(item) || appliedRefs.has(item.existing.id)) continue;
+        await stepApi.remove(item.existing.id);
+        setAppliedRefs((prev) => new Set(prev).add(item.existing.id));
+        deleted++;
+      }
+
+      /** 第二遍：创建/更新所有步骤 */
+      for (const item of diffItems) {
+        if (isDeleted(item) || item.status === 'unchanged') continue;
+        if (appliedRefs.has(item.planStep.ref)) continue;
         if (item.status === 'new') {
           const newStep = await stepApi.create(projectId, {
             id: item.planStep.ref,
@@ -252,15 +299,16 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
           await stepApi.update(item.existing.id, {
             title: item.planStep.title,
             description: item.planStep.description,
+            status: 'PENDING',
           });
           updated++;
         }
         setAppliedRefs((prev) => new Set(prev).add(item.planStep.ref));
       }
 
-      /** 第二遍：统一处理依赖 */
+      /** 第三遍：统一处理依赖（排除已删除步骤） */
       for (const item of diffItems) {
-        if (item.status === 'unchanged') continue;
+        if (isDeleted(item) || item.status === 'unchanged') continue;
         const stepId = item.planStep.ref; // ref = 真实 ID
         if (item.status === 'new') {
           for (const depId of item.planStep.dependencies ?? []) {
@@ -278,10 +326,21 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
         }
       }
 
-      log.info(S, 'handleBatchApply done', { updated, created });
+      /** 第四遍：同步任务名称/摘要（如有变更） */
+      if (currentTaskName && (plan.task !== currentTaskName || plan.summary !== undefined)) {
+        try {
+          await taskApi.update(taskId, { name: plan.task, summary: plan.summary });
+          log.info(S, 'handleBatchApply updated task info', { taskId, name: plan.task });
+        } catch (err: any) {
+          log.warn(S, 'handleBatchApply task update failed (non-blocking)', { error: err.message });
+        }
+      }
+
+      log.info(S, 'handleBatchApply done', { updated, created, deleted });
       const parts: string[] = [];
       if (updated > 0) parts.push(`${updated} 个步骤已更新`);
       if (created > 0) parts.push(`${created} 个新步骤已创建`);
+      if (deleted > 0) parts.push(`${deleted} 个步骤已删除`);
       showToast(parts.join('，'), 'success');
       onPlanImported(plan.task);
     } catch (err: any) {
@@ -290,7 +349,7 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
     } finally {
       setBatchApplying(false);
     }
-  }, [projectId, taskId, diffItems, stats, appliedRefs, plan.task, showToast, onPlanImported]);
+  }, [projectId, taskId, diffItems, stats, appliedRefs, plan.task, plan.summary, currentTaskName, showToast, onPlanImported]);
 
   // ── 渲染 ──────────────────────────────────────────────────
 
@@ -341,6 +400,7 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
             <div className="flex items-center gap-1.5 ml-auto">
               {stats.newCount > 0 && <span className="text-[10px] text-green-600 font-medium">+{stats.newCount} 新增</span>}
               {stats.modifiedCount > 0 && <span className="text-[10px] text-amber-600 font-medium">~{stats.modifiedCount} 修改</span>}
+              {stats.deletedCount > 0 && <span className="text-[10px] text-red-600 font-medium">-{stats.deletedCount} 删除</span>}
               {stats.appliedCount > 0 && <span className="text-[10px] text-green-500">✓{stats.appliedCount} 已应用</span>}
               {stats.unchangedCount > 0 && <span className="text-[10px] text-gray-400">{stats.unchangedCount} 未变更</span>}
             </div>
@@ -356,22 +416,27 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
         {diffItems && isCurrentTask ? (
           // 更新模式：逐条显示 diff + 独立操作按钮（仅当前任务）
           diffItems.map((item) => {
-            const ref = item.planStep.ref;
+            // deleted 类型没有 planStep，用 existing.id 作为 key
+            const ref = isDeleted(item) ? item.existing.id : item.planStep.ref;
             const applied = appliedRefs.has(ref);
             const isApplying = applyingRef === ref;
             const canOperate = item.status !== 'unchanged' && !applied && !isApplying && !batchApplying;
+            const title = isDeleted(item) ? item.existing.title : item.planStep.title;
 
             return (
-              <div key={ref}>
+              <div key={ref} className={isDeleted(item) && applied ? 'opacity-40' : ''}>
                 <div className="flex items-center gap-1.5">
                   <StatusDot status={item.status} applied={applied} />
                   <span className={`text-xs truncate flex-1 ${
-                    applied ? 'text-green-700' : item.status === 'unchanged' ? 'text-gray-400' : 'text-gray-700'
+                    applied ? (isDeleted(item) ? 'text-red-400 line-through' : 'text-green-700')
+                      : isDeleted(item) ? 'text-red-500'
+                      : item.status === 'unchanged' ? 'text-gray-400' : 'text-gray-700'
                   }`}>
-                    {item.planStep.title}
+                    {title}
                   </span>
                   <StatusLabel status={item.status} applied={applied} />
-                  <DepBadge deps={item.planStep.dependencies || []} />
+                  {/* 删除类型不显示依赖标记 */}
+                  {!isDeleted(item) && <DepBadge deps={item.planStep.dependencies || []} />}
                   {/* 逐条操作按钮 */}
                   {canOperate && item.status === 'new' && (
                     <button
@@ -389,6 +454,14 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
                       更新
                     </button>
                   )}
+                  {canOperate && isDeleted(item) && (
+                    <button
+                      onClick={() => handleApplyOne(item)}
+                      className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-red-500 hover:bg-red-600 text-white cursor-pointer transition-colors"
+                    >
+                      删除
+                    </button>
+                  )}
                   {isApplying && (
                     <svg className="w-3 h-3 animate-spin text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -397,7 +470,7 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
                   )}
                 </div>
                 {/* 修改态：显示标题 diff */}
-                {item.status === 'modified' && item.existing && item.existing.title !== item.planStep.title && (
+                {!isDeleted(item) && item.status === 'modified' && item.existing && item.existing.title !== item.planStep.title && (
                   <div className="text-[10px] text-gray-400 pl-4">
                     <span className="line-through text-red-300">{item.existing.title}</span>
                     <span className="mx-1">→</span>
@@ -405,7 +478,7 @@ export default function StepPlanPreview({ plan, projectId, taskId, chatSessionId
                   </div>
                 )}
                 {/* 修改态：显示描述 diff */}
-                {item.status === 'modified' && item.existing && (
+                {!isDeleted(item) && item.status === 'modified' && item.existing && (
                   <DescriptionDiff oldDesc={item.existing.description} newDesc={item.planStep.description} />
                 )}
               </div>

@@ -35,7 +35,6 @@ export const chatApi = {
     text: string,
     directory?: string,
     agent?: string,
-    context?: string,
     attachments?: FilePartInput[],
   ): Promise<void> {
     const query = directory ? `?directory=${encodeURIComponent(directory)}` : '';
@@ -53,7 +52,7 @@ export const chatApi = {
 
     return apiRequest<void>(S, `${BASE}/sessions/${sessionId}/send${query}`, {
       method: 'POST',
-      body: JSON.stringify({ parts, agent, context }),
+      body: JSON.stringify({ parts, agent }),
     });
   },
 

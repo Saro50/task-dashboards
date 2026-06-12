@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@myby/log-shared': file:/Users/finlaywu/MyWork/short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared
+
 importers:
 
   .: {}
@@ -83,6 +86,12 @@ importers:
 
   packages/web:
     dependencies:
+      '@myby/log-sdk':
+        specifier: file:/Users/finlaywu/MyWork/short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/sdk
+        version: file:../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/sdk
+      '@myby/log-shared':
+        specifier: file:/Users/finlaywu/MyWork/short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared
+        version: file:../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared
       '@tailwindcss/typography':
         specifier: ^0.5.19
         version: 0.5.19(tailwindcss@4.3.0)
@@ -809,6 +818,12 @@ packages:
 
   '@kwsites/promise-deferred@1.1.1':
     resolution: {integrity: sha512-GaHYm+c0O9MjZRu0ongGBRbinu8gVAMd2UZjji6jVmqKtZluZnptXGWhz1E8j8D2HJ3f/yMxKAUC0b+57wncIw==}
+
+  '@myby/log-sdk@file:../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/sdk':
+    resolution: {directory: ../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/sdk, type: directory}
+
+  '@myby/log-shared@file:../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared':
+    resolution: {directory: ../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared, type: directory}
 
   '@opencode-ai/sdk@1.15.11':
     resolution: {integrity: sha512-IyYyDVsO8SKbKbkSadHpDuYnYC+2vmEeLU+rW+rH2M54Sigq6l3gDHno16+U6SRut+lowbph7v/ry3WbV67V3w==}
@@ -3141,6 +3156,12 @@ snapshots:
       - supports-color
 
   '@kwsites/promise-deferred@1.1.1': {}
+
+  '@myby/log-sdk@file:../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/sdk':
+    dependencies:
+      '@myby/log-shared': file:../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared
+
+  '@myby/log-shared@file:../short_url_demo/results/deepseek-v4-flash/myrole/log-system/packages/shared': {}
 
   '@opencode-ai/sdk@1.15.11':
     dependencies:

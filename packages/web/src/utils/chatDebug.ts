@@ -59,29 +59,18 @@ const impl = {
   request(params: {
     text: string;
     agent: string;
-    context?: string;
     directory?: string;
     sessionId: string;
   }) {
-    const { text, agent, context, directory, sessionId } = params;
+    const { text, agent, directory, sessionId } = params;
     const time = now();
 
     console.group(`%c 📤 Chat Request  ${time} `, STYLE.title);
     console.log(`%c用户消息%c  %c${text}`, STYLE.key, '', STYLE.value);
     console.log(`%cAgent%c     %c${agent}`, STYLE.key, '', STYLE.accent);
-    console.log(
-      `%cContext%c   %c${context ? `✅ 已注入 (${formatLength(context)} 字符 / ~${estimateTokens(context)} tokens)` : '⏭ 未注入（内容未变化）'}`,
-      STYLE.key, '', context ? STYLE.success : STYLE.warn,
-    );
     console.log(`%cSession%c   %c${sessionId}`, STYLE.key, '', STYLE.value);
     if (directory) {
       console.log(`%cDirectory%c %c${directory}`, STYLE.key, '', STYLE.value);
-    }
-
-    if (context) {
-      console.groupCollapsed(`%c系统上下文 (context) 完整内容`, STYLE.subtitle);
-      console.log(context);
-      console.groupEnd();
     }
 
     console.log(`%c${'─'.repeat(50)}`, STYLE.divider);

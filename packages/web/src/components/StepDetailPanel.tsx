@@ -312,10 +312,10 @@ export default function StepDetailPanel({ step, allSteps, executionId, onClose, 
   return (
     <div className="fixed right-0 top-14 bottom-0 w-[420px] bg-white border-l border-gray-200 shadow-lg z-40 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <h2
-            className={`text-base font-semibold text-gray-800 truncate transition-colors ${locked ? 'cursor-default' : 'cursor-pointer hover:text-sky-600'}`}
+            className={`text-sm font-semibold text-gray-800 truncate transition-colors ${locked ? 'cursor-default' : 'cursor-pointer hover:text-sky-600'}`}
             onClick={() => { if (!locked) { setTitleDraft(step.title); setEditingTitle(true); } }}
             title={locked ? '执行后不可修改标题' : '点击编辑标题'}
           >
@@ -327,14 +327,14 @@ export default function StepDetailPanel({ step, allSteps, executionId, onClose, 
               className="shrink-0 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
               title="编辑标题"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
               </svg>
             </button>
           )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
           {(() => {
-            // BLOCKED 步骤即使在执行后也允许用户手动修改状态（如改回 PENDING 重跑、改 COMPLETED 跳过）。
-            // 其它状态在有 executionId 时仍保持锁定，避免误改已完成/进行中的步骤。
             const statusChangeDisabled = locked && step.status !== 'BLOCKED';
             const statusTitle =
               step.status === 'BLOCKED' && !statusChangeDisabled
@@ -349,8 +349,6 @@ export default function StepDetailPanel({ step, allSteps, executionId, onClose, 
               />
             );
           })()}
-        </div>
-        <div className="flex items-center gap-1 shrink-0 ml-2">
           <button
             onClick={handleDelete}
             disabled={saving || locked}

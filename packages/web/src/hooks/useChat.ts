@@ -18,7 +18,6 @@ const ALLOWED_IMAGE_MIME = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'
 export interface LastSentSnapshot {
   text: string;
   agent: string;
-  context?: string;
   timestamp: number;
 }
 
@@ -438,19 +437,19 @@ export function useChat(directory?: string) {
    * @param context    可选 pageContext（由 AIChatWidget 注入）
    * @param _unused    已弃用的 attachments 参数（保留签名兼容）
    */
-   const sendMessage = useCallback(async (text: string, context?: string, _unused?: FilePartInput[]) => {
-     const sid = currentSessionIdRef.current;
-     log.info(S, 'sendMessage', { text: text.slice(0, 80), currentSessionId: sid, directory, hasContext: !!context, attachmentCount: attachments.length, attachmentStatuses: attachments.map(a => ({ id: a.id, status: a.status })) });
-     if (!sid) {
-       log.warn(S, 'sendMessage skipped: no currentSessionId');
-       return;
-     }
+   const sendMessage = useCallback(async (text: string, _unused?: FilePartInput[]) => {
+      const sid = currentSessionIdRef.current;
+      log.info(S, 'sendMessage', { text: text.slice(0, 80), currentSessionId: sid, directory, attachmentCount: attachments.length, attachmentStatuses: attachments.map(a => ({ id: a.id, status: a.status })) });
+      if (!sid) {
+        log.warn(S, 'sendMessage skipped: no currentSessionId');
+        return;
+      }
 
-     // ── 1. 构建乐观 UI ──────────────────────────────
-     lastSentTextRef.current = text;
-     setLastSent({ text, agent: selectedAgent, context, timestamp: Date.now() });
+      // ── 1. 构建乐观 UI ──────────────────────────────
+      lastSentTextRef.current = text;
+      setLastSent({ text, agent: selectedAgent, timestamp: Date.now() });
 
-      chatDebug.request({ text, agent: selectedAgent, context, directory, sessionId: sid });
+       chatDebug.request({ text, agent: selectedAgent, directory, sessionId: sid });
 
       // 在临时消息的 parts 中包含文本 + 图片预览信息
       const optimisticParts: Array<{ id: string; type: string; text?: string; [key: string]: unknown }> = [];
@@ -521,7 +520,6 @@ export function useChat(directory?: string) {
           messageText,
           directory,
           selectedAgent,
-          context,
         );
         log.info(S, 'sendMessage API call completed');
 
@@ -567,7 +565,7 @@ export function useChat(directory?: string) {
     }
   }, [currentSessionId, directory, sessions, switchSession]);
 
-  const retryInNewSession = useCallback(async (context?: string) => {
+  const retryInNewSession = useCallback(async () => {
     const text = lastSentTextRef.current;
     if (!text) return;
     log.info(S, 'retryInNewSession', { text: text.slice(0, 80) });
@@ -575,7 +573,7 @@ export function useChat(directory?: string) {
     const session = await createSession('新会话');
     await switchSession(session.id);
     lastSentTextRef.current = text;
-    await sendMessage(text, context);
+    await sendMessage(text);
   }, [createSession, switchSession, sendMessage]);
 
   const dismissSessionBroken = useCallback(() => {

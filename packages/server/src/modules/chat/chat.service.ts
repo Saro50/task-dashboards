@@ -206,14 +206,14 @@ export async function getMessages(sessionId: string, directory?: string) {
   return result.data;
 }
 
-export async function sendMessage(sessionId: string, parts: MessagePartInput[], directory?: string, agent?: string, context?: string) {
+export async function sendMessage(sessionId: string, parts: MessagePartInput[], directory?: string, agent?: string) {
   const baseUrl = await getBaseUrl();
   const partSummary = parts.map((p) =>
     p.type === 'text' ? `text(${p.text.slice(0, 40)})` : `file(${p.mime}, ${p.url})`,
   );
-  logger.info(S, 'sendMessage calling sendPromptAsync', { baseUrl, sessionId, directory, agent, system: context?.slice(0, 40), parts: partSummary });
+  logger.info(S, 'sendMessage calling sendPromptAsync', { baseUrl, sessionId, directory, agent, parts: partSummary });
   try {
-    const result = await Opencode.sendPromptAsync(baseUrl, sessionId, parts, directory, agent, context);
+    const result = await Opencode.sendPromptAsync(baseUrl, sessionId, parts, directory, agent);
     logger.info(S, 'sendPromptAsync returned', { result });
   } catch (err: any) {
     logger.error(S, 'sendPromptAsync threw', { message: err.message, stack: err.stack?.slice(0, 200) });

@@ -21,7 +21,7 @@ interface Props {
   existingSteps?: Step[];
   currentTaskName?: string;
   effectivePageContext?: string;
-  onRetryInNewSession: (context?: string) => void;
+  onRetryInNewSession: () => void;
   onDismissSessionBroken: () => void;
   onResetLoading: () => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
@@ -66,6 +66,111 @@ function parseImageRefs(text: string): { displayText: string; images: Array<{ ur
   }
 
   return { displayText, images };
+}
+
+/**
+ * 解析用户消息中的 <env-context>...</env-context> 标签。
+ * 返回 { meta, displayText }：
+ * - meta: 标签内的环境上下文文本（若无标签则为 null）
+ * - displayText: 剥离标签后的用户实际输入文本
+ */
+function parseEnvContext(text: string): { meta: string | null; displayText: string } {
+  const openTag = '<env-context>';
+  const closeTag = '</env-context>';
+  const startIdx = text.indexOf(openTag);
+  if (startIdx === -1) return { meta: null, displayText: text };
+
+  const contentStart = startIdx + openTag.length;
+  const closeIdx = text.indexOf(closeTag, contentStart);
+  if (closeIdx === -1) return { meta: null, displayText: text };
+
+  const meta = text.slice(contentStart, closeIdx).trim();
+  // 剥离标签及其后紧跟的空白
+  const afterTag = text.slice(closeIdx + closeTag.length).replace(/^\n+/, '');
+  return { meta, displayText: afterTag.trim() };
+}
+
+/**
+ * 用户消息气泡 — 包含文本、图片缩略图、env-context 折叠面板。
+ * env-context 以叹号图标展示，点击展开完整上下文信息。
+ */
+function UserMessageBubble({
+  msgId,
+  displayText,
+  allImages,
+  envMeta,
+  createdAt,
+  directory,
+  openLightbox,
+}: {
+  msgId: string;
+  displayText: string;
+  allImages: Array<{ url: string; filename: string }>;
+  envMeta: string | null;
+  createdAt: number;
+  directory?: string;
+  openLightbox: (src: string, alt?: string) => void;
+}) {
+  const [showMeta, setShowMeta] = useState(false);
+
+  return (
+    <div className="flex justify-end">
+      <div className="max-w-[80%] flex flex-col items-end gap-1">
+        <div className="rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm leading-relaxed bg-sky-500 text-white">
+          {displayText && <p className="whitespace-pre-wrap break-words">{displayText}</p>}
+          {/* 用户消息中的图片缩略图列表 */}
+          {allImages.length > 0 && (
+            <div className={`flex flex-wrap gap-1.5 ${displayText ? 'mt-2' : ''}`}>
+              {allImages.map((img, idx) => {
+                const resolvedUrl = resolveImageUrl(img.url, directory);
+                return (
+                  <button
+                    key={`img-${idx}-${img.url}`}
+                    type="button"
+                    onClick={() => openLightbox(resolvedUrl, img.filename)}
+                    className="block max-w-[120px] max-h-[90px] rounded-lg overflow-hidden border border-white/30 hover:border-white/60 transition-colors cursor-pointer"
+                    title="点击查看大图"
+                  >
+                    <img
+                      src={resolvedUrl}
+                      alt={img.filename}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 底部行：时间 + env-context 折叠图标 */}
+        <div className="flex items-center gap-1.5 px-1">
+          <p className="text-[10px] text-gray-400">{formatTime(createdAt)}</p>
+          {envMeta && (
+            <button
+              type="button"
+              onClick={() => setShowMeta((prev) => !prev)}
+              className="inline-flex items-center gap-0.5 text-[10px] text-sky-400 hover:text-sky-500 transition-colors cursor-pointer"
+              title="查看环境上下文"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+              </svg>
+              <span className="text-[9px]">上下文</span>
+            </button>
+          )}
+        </div>
+
+        {/* env-context 展开面板 */}
+        {envMeta && showMeta && (
+          <div className="w-full max-h-[200px] overflow-y-auto rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-[11px] text-gray-500 font-mono whitespace-pre-wrap break-words leading-relaxed">
+            {envMeta}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function ChatMessageList({
@@ -134,8 +239,9 @@ export default function ChatMessageList({
             const rawText = textParts
               .map((p) => ('text' in p ? p.text : ''))
               .join('\n');
-            // 解析文本中的 [附图] 标记，提取图片引用（服务端回传的消息只有文本，图片路径嵌在文本中）
-            const { displayText, images: textImageRefs } = parseImageRefs(rawText);
+            // 先剥离 <env-context> 标签，再解析 [附图] 标记
+            const { meta: envMeta, displayText: textAfterEnv } = parseEnvContext(rawText);
+            const { displayText, images: textImageRefs } = parseImageRefs(textAfterEnv);
             // 合并：file parts（乐观 UI 阶段） + 文本中解析出的图片引用（服务端刷新后）
             const allImages = [
               ...fileParts
@@ -146,36 +252,16 @@ export default function ChatMessageList({
             // 用户消息至少需要文本或图片才渲染
             if (!displayText && allImages.length === 0) return null;
             return (
-              <div key={msg.info.id} className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-md px-3.5 py-2.5 text-sm leading-relaxed bg-sky-500 text-white">
-                  {displayText && <p className="whitespace-pre-wrap break-words">{displayText}</p>}
-                  {/* 用户消息中的图片缩略图列表（乐观 UI 的 file parts + 文本中解析出的图片引用） */}
-                  {allImages.length > 0 && (
-                    <div className={`flex flex-wrap gap-1.5 ${displayText ? 'mt-2' : ''}`}>
-                      {allImages.map((img, idx) => {
-                        const resolvedUrl = resolveImageUrl(img.url, directory);
-                        return (
-                          <button
-                            key={`img-${idx}-${img.url}`}
-                            type="button"
-                            onClick={() => openLightbox(resolvedUrl, img.filename)}
-                            className="block max-w-[120px] max-h-[90px] rounded-lg overflow-hidden border border-white/30 hover:border-white/60 transition-colors cursor-pointer"
-                            title="点击查看大图"
-                          >
-                            <img
-                              src={resolvedUrl}
-                              alt={img.filename}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <p className="text-[10px] mt-1 text-sky-200">{formatTime(msg.info.time.created)}</p>
-                </div>
-              </div>
+              <UserMessageBubble
+                key={msg.info.id}
+                msgId={msg.info.id}
+                displayText={displayText}
+                allImages={allImages}
+                envMeta={envMeta}
+                createdAt={msg.info.time.created}
+                directory={directory}
+                openLightbox={openLightbox}
+              />
             );
           }
 
@@ -278,7 +364,7 @@ export default function ChatMessageList({
               <div className="flex gap-2 mt-1.5">
                 <button
                   type="button"
-                  onClick={() => onRetryInNewSession(effectivePageContext)}
+                  onClick={() => onRetryInNewSession()}
                   className="text-xs bg-amber-500 text-white px-2.5 py-1 rounded hover:bg-amber-600 cursor-pointer"
                 >
                   新建会话并重试

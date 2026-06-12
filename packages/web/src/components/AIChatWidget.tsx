@@ -56,8 +56,6 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const [agents, setAgents] = useState<OpencodeAgent[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  /** 追踪上次实际注入的 pageContext，用于去重（功能一） */
-  const lastSentContextRef = useRef<string | null>(null);
 
   // ─── @mention 文件搜索状态 ─────────────────────────────────
   const [atQuery, setAtQuery] = useState('');
@@ -356,15 +354,12 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
   const handleNewSession = useCallback(async () => {
     log.info(S, 'handleNewSession');
     await createSession('新会话');
-    lastSentContextRef.current = null;
     inputRef.current?.focus();
   }, [createSession]);
 
   const handleSwitchSession = useCallback(async (sessionId: string) => {
     log.info(S, 'handleSwitchSession', { sessionId });
     await switchSession(sessionId);
-    // 切换会话时重置 pageContext 去重追踪，确保新会话首条消息注入上下文
-    lastSentContextRef.current = null;
   }, [switchSession]);
 
   const handleDeleteSession = useCallback(async (e: React.MouseEvent, sessionId: string) => {
@@ -393,30 +388,20 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     // 关闭 @mention 下拉菜单
     setAtActive(false);
     setAtResults([]);
-    // 功能一：pageContext 去重注入
-    // 仅在首条消息或 pageContext 内容变化时注入 system，避免每轮重复发送
-    const isFirstMessage = messages.length === 0;
-    const contextChanged = effectivePageContext !== lastSentContextRef.current;
-    const contextToSend = (isFirstMessage || contextChanged) ? effectivePageContext : undefined;
-    lastSentContextRef.current = effectivePageContext ?? lastSentContextRef.current;
-    if (contextToSend) {
-      log.info(S, 'injecting pageContext', { reason: isFirstMessage ? 'first-message' : 'context-changed', length: contextToSend.length });
-    } else {
-      log.info(S, 'skipping pageContext injection (unchanged)');
-    }
 
-    /** chatDebug.systemPrompt — 在 DevTools Console 输出系统提示词详情 */
-    chatDebug.systemPrompt({
-      pageContext: effectivePageContext,
-      activeMode,
-      contextToSend,
-      reason: isFirstMessage ? 'first-message' : contextChanged ? 'context-changed' : 'unchanged',
-    });
+    // 将 pageContext 包裹在 <env-context> 中拼入用户消息前面，
+    // 每条消息都携带最新环境信息，确保 AI 始终感知当前页面状态和聚焦对象。
+    const metaText = effectivePageContext
+      ? `<env-context>\n${effectivePageContext}\n</env-context>\n\n`
+      : '';
+    const messageText = metaText + text;
+
+    log.info(S, 'sending message with env-context', { hasMeta: !!effectivePageContext, metaLength: effectivePageContext?.length });
 
     // sendMessage 内部处理附件上传 + 乐观 UI + 发送 + 清理
-    await sendMessage(text, contextToSend);
+    await sendMessage(messageText);
     log.info(S, 'sendMessage returned');
-  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, effectivePageContext, messages.length, attachments, hasUploadingAttachments]);
+  }, [input, isLoading, currentSessionId, createSession, switchSession, sendMessage, effectivePageContext, attachments, hasUploadingAttachments]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     // @mention 下拉菜单键盘导航
@@ -540,18 +525,28 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     });
   }, [chatSize, chatPos, fabPos.x, fabPos.y]);
 
-  const startResize = useCallback((e: React.MouseEvent) => {
+  /** 水平方向 resize（左边缘）。
+   *  向左拖 → 宽度增大 + 窗口左移；向右拖 → 宽度减小 + 窗口右移。
+   *  窗口右边缘保持不动。当左边缘碰到 x=0 边界时，收缩宽度以补偿。
+   */
+  const startResizeH = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     resizingRef.current = true;
+    const currentPos = chatPos ?? { x: Math.max(8, fabPos.x - chatSize.w), y: Math.max(8, window.innerHeight - fabPos.y - chatSize.h) };
+    if (!chatPos) setChatPos(currentPos);
     startRef.current = { x: e.clientX, y: e.clientY, w: chatSize.w, h: chatSize.h };
+    const startPx = currentPos.x;
+    const startRight = startPx + chatSize.w; // 右边缘固定位置
     const onMove = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
-      const dw = startRef.current.x - ev.clientX;
-      const dh = startRef.current.y - ev.clientY;
-      setChatSize({
-        w: Math.min(Math.max(startRef.current.w + dw, 360), window.innerWidth - 32),
-        h: Math.min(Math.max(startRef.current.h + dh, 400), window.innerHeight - 32),
-      });
+      const dx = ev.clientX - startRef.current.x;
+      // 理想新宽度（不考虑 pos 边界）
+      const idealW = startRef.current.w - dx;
+      const newW = Math.min(Math.max(idealW, 360), startRight);
+      // 左边缘 = 右边缘 - 宽度，保证右边缘始终不动
+      const newX = startRight - newW;
+      setChatSize((prev) => ({ ...prev, w: newW }));
+      setChatPos((prev) => prev ? { ...prev, x: newX } : { x: newX, y: currentPos.y });
     };
     const onUp = () => {
       resizingRef.current = false;
@@ -560,7 +555,68 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, [chatSize]);
+  }, [chatPos, fabPos.x, chatSize.w]);
+
+  /** 垂直方向 resize（上边缘）。
+   *  向上拖 → 高度增大 + 窗口上移；向下拖 → 高度减小 + 窗口下移。
+   *  窗口底部保持不动。标题栏不得被推到可视区域上方（y >= 0）。
+   */
+  const startResizeV = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    const currentPos = chatPos ?? { x: Math.max(8, fabPos.x - chatSize.w), y: Math.max(8, window.innerHeight - fabPos.y - chatSize.h) };
+    if (!chatPos) setChatPos(currentPos);
+    startRef.current = { x: e.clientX, y: e.clientY, w: chatSize.w, h: chatSize.h };
+    const startPy = currentPos.y;
+    const startBottom = startPy + chatSize.h; // 底部固定位置
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const dy = ev.clientY - startRef.current.y;
+      const idealH = startRef.current.h - dy;
+      const newH = Math.min(Math.max(idealH, 400), startBottom);
+      const newY = startBottom - newH;
+      setChatSize((prev) => ({ ...prev, h: newH }));
+      setChatPos((prev) => prev ? { ...prev, y: newY } : { x: currentPos.x, y: newY });
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [chatPos, fabPos.y, chatSize.h, chatSize.w, fabPos.x]);
+
+  /** 对角线 resize（左上角，同时改变宽高 + 左上角位置）
+   *  右边缘和底边缘均保持不动。
+   */
+  const startResizeHV = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = true;
+    const currentPos = chatPos ?? { x: Math.max(8, fabPos.x - chatSize.w), y: Math.max(8, window.innerHeight - fabPos.y - chatSize.h) };
+    if (!chatPos) setChatPos(currentPos);
+    startRef.current = { x: e.clientX, y: e.clientY, w: chatSize.w, h: chatSize.h };
+    const startRight = currentPos.x + chatSize.w;
+    const startBottom = currentPos.y + chatSize.h;
+    const onMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const dx = ev.clientX - startRef.current.x;
+      const dy = ev.clientY - startRef.current.y;
+      const newW = Math.min(Math.max(startRef.current.w - dx, 360), startRight);
+      const newH = Math.min(Math.max(startRef.current.h - dy, 400), startBottom);
+      const newX = startRight - newW;
+      const newY = startBottom - newH;
+      setChatSize({ w: newW, h: newH });
+      setChatPos({ x: newX, y: newY });
+    };
+    const onUp = () => {
+      resizingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [chatPos, fabPos.x, fabPos.y, chatSize]);
 
   return (
     <>
@@ -670,19 +726,19 @@ export default forwardRef<AIChatWidgetHandle, Props>(function AIChatWidget({ dir
           />
 
           <div
-            onMouseDown={startResize}
+            onMouseDown={startResizeH}
             className="absolute top-0 left-0 w-4 h-full cursor-col-resize z-10 flex items-center justify-center"
           >
             <div className="w-1 h-8 rounded-full bg-gray-300 hover:bg-gray-400 transition-colors" />
           </div>
           <div
-            onMouseDown={startResize}
+            onMouseDown={startResizeV}
             className="absolute top-0 left-0 right-0 h-4 cursor-row-resize z-10 flex items-center justify-center"
           >
             <div className="h-1 w-8 rounded-full bg-gray-300 hover:bg-gray-400 transition-colors" />
           </div>
           <div
-            onMouseDown={startResize}
+            onMouseDown={startResizeHV}
             className="absolute top-0 left-0 w-4 h-4 cursor-nw-resize z-20"
           />
         </div>

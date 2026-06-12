@@ -90,16 +90,15 @@ export async function sendPromptAsync(
   parts: MessagePartInput[],
   directory?: string,
   agent?: string,
-  system?: string,
 ) {
   const partSummary = parts.map((p) =>
     p.type === 'text' ? `text(${p.text.slice(0, 40)})` : `file(${p.mime}, ${p.url})`,
   );
-  logger.info(S, 'sendPromptAsync', { baseUrl, sessionId, directory, agent, system: system?.slice(0, 40), parts: partSummary });
+  logger.info(S, 'sendPromptAsync', { baseUrl, sessionId, directory, agent, parts: partSummary });
   const client = await getClient(baseUrl);
   const result = await client.session.promptAsync({
     path: { id: sessionId },
-    body: { parts, ...(agent ? { agent } : {}), ...(system ? { system } : {}) },
+    body: { parts, ...(agent ? { agent } : {}) },
     query: { directory },
   });
   logger.info(S, 'sendPromptAsync completed');

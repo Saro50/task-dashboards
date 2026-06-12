@@ -48,15 +48,15 @@ function buildApiSection(projectId: string | undefined): string[] {
     parts.push(projectId);
   }
 
-  parts.push(`\n## ID池接口`);
-  parts.push(`GET ${origin}/api/id-pool?count=N （返回可用ID列表，用于新步骤ref）`);
+  // parts.push(`\n## ID池接口`);
+  // parts.push(`GET ${origin}/api/id-pool?count=N （返回可用ID列表，用于新步骤ref）`);
 
-  parts.push(`\n## 查询接口`);
-  if (projectId) {
-    parts.push(`GET ${origin}/api/projects/${projectId}/tasks — 查询项目所有任务`);
-    parts.push(`GET ${origin}/api/projects/${projectId}/steps — 查询项目所有步骤`);
-  }
-  parts.push(`GET ${origin}/api/tasks/{taskId}/steps — 查询某个任务的步骤详情`);
+  // parts.push(`\n## 查询接口`);
+  // if (projectId) {
+  //   parts.push(`GET ${origin}/api/projects/${projectId}/tasks — 查询项目所有任务`);
+  //   parts.push(`GET ${origin}/api/projects/${projectId}/steps — 查询项目所有步骤`);
+  // }
+  // parts.push(`GET ${origin}/api/tasks/{taskId}/steps — 查询某个任务的步骤详情`);
 
   return parts;
 }

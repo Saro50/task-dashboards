@@ -97,7 +97,7 @@ export async function sendMessage(ctx: Context) {
     const { id } = ctx.params;
     const directory = ctx.query.directory as string | undefined;
     const body = ctx.request.body as SendMessageBody;
-    const { text, parts, agent, context } = body;
+    const { text, parts, agent } = body;
 
     // 向后兼容：若前端只传了 text（旧版），自动包装为 TextPartInput
     let normalizedParts: MessagePartInput[];
@@ -114,9 +114,9 @@ export async function sendMessage(ctx: Context) {
     const partSummary = normalizedParts.map((p) =>
       p.type === 'text' ? `text(${(p as { type: 'text'; text: string }).text.slice(0, 40)})` : `file(${(p as { type: 'file'; mime: string; url: string }).mime}, ${(p as { type: 'file'; url: string }).url})`,
     );
-    log.info(S, 'sendMessage', { sessionId: id, directory, parts: partSummary, agent, hasContext: !!context });
+    log.info(S, 'sendMessage', { sessionId: id, directory, parts: partSummary, agent });
 
-    await Service.sendMessage(id, normalizedParts, directory, agent, context);
+    await Service.sendMessage(id, normalizedParts, directory, agent);
     log.info(S, 'sendMessage promptAsync accepted');
     ctx.status = 204;
   } catch (err: any) {
